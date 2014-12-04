@@ -43,18 +43,24 @@ Yours Norbert Nopper
 
 TODOs:
 
-- Check, if needed GL/WGL version is available. Otherwise this EGL lib will crash.
+- Check, if needed GL/WGL/GLX version is available. Otherwise this EGL lib will crash.
 
 - Implement TODOs as marked in the source code.
-
-- Port to desktop Linux X11.
 
 - Remove dublicate code.
 
 - Implement FIXMEs as marked in the source code.
 
+- Check / implement correct error codes.
 
 Changelog:
 
-17.11.2014 - Released first public version: v0.2.
+04.12.2014 - Working X11 version. Current version: v0.3.0.
 
+28.11.2014 - Continued on X11 version. Current version: v0.2.3.
+
+22.11.2014 - X11 compiling but not complete. Current version: v0.2.2.
+
+18.11.2014 - Added X11 build configuration and started implementing it. X11 not compiling yet. Current version: v0.2.1.
+
+17.11.2014 - Released first public version: v0.2.

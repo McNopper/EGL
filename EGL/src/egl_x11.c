@@ -24,16 +24,19 @@
  * THE SOFTWARE.
  */
 
-#include <windows.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <X11/X.h>
 
 #include <GL/glew.h>
-#include <GL/wglew.h>
+#include <GL/glxew.h>
 
 #include <EGL/egl.h>
 
 #include "egl_internal.h"
 
-#define WGL_ATTRIB_LIST_SIZE 13
+#define GLX_ATTRIB_LIST_SIZE 13
 
 typedef struct _EGLConfigImpl
 {
@@ -161,22 +164,22 @@ typedef struct _EGLSurfaceImpl
 	EGLint configId;
 
 	EGLNativeWindowType win;
-	HDC hdc;
+	GLXFBConfig config;
 
 	struct _EGLSurfaceImpl* next;
 
 } EGLSurfaceImpl;
 
-typedef struct _WGLContextImpl
+typedef struct _GLXContextImpl
 {
 
 	EGLSurfaceImpl* surface;
 
-	HGLRC ctx;
+	GLXContext ctx;
 
-	struct _WGLContextImpl* next;
+	struct _GLXContextImpl* next;
 
-} WGLContextImpl;
+} GLXContextImpl;
 
 typedef struct _EGLContextImpl
 {
@@ -188,9 +191,9 @@ typedef struct _EGLContextImpl
 
 	struct _EGLContextImpl* sharedCtx;
 
-	WGLContextImpl* rootWglCtx;
+	GLXContextImpl* rootGlxCtx;
 
-	EGLint wglAttribList[WGL_ATTRIB_LIST_SIZE];
+	EGLint glxAttribList[GLX_ATTRIB_LIST_SIZE];
 
 	struct _EGLContextImpl* next;
 
@@ -219,9 +222,11 @@ typedef struct _EGLDisplayImpl
 typedef struct _LocalStorage
 {
 
-	HDC dummyHdc;
+	EGLNativeDisplayType dummyDisplay;
 
-	HGLRC dummyCtx;
+	EGLNativeWindowType dummyWindow;
+
+	GLXContext dummyCtx;
 
 	EGLint error;
 
@@ -233,16 +238,21 @@ typedef struct _LocalStorage
 
 } LocalStorage;
 
-static __thread LocalStorage g_localStorage = {0, 0, EGL_SUCCESS, EGL_NONE, 0, EGL_NO_CONTEXT };
+static __thread LocalStorage g_localStorage = {0, 0, 0, EGL_SUCCESS, EGL_NONE, 0, EGL_NO_CONTEXT };
 
 static EGLBoolean _eglInternalInit()
 {
-	if (g_localStorage.dummyHdc && g_localStorage.dummyCtx)
+	if (g_localStorage.dummyDisplay && g_localStorage.dummyWindow && g_localStorage.dummyCtx)
 	{
 		return EGL_TRUE;
 	}
 
-	if (g_localStorage.dummyHdc)
+	if (g_localStorage.dummyDisplay)
+	{
+		return EGL_FALSE;
+	}
+
+	if (g_localStorage.dummyWindow)
 	{
 		return EGL_FALSE;
 	}
@@ -252,61 +262,63 @@ static EGLBoolean _eglInternalInit()
 		return EGL_FALSE;
 	}
 
-	g_localStorage.dummyHdc = GetDC(0);
+	g_localStorage.dummyDisplay = XOpenDisplay(NULL);
 
-	if (!g_localStorage.dummyHdc)
+	if (!g_localStorage.dummyDisplay)
 	{
 		return EGL_FALSE;
 	}
 
-	PIXELFORMATDESCRIPTOR dummyPfd = {
-			sizeof(PIXELFORMATDESCRIPTOR),
-			1,
-			PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    	//Flags
-			PFD_TYPE_RGBA,            									   	//The kind of framebuffer. RGBA or palette.
-			32,                        									   	//Colordepth of the framebuffer.
-			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24,                     	//Number of bits for the depthbuffer
-			8,                        										//Number of bits for the stencilbuffer
-			0,                        										//Number of Aux buffers in the framebuffer.
-			PFD_MAIN_PLANE,
-			0, 0, 0, 0
+	g_localStorage.dummyWindow = DefaultRootWindow(g_localStorage.dummyDisplay);
+
+	if (!g_localStorage.dummyWindow)
+	{
+		XCloseDisplay(g_localStorage.dummyDisplay);
+		g_localStorage.dummyDisplay = 0;
+
+		return EGL_FALSE;
+	}
+
+	int dummyAttribList[] = {
+		GLX_USE_GL, True,
+		GLX_DOUBLEBUFFER, True,
+		GLX_RGBA, True,
+		None
 	};
 
-	EGLint dummyPixelFormat = ChoosePixelFormat(g_localStorage.dummyHdc, &dummyPfd);
+	XVisualInfo* visualInfo = glXChooseVisual(g_localStorage.dummyDisplay, 0, dummyAttribList);
 
-	if (dummyPixelFormat == 0)
+	if (!visualInfo)
 	{
-		ReleaseDC(0, g_localStorage.dummyHdc);
-		g_localStorage.dummyHdc = 0;
+		g_localStorage.dummyWindow = 0;
+
+		XCloseDisplay(g_localStorage.dummyDisplay);
+		g_localStorage.dummyDisplay = 0;
 
 		return EGL_FALSE;
 	}
 
-	if (!SetPixelFormat(g_localStorage.dummyHdc, dummyPixelFormat, &dummyPfd))
-	{
-		ReleaseDC(0, g_localStorage.dummyHdc);
-		g_localStorage.dummyHdc = 0;
-
-		return EGL_FALSE;
-	}
-
-	g_localStorage.dummyCtx = wglCreateContext(g_localStorage.dummyHdc);
+	g_localStorage.dummyCtx = glXCreateContext(g_localStorage.dummyDisplay, visualInfo, NULL, True);
 
 	if (!g_localStorage.dummyCtx)
 	{
-		ReleaseDC(0, g_localStorage.dummyHdc);
-		g_localStorage.dummyHdc = 0;
+		g_localStorage.dummyWindow = 0;
+
+		XCloseDisplay(g_localStorage.dummyDisplay);
+		g_localStorage.dummyDisplay = 0;
 
 		return EGL_FALSE;
 	}
 
-	if (!wglMakeCurrent(g_localStorage.dummyHdc, g_localStorage.dummyCtx))
+	if (!glXMakeCurrent(g_localStorage.dummyDisplay, g_localStorage.dummyWindow, g_localStorage.dummyCtx))
 	{
-		wglDeleteContext(g_localStorage.dummyCtx);
+		glXDestroyContext(g_localStorage.dummyDisplay, g_localStorage.dummyCtx);
 		g_localStorage.dummyCtx = 0;
 
-		ReleaseDC(0, g_localStorage.dummyHdc);
-		g_localStorage.dummyHdc = 0;
+		g_localStorage.dummyWindow = 0;
+
+		XCloseDisplay(g_localStorage.dummyDisplay);
+		g_localStorage.dummyDisplay = 0;
 
 		return EGL_FALSE;
 	}
@@ -314,13 +326,15 @@ static EGLBoolean _eglInternalInit()
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GL_NO_ERROR)
 	{
-		wglMakeCurrent(0, 0);
+		glXMakeCurrent(g_localStorage.dummyDisplay, 0, 0);
 
-		wglDeleteContext(g_localStorage.dummyCtx);
+		glXDestroyContext(g_localStorage.dummyDisplay, g_localStorage.dummyCtx);
 		g_localStorage.dummyCtx = 0;
 
-		ReleaseDC(0, g_localStorage.dummyHdc);
-		g_localStorage.dummyHdc = 0;
+		g_localStorage.dummyWindow = 0;
+
+		XCloseDisplay(g_localStorage.dummyDisplay);
+		g_localStorage.dummyDisplay = 0;
 
 		return EGL_FALSE;
 	}
@@ -330,18 +344,26 @@ static EGLBoolean _eglInternalInit()
 
 static void _eglInternalTerminate()
 {
-	wglMakeCurrent(0, 0);
-
-	if (g_localStorage.dummyCtx)
+	if (g_localStorage.dummyDisplay)
 	{
-		wglDeleteContext(g_localStorage.dummyCtx);
+		glXMakeContextCurrent(g_localStorage.dummyDisplay, 0, 0, 0);
+	}
+
+	if (g_localStorage.dummyDisplay && g_localStorage.dummyCtx)
+	{
+		glXDestroyContext(g_localStorage.dummyDisplay, g_localStorage.dummyCtx);
 		g_localStorage.dummyCtx = 0;
 	}
 
-	if (g_localStorage.dummyHdc)
+	if (g_localStorage.dummyWindow)
 	{
-		ReleaseDC(0, g_localStorage.dummyHdc);
-		g_localStorage.dummyHdc = 0;
+		g_localStorage.dummyWindow = 0;
+	}
+
+	if (g_localStorage.dummyDisplay)
+	{
+		XCloseDisplay(g_localStorage.dummyDisplay);
+		g_localStorage.dummyDisplay = 0;
 	}
 }
 
@@ -385,7 +407,10 @@ static void _eglInternalCleanup()
 
 			tempSurface = walkerSurface;
 
-			walkerSurface = walkerSurface->next;
+			if (walkerSurface)
+			{
+				walkerSurface = walkerSurface->next;
+			}
 		}
 
 		while (walkerCtx)
@@ -420,15 +445,15 @@ static void _eglInternalCleanup()
 				}
 
 				// Freeing the context.
-				while (deleteCtx->rootWglCtx)
+				while (deleteCtx->rootGlxCtx)
 				{
-					WGLContextImpl* deleteWglCtx = deleteCtx->rootWglCtx;
+					GLXContextImpl* deleteGlxCtx = deleteCtx->rootGlxCtx;
 
-					deleteCtx->rootWglCtx = deleteCtx->rootWglCtx->next;
+					deleteCtx->rootGlxCtx = deleteCtx->rootGlxCtx->next;
 
-					wglDeleteContext(deleteWglCtx->ctx);
+					glXDestroyContext(walkerDpy->display_id, deleteGlxCtx->ctx);
 
-					free(deleteWglCtx);
+					free(deleteGlxCtx);
 				}
 
 				free(deleteCtx);
@@ -1282,13 +1307,12 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 			{
 				if ((EGLConfig)walkerConfig == config)
 				{
-					EGLint wgl_attrib_list[] = {
-							WGL_CONTEXT_MAJOR_VERSION_ARB, 1,
-							WGL_CONTEXT_MINOR_VERSION_ARB, 0,
-							WGL_CONTEXT_LAYER_PLANE_ARB, 0,
-							WGL_CONTEXT_FLAGS_ARB, 0,
-							WGL_CONTEXT_PROFILE_MASK_ARB, 0,
-							WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, WGL_NO_RESET_NOTIFICATION_ARB,
+					EGLint glx_attrib_list[] = {
+							GLX_CONTEXT_MAJOR_VERSION_ARB, 1,
+							GLX_CONTEXT_MINOR_VERSION_ARB, 0,
+							GLX_CONTEXT_FLAGS_ARB, 0,
+							GLX_CONTEXT_PROFILE_MASK_ARB, 0,
+							GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_NO_RESET_NOTIFICATION_ARB,
 							0
 					};
 
@@ -1309,7 +1333,7 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 									return EGL_FALSE;
 								}
 
-								wgl_attrib_list[1] = value;
+								glx_attrib_list[1] = value;
 							}
 							break;
 							case EGL_CONTEXT_MINOR_VERSION:
@@ -1321,18 +1345,18 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 									return EGL_FALSE;
 								}
 
-								wgl_attrib_list[3] = value;
+								glx_attrib_list[3] = value;
 							}
 							break;
 							case EGL_CONTEXT_OPENGL_PROFILE_MASK:
 							{
 								if (value == EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT)
 								{
-									wgl_attrib_list[9] = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+									glx_attrib_list[7] = GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
 								}
 								else if (value == EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT)
 								{
-									wgl_attrib_list[9] = WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+									glx_attrib_list[7] = GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 								}
 								else
 								{
@@ -1346,11 +1370,11 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 							{
 								if (value == EGL_TRUE)
 								{
-									wgl_attrib_list[7] |= WGL_CONTEXT_DEBUG_BIT_ARB;
+									glx_attrib_list[5] |= GLX_CONTEXT_DEBUG_BIT_ARB;
 								}
 								else if (value == EGL_FALSE)
 								{
-									wgl_attrib_list[7] &= ~WGL_CONTEXT_DEBUG_BIT_ARB;
+									glx_attrib_list[5] &= ~GLX_CONTEXT_DEBUG_BIT_ARB;
 								}
 								else
 								{
@@ -1364,11 +1388,11 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 							{
 								if (value == EGL_TRUE)
 								{
-									wgl_attrib_list[7] |= WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+									glx_attrib_list[5] |= GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 								}
 								else if (value == EGL_FALSE)
 								{
-									wgl_attrib_list[7] &= ~WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+									glx_attrib_list[5] &= ~GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 								}
 								else
 								{
@@ -1382,11 +1406,11 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 							{
 								if (value == EGL_TRUE)
 								{
-									wgl_attrib_list[7] |= WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
+									glx_attrib_list[5] |= GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB;
 								}
 								else if (value == EGL_FALSE)
 								{
-									wgl_attrib_list[7] &= ~WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
+									glx_attrib_list[5] &= ~GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB;
 								}
 								else
 								{
@@ -1400,11 +1424,11 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 							{
 								if (value == EGL_NO_RESET_NOTIFICATION)
 								{
-									wgl_attrib_list[11] = WGL_NO_RESET_NOTIFICATION_ARB;
+									glx_attrib_list[9] = GLX_NO_RESET_NOTIFICATION_ARB;
 								}
 								else if (value == EGL_LOSE_CONTEXT_ON_RESET)
 								{
-									wgl_attrib_list[11] = WGL_LOSE_CONTEXT_ON_RESET_ARB;
+									glx_attrib_list[9] = GLX_LOSE_CONTEXT_ON_RESET_ARB;
 								}
 								else
 								{
@@ -1484,13 +1508,13 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 					}
 
 					// Move the atttibutes for later creation.
-					memcpy(newCtx->wglAttribList, wgl_attrib_list, WGL_ATTRIB_LIST_SIZE * sizeof(EGLint));
+					memcpy(newCtx->glxAttribList, glx_attrib_list, GLX_ATTRIB_LIST_SIZE * sizeof(EGLint));
 
 					newCtx->initialized = EGL_TRUE;
 					newCtx->destroy = EGL_FALSE;
 					newCtx->configId = walkerConfig->configId;
 					newCtx->sharedCtx = sharedCtx;
-					newCtx->rootWglCtx = 0;
+					newCtx->rootGlxCtx = 0;
 
 					newCtx->next = walkerDpy->rootCtx;
 					walkerDpy->rootCtx = newCtx;
@@ -1535,33 +1559,6 @@ EGLSurface _eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWi
 			{
 				if ((EGLConfig)walkerConfig == config)
 				{
-					HDC hdc = GetDC(win);
-
-					if (!hdc)
-					{
-						g_localStorage.error = EGL_BAD_NATIVE_WINDOW;
-
-						return EGL_NO_SURFACE;
-					}
-
-					// FIXME Check more values.
-					EGLint wgl_attrib_list[] = {
-							WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
-							WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
-							WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-							WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
-							WGL_COLOR_BITS_ARB, 32,
-							WGL_RED_BITS_EXT, 8,
-							WGL_GREEN_BITS_EXT, 8,
-							WGL_BLUE_BITS_EXT, 8,
-							WGL_ALPHA_BITS_EXT, 8,
-							WGL_DEPTH_BITS_ARB, 24,
-							WGL_STENCIL_BITS_ARB, 8,
-							WGL_SAMPLE_BUFFERS_ARB, 0,
-							WGL_SAMPLES_ARB, 0,
-							0
-					};
-
 					if (attrib_list)
 					{
 						EGLint indexAttribList = 0;
@@ -1596,11 +1593,21 @@ EGLSurface _eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWi
 								{
 									if (value == EGL_SINGLE_BUFFER)
 									{
-										wgl_attrib_list[7] = GL_FALSE;
+										if (walkerConfig->doubleBuffer)
+										{
+											g_localStorage.error = EGL_BAD_MATCH;
+
+											return EGL_NO_SURFACE;
+										}
 									}
 									else if (value == EGL_BACK_BUFFER)
 									{
-										wgl_attrib_list[7] = GL_TRUE;
+										if (!walkerConfig->doubleBuffer)
+										{
+											g_localStorage.error = EGL_BAD_MATCH;
+
+											return EGL_NO_SURFACE;
+										}
 									}
 									else
 									{
@@ -1638,65 +1645,62 @@ EGLSurface _eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWi
 						}
 					}
 
-					// Create out of EGL configuration an array of WGL configuration and use it.
-					// see https://www.opengl.org/registry/specs/ARB/wgl_pixel_format.txt
-
-					wgl_attrib_list[9] = walkerConfig->bufferSize;
-					wgl_attrib_list[11] = walkerConfig->redSize;
-					wgl_attrib_list[13] = walkerConfig->blueSize;
-					wgl_attrib_list[15] = walkerConfig->greenSize;
-					wgl_attrib_list[17] = walkerConfig->alphaSize;
-					wgl_attrib_list[19] = walkerConfig->depthSize;
-					wgl_attrib_list[21] = walkerConfig->stencilSize;
-					wgl_attrib_list[23] = walkerConfig->sampleBuffers;
-					wgl_attrib_list[25] = walkerConfig->samples;
-
 					//
 
-					UINT wgl_max_formats = 1;
-					INT wgl_formats;
-					UINT wgl_num_formats;
+					EGLint numberPixelFormats;
 
-					if (!wglChoosePixelFormatARB(hdc, wgl_attrib_list, 0, wgl_max_formats, &wgl_formats, &wgl_num_formats))
+					GLXFBConfig* fbConfigs = glXGetFBConfigs(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), &numberPixelFormats);
+
+					if (!fbConfigs || numberPixelFormats == 0)
 					{
-						g_localStorage.error = EGL_BAD_MATCH;
+						if (fbConfigs)
+						{
+							XFree(fbConfigs);
+						}
 
 						return EGL_NO_SURFACE;
 					}
 
-					if (wgl_num_formats == 0)
-					{
-						g_localStorage.error = EGL_BAD_MATCH;
+					XVisualInfo* visualInfo;
 
+					GLXFBConfig config = 0;
+
+					for (EGLint currentPixelFormat = 0; currentPixelFormat < numberPixelFormats; currentPixelFormat++)
+					{
+						visualInfo = glXGetVisualFromFBConfig(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
+
+						if (!visualInfo)
+						{
+							XFree(fbConfigs);
+
+							return EGL_FALSE;
+						}
+
+						if (walkerConfig->nativeVisualId == visualInfo->visualid)
+						{
+							config = fbConfigs[currentPixelFormat];
+
+							XFree(visualInfo);
+
+							break;
+						}
+
+						XFree(visualInfo);
+					}
+
+					XFree(fbConfigs);
+
+					if (!config)
+					{
 						return EGL_NO_SURFACE;
 					}
 
-					PIXELFORMATDESCRIPTOR pfd;
-
-					if (!DescribePixelFormat(hdc, wgl_formats, sizeof(PIXELFORMATDESCRIPTOR), &pfd))
-					{
-						g_localStorage.error = EGL_BAD_MATCH;
-
-						ReleaseDC(win, hdc);
-
-						return EGL_NO_SURFACE;
-					}
-
-					if (!SetPixelFormat(hdc, wgl_formats, &pfd))
-					{
-						g_localStorage.error = EGL_BAD_MATCH;
-
-						ReleaseDC(win, hdc);
-
-						return EGL_NO_SURFACE;
-					}
+					//
 
 					EGLSurfaceImpl* newSurface = (EGLSurfaceImpl*)malloc(sizeof(EGLSurfaceImpl));
 
 					if (!newSurface)
 					{
-						ReleaseDC(win, hdc);
-
 						g_localStorage.error = EGL_BAD_ALLOC;
 
 						return EGL_NO_SURFACE;
@@ -1705,13 +1709,13 @@ EGLSurface _eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWi
 					newSurface->drawToWindow = EGL_TRUE;
 					newSurface->drawToPixmap = EGL_FALSE;
 					newSurface->drawToPixmap = EGL_FALSE;
-					newSurface->doubleBuffer = (EGLBoolean)wgl_attrib_list[7];
-					newSurface->configId = wgl_formats;
+					newSurface->doubleBuffer = walkerConfig->doubleBuffer;
+					newSurface->configId = walkerConfig->configId;
 
 					newSurface->initialized = EGL_TRUE;
 					newSurface->destroy = EGL_FALSE;
 					newSurface->win = win;
-					newSurface->hdc = hdc;
+					newSurface->config = config;
 
 					newSurface->next = walkerDpy->rootSurface;
 
@@ -1819,7 +1823,7 @@ EGLBoolean _eglDestroySurface(EGLDisplay dpy, EGLSurface surface)
 					walkerSurface->initialized = EGL_FALSE;
 					walkerSurface->destroy = EGL_TRUE;
 
-					ReleaseDC(walkerSurface->win, walkerSurface->hdc);
+					// Nothing to release.
 
 					_eglInternalCleanup();
 
@@ -2324,7 +2328,7 @@ EGLint _eglGetError(void)
 
 __eglMustCastToProperFunctionPointerType _eglGetProcAddress(const char *procname)
 {
-	return (__eglMustCastToProperFunctionPointerType )wglGetProcAddress(procname);
+	return (__eglMustCastToProperFunctionPointerType )glXGetProcAddress((const GLubyte *)procname);
 }
 
 EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
@@ -2342,28 +2346,41 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 				return EGL_FALSE;
 			}
 
+
 			walkerDpy->initialized = EGL_TRUE;
 
 			// Create configuration list.
 
 			EGLint numberPixelFormats;
 
-			EGLint attribute = WGL_NUMBER_PIXEL_FORMATS_ARB;
-			if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, 1, 0, 1, &attribute, &numberPixelFormats))
+			GLXFBConfig* fbConfigs = glXGetFBConfigs(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), &numberPixelFormats);
+
+			if (!fbConfigs || numberPixelFormats == 0)
 			{
+				if (fbConfigs)
+				{
+					XFree(fbConfigs);
+				}
+
 				g_localStorage.error = EGL_NOT_INITIALIZED;
 
 				return EGL_FALSE;
 			}
 
+			EGLint attribute;
+
+			XVisualInfo* visualInfo;
+
 			EGLConfigImpl* lastConfig = 0;
-			for (EGLint currentPixelFormat = 1; currentPixelFormat <= numberPixelFormats; currentPixelFormat++)
+			for (EGLint currentPixelFormat = 0; currentPixelFormat < numberPixelFormats; currentPixelFormat++)
 			{
 				EGLint value;
 
-				attribute = WGL_SUPPORT_OPENGL_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &value))
+				attribute = GLX_VISUAL_ID;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
@@ -2373,14 +2390,32 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 					continue;
 				}
 
-				attribute = WGL_PIXEL_TYPE_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &value))
+				// No check for OpenGL.
+
+				attribute = GLX_RENDER_TYPE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
-				if (value != WGL_TYPE_RGBA_ARB)
+				if (!(value & GLX_RGBA_BIT))
+				{
+					continue;
+				}
+
+				attribute = GLX_TRANSPARENT_TYPE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+				{
+					XFree(fbConfigs);
+
+					g_localStorage.error = EGL_NOT_INITIALIZED;
+
+					return EGL_FALSE;
+				}
+				if (value == GLX_TRANSPARENT_INDEX)
 				{
 					continue;
 				}
@@ -2390,6 +2425,8 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 				EGLConfigImpl* newConfig = (EGLConfigImpl*)malloc(sizeof(EGLConfigImpl));
 				if (!newConfig)
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
@@ -2410,33 +2447,31 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 
 				//
 
-				attribute = WGL_DRAW_TO_WINDOW_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToWindow))
+				attribute = GLX_DRAWABLE_TYPE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_DRAW_TO_BITMAP_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToPixmap))
-				{
-					g_localStorage.error = EGL_NOT_INITIALIZED;
+				newConfig->drawToWindow = value & GLX_WINDOW_BIT ? EGL_TRUE : EGL_FALSE;
+				newConfig->drawToPixmap = value & GLX_PIXMAP_BIT ? EGL_TRUE : EGL_FALSE;
+				newConfig->drawToPBuffer = value & GLX_PBUFFER_BIT ? EGL_TRUE : EGL_FALSE;
 
-					return EGL_FALSE;
-				}
-
-				attribute = WGL_DOUBLE_BUFFER_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->doubleBuffer))
+				attribute = GLX_DOUBLEBUFFER;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->doubleBuffer))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
 				//
-
-				newConfig->drawToPBuffer = EGL_FALSE;
 
 				newConfig->conformant = EGL_OPENGL_BIT;
 				newConfig->renderableType = EGL_OPENGL_BIT;
@@ -2456,57 +2491,71 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 				newConfig->colorBufferType = EGL_RGB_BUFFER;
 				newConfig->configId = currentPixelFormat;
 
-				attribute = WGL_COLOR_BITS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bufferSize))
+				attribute = GLX_BUFFER_SIZE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bufferSize))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_RED_BITS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->redSize))
+				attribute = GLX_RED_SIZE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->redSize))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_GREEN_BITS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->greenSize))
+				attribute = GLX_GREEN_SIZE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->greenSize))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_BLUE_BITS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->blueSize))
+				attribute = GLX_BLUE_SIZE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->blueSize))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_ALPHA_BITS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->alphaSize))
+				attribute = GLX_ALPHA_SIZE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->alphaSize))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_DEPTH_BITS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->depthSize))
+				attribute = GLX_DEPTH_SIZE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->depthSize))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_STENCIL_BITS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->stencilSize))
+				attribute = GLX_STENCIL_SIZE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->stencilSize))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
@@ -2515,17 +2564,21 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 
 				//
 
-				attribute = WGL_SAMPLE_BUFFERS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->sampleBuffers))
+				attribute = GLX_SAMPLE_BUFFERS;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->sampleBuffers))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_SAMPLES_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->samples))
+				attribute = GLX_SAMPLES;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->samples))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
@@ -2533,18 +2586,22 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 
 				//
 
-				attribute = WGL_BIND_TO_TEXTURE_RGB_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGB))
+				attribute = GLX_BIND_TO_TEXTURE_RGB_EXT;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bindToTextureRGB))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 				newConfig->bindToTextureRGB = newConfig->bindToTextureRGB ? EGL_TRUE : EGL_FALSE;
 
-				attribute = WGL_BIND_TO_TEXTURE_RGBA_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGBA))
+				attribute = GLX_BIND_TO_TEXTURE_RGBA_EXT;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bindToTextureRGBA))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
@@ -2553,25 +2610,31 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 
 				//
 
-				attribute = WGL_MAX_PBUFFER_PIXELS_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferPixels))
+				attribute = GLX_MAX_PBUFFER_PIXELS;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferPixels))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_MAX_PBUFFER_WIDTH_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferWidth))
+				attribute = GLX_MAX_PBUFFER_WIDTH;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferWidth))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_MAX_PBUFFER_HEIGHT_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferHeight))
+				attribute = GLX_MAX_PBUFFER_HEIGHT;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferHeight))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
@@ -2579,41 +2642,68 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 
 				//
 
-				attribute = WGL_TRANSPARENT_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentType))
+				attribute = GLX_TRANSPARENT_TYPE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentType))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
-				newConfig->transparentType = newConfig->transparentType ? EGL_TRANSPARENT_RGB : EGL_NONE;
+				newConfig->transparentType = newConfig->transparentType == GLX_TRANSPARENT_RGB ? EGL_TRANSPARENT_RGB : EGL_NONE;
 
-				attribute = WGL_TRANSPARENT_RED_VALUE_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentRedValue))
+				attribute = GLX_TRANSPARENT_RED_VALUE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentRedValue))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_TRANSPARENT_GREEN_VALUE_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentGreenValue))
+				attribute = GLX_TRANSPARENT_GREEN_VALUE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentGreenValue))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
 
-				attribute = WGL_TRANSPARENT_BLUE_VALUE_ARB;
-				if (!wglGetPixelFormatAttribivARB(g_localStorage.dummyHdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentBlueValue))
+				attribute = GLX_TRANSPARENT_BLUE_VALUE;
+				if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentBlueValue))
 				{
+					XFree(fbConfigs);
+
 					g_localStorage.error = EGL_NOT_INITIALIZED;
 
 					return EGL_FALSE;
 				}
+
+				//
+
+				visualInfo = glXGetVisualFromFBConfig(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
+
+				if (!visualInfo)
+				{
+					XFree(fbConfigs);
+
+					g_localStorage.error = EGL_NOT_INITIALIZED;
+
+					return EGL_FALSE;
+				}
+
+				newConfig->nativeVisualId = visualInfo->visualid;
+
+				XFree(visualInfo);
 
 				// FIXME: Query and save more values.
 			}
+
+			XFree(fbConfigs);
 
 			//
 
@@ -2664,8 +2754,8 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 			EGLSurfaceImpl* currentRead = EGL_NO_SURFACE;
 			EGLContextImpl* currentCtx = EGL_NO_CONTEXT;
 
-			HDC windowsSurface = 0;
-			HGLRC windowsCtx = 0;
+			GLXDrawable windowsSurface = 0;
+			GLXContext windowsCtx = 0;
 
 			EGLBoolean result;
 
@@ -2764,34 +2854,34 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 
 			if (currentDraw != EGL_NO_SURFACE)
 			{
-				windowsSurface = currentDraw->hdc;
+				windowsSurface = currentDraw->win;
 			}
 
 			if (currentCtx != EGL_NO_CONTEXT)
 			{
-				WGLContextImpl* wglCtx = currentCtx->rootWglCtx;
+				GLXContextImpl* glxCtx = currentCtx->rootGlxCtx;
 
-				while (wglCtx)
+				while (glxCtx)
 				{
-					if (wglCtx->surface == currentDraw)
+					if (glxCtx->surface == currentDraw)
 					{
 						break;
 					}
 
-					wglCtx = wglCtx->next;
+					glxCtx = glxCtx->next;
 				}
 
-				if (!wglCtx)
+				if (!glxCtx)
 				{
-					wglCtx = (WGLContextImpl*)malloc(sizeof(WGLContextImpl));
+					glxCtx = (GLXContextImpl*)malloc(sizeof(GLXContextImpl));
 
-					if (!wglCtx)
+					if (!glxCtx)
 					{
 						return EGL_FALSE;
 					}
 
 					// Gather shared context, if one exists.
-					WGLContextImpl* sharedWglCtx = 0;
+					GLXContextImpl* sharedGlxCtx = 0;
 					if (currentCtx->sharedCtx)
 					{
 						EGLContextImpl* sharedWalkerCtx = currentCtx->sharedCtx;
@@ -2801,9 +2891,9 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 						while (sharedWalkerCtx)
 						{
 							// Check, if already created.
-							if (sharedWalkerCtx->rootWglCtx)
+							if (sharedWalkerCtx->rootGlxCtx)
 							{
-								sharedWglCtx = sharedWalkerCtx->rootWglCtx;
+								sharedGlxCtx = sharedWalkerCtx->rootGlxCtx;
 
 								break;
 							}
@@ -2814,30 +2904,30 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 							// No created shared context found.
 							if (!sharedWalkerCtx)
 							{
-								sharedWglCtx = (WGLContextImpl*)malloc(sizeof(WGLContextImpl));
+								sharedGlxCtx = (GLXContextImpl*)malloc(sizeof(GLXContextImpl));
 
-								if (!sharedWglCtx)
+								if (!sharedGlxCtx)
 								{
-									free(wglCtx);
+									free(glxCtx);
 
 									return EGL_FALSE;
 								}
 
-								sharedWglCtx->ctx = wglCreateContextAttribsARB(currentDraw->hdc, 0, beforeSharedWalkerCtx->wglAttribList);
+								glXCreateContextAttribsARB(walkerDpy->display_id, currentDraw->config, 0, True, beforeSharedWalkerCtx->glxAttribList);
 
-								if (!sharedWglCtx->ctx)
+								if (!sharedGlxCtx->ctx)
 								{
-									free(sharedWglCtx);
+									free(sharedGlxCtx);
 
-									free(wglCtx);
+									free(glxCtx);
 
 									return EGL_FALSE;
 								}
 
-								sharedWglCtx->surface = currentDraw;
+								sharedGlxCtx->surface = currentDraw;
 
-								sharedWglCtx->next = beforeSharedWalkerCtx->rootWglCtx;
-								beforeSharedWalkerCtx->rootWglCtx = sharedWglCtx;
+								sharedGlxCtx->next = beforeSharedWalkerCtx->rootGlxCtx;
+								beforeSharedWalkerCtx->rootGlxCtx = sharedGlxCtx;
 							}
 						}
 					}
@@ -2845,28 +2935,28 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 					{
 						// Use own context as shared context, if one exits.
 
-						sharedWglCtx = currentCtx->rootWglCtx;
+						sharedGlxCtx = currentCtx->rootGlxCtx;
 					}
 
-					wglCtx->ctx = wglCreateContextAttribsARB(currentDraw->hdc, sharedWglCtx ? sharedWglCtx->ctx : 0, currentCtx->wglAttribList);
+					glxCtx->ctx = glXCreateContextAttribsARB(walkerDpy->display_id, currentDraw->config, sharedGlxCtx ? sharedGlxCtx->ctx : 0, True, currentCtx->glxAttribList);
 
-					if (!wglCtx->ctx)
+					if (!glxCtx->ctx)
 					{
-						free(wglCtx);
+						free(glxCtx);
 
 						return EGL_FALSE;
 					}
 
-					wglCtx->surface = currentDraw;
+					glxCtx->surface = currentDraw;
 
-					wglCtx->next = currentCtx->rootWglCtx;
-					currentCtx->rootWglCtx = wglCtx;
+					glxCtx->next = currentCtx->rootGlxCtx;
+					currentCtx->rootGlxCtx = glxCtx;
 				}
 
-				windowsCtx = wglCtx->ctx;
+				windowsCtx = glxCtx->ctx;
 			}
 
-			result = (EGLBoolean)wglMakeCurrent(windowsSurface, windowsCtx);
+			result = (EGLBoolean)glXMakeCurrent(walkerDpy->display_id, windowsSurface, windowsCtx);
 
 			if (!result)
 			{
@@ -3114,7 +3204,9 @@ EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
 						return EGL_FALSE;
 					}
 
-					return (EGLBoolean)SwapBuffers(walkerSurface->hdc);
+					glXSwapBuffers(walkerDpy->display_id, walkerSurface->win);
+
+					return EGL_TRUE;
 				}
 
 				walkerSurface = walkerSurface->next;
@@ -3240,7 +3332,9 @@ EGLBoolean _eglSwapInterval(EGLDisplay dpy, EGLint interval)
 				return EGL_FALSE;
 			}
 
-			return (EGLBoolean)wglSwapIntervalEXT(interval);
+			glXSwapIntervalEXT(walkerDpy->display_id, walkerDpy->currentDraw->win, interval);
+
+			return EGL_TRUE;
 		}
 
 		walkerDpy = walkerDpy->next;
