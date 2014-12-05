@@ -7,7 +7,7 @@ The purpose of this library and wrapping the existing APIs is to have the same s
 when developing OpenGL applications.
 
 The project is in early stage and not well tested, but an initialization as seen on
-https://www.khronos.org/registry/egl/sdk/docs/man/html/eglIntro.xhtml under Windows does already work.
+https://www.khronos.org/registry/egl/sdk/docs/man/html/eglIntro.xhtml under Windows and X11 does already work.
 
 How to build EGL:
 
@@ -43,17 +43,19 @@ Yours Norbert Nopper
 
 TODOs:
 
-- Check, if needed GL/WGL/GLX version is available. Otherwise this EGL lib will crash.
+- Check, if needed GL/WGL/GLX version is available. Otherwise this EGL lib will crash!
 
 - Implement TODOs as marked in the source code.
-
-- Remove dublicate code.
 
 - Implement FIXMEs as marked in the source code.
 
 - Check / implement correct error codes.
 
+- Cleanup source code.
+
 Changelog:
+
+05.12.2014 - Removed duplicate code. Current version: v0.3.1.
 
 04.12.2014 - Working X11 version. Current version: v0.3.0.
 
