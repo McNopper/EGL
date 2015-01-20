@@ -43,7 +43,7 @@ Yours Norbert Nopper
 
 TODOs:
 
-- Check, if needed GL/WGL/GLX version is available. Otherwise this EGL lib will crash!
+- Check, if needed GL/WGL version is available. Otherwise this EGL lib will crash or just not work!
 
 - Implement TODOs as marked in the source code.
 
@@ -54,6 +54,8 @@ TODOs:
 - Cleanup source code.
 
 Changelog:
+
+20.01.2015 - Added GLX version check. Fixed bug in window creation under X11. Current version: v0.3.2.
 
 05.12.2014 - Removed duplicate code. Current version: v0.3.1.
 

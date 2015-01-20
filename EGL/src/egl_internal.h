@@ -29,7 +29,7 @@
 
 #define _EGL_VENDOR "Norbert Nopper"
 
-#define _EGL_VERSION "1.5 Version 0.3.1"
+#define _EGL_VERSION "1.5 Version 0.3.2"
 
 #include <stdlib.h>
 #include <string.h>

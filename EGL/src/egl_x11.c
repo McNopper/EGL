@@ -55,6 +55,30 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
+	//
+
+	int glxMajor;
+	int glxMinor;
+
+	// GLX version 1.4 or higher needed.
+	if (!glXQueryVersion(nativeLocalStorageContainer->display, &glxMajor, &glxMinor))
+	{
+		XCloseDisplay(nativeLocalStorageContainer->display);
+		nativeLocalStorageContainer->display = 0;
+
+		return EGL_FALSE;
+	}
+
+	if (glxMajor < 1 || (glxMajor == 1 && glxMinor < 4))
+	{
+		XCloseDisplay(nativeLocalStorageContainer->display);
+		nativeLocalStorageContainer->display = 0;
+
+		return EGL_FALSE;
+	}
+
+	//
+
 	nativeLocalStorageContainer->window = DefaultRootWindow(nativeLocalStorageContainer->display);
 
 	if (!nativeLocalStorageContainer->window)
@@ -445,12 +469,56 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 		return EGL_FALSE;
 	}
 
+	EGLint attribute;
+
 	XVisualInfo* visualInfo;
 
 	GLXFBConfig config = 0;
 
 	for (EGLint currentPixelFormat = 0; currentPixelFormat < numberPixelFormats; currentPixelFormat++)
 	{
+		EGLint value;
+
+		attribute = GLX_VISUAL_ID;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (!value)
+		{
+			continue;
+		}
+
+		// No check for OpenGL.
+
+		attribute = GLX_RENDER_TYPE;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (!(value & GLX_RGBA_BIT))
+		{
+			continue;
+		}
+
+		attribute = GLX_TRANSPARENT_TYPE;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (value == GLX_TRANSPARENT_INDEX)
+		{
+			continue;
+		}
+
+		//
+
 		visualInfo = glXGetVisualFromFBConfig(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
 
 		if (!visualInfo)
