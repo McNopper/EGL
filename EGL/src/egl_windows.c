@@ -26,6 +26,11 @@
 
 #include "egl_internal.h"
 
+static LRESULT CALLBACK __DummyWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+     return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
 EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer)
 {
 	if (!nativeLocalStorageContainer)
@@ -48,10 +53,42 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
-	nativeLocalStorageContainer->hdc = GetDC(0);
+	//
+
+    WNDCLASS wc = {};
+
+    wc.lpfnWndProc   = __DummyWndProc;
+    wc.hInstance     = GetModuleHandle(NULL);
+    wc.lpszClassName = "DummyWindow";
+
+    RegisterClass(&wc);
+
+    nativeLocalStorageContainer->hwnd = CreateWindowEx(
+        0,
+        "DummyWindow",
+        "",
+        0,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        NULL,
+        NULL,
+		wc.hInstance,
+        NULL
+    );
+
+    //
+
+	if (!nativeLocalStorageContainer->hwnd)
+	{
+		return EGL_FALSE;
+	}
+
+    nativeLocalStorageContainer->hdc = GetDC(nativeLocalStorageContainer->hwnd);
 
 	if (!nativeLocalStorageContainer->hdc)
 	{
+		DestroyWindow(nativeLocalStorageContainer->hwnd);
+		nativeLocalStorageContainer->hwnd = 0;
+
 		return EGL_FALSE;
 	}
 
@@ -75,6 +112,9 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		ReleaseDC(0, nativeLocalStorageContainer->hdc);
 		nativeLocalStorageContainer->hdc = 0;
 
+		DestroyWindow(nativeLocalStorageContainer->hwnd);
+		nativeLocalStorageContainer->hwnd = 0;
+
 		return EGL_FALSE;
 	}
 
@@ -82,6 +122,9 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	{
 		ReleaseDC(0, nativeLocalStorageContainer->hdc);
 		nativeLocalStorageContainer->hdc = 0;
+
+		DestroyWindow(nativeLocalStorageContainer->hwnd);
+		nativeLocalStorageContainer->hwnd = 0;
 
 		return EGL_FALSE;
 	}
@@ -93,6 +136,9 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		ReleaseDC(0, nativeLocalStorageContainer->hdc);
 		nativeLocalStorageContainer->hdc = 0;
 
+		DestroyWindow(nativeLocalStorageContainer->hwnd);
+		nativeLocalStorageContainer->hwnd = 0;
+
 		return EGL_FALSE;
 	}
 
@@ -103,6 +149,9 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 		ReleaseDC(0, nativeLocalStorageContainer->hdc);
 		nativeLocalStorageContainer->hdc = 0;
+
+		DestroyWindow(nativeLocalStorageContainer->hwnd);
+		nativeLocalStorageContainer->hwnd = 0;
 
 		return EGL_FALSE;
 	}
@@ -117,6 +166,9 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 		ReleaseDC(0, nativeLocalStorageContainer->hdc);
 		nativeLocalStorageContainer->hdc = 0;
+
+		DestroyWindow(nativeLocalStorageContainer->hwnd);
+		nativeLocalStorageContainer->hwnd = 0;
 
 		return EGL_FALSE;
 	}
@@ -144,6 +196,14 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 		ReleaseDC(0, nativeLocalStorageContainer->hdc);
 		nativeLocalStorageContainer->hdc = 0;
 	}
+
+	if (nativeLocalStorageContainer->hwnd)
+	{
+		DestroyWindow(nativeLocalStorageContainer->hwnd);
+		nativeLocalStorageContainer->hwnd = 0;
+	}
+
+	UnregisterClass("DummyWindow", NULL);
 
 	return EGL_TRUE;
 }

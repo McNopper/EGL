@@ -55,6 +55,8 @@ TODOs:
 
 Changelog:
 
+25.01.2015 - Fixed bug during initialization under Windows. Current version: v0.3.3.
+
 20.01.2015 - Added GLX version check. Fixed bug in window creation under X11. Current version: v0.3.2.
 
 05.12.2014 - Removed duplicate code. Current version: v0.3.1.

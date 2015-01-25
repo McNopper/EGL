@@ -29,7 +29,7 @@
 
 #define _EGL_VENDOR "Norbert Nopper"
 
-#define _EGL_VERSION "1.5 Version 0.3.2"
+#define _EGL_VERSION "1.5 Version 0.3.3"
 
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +56,8 @@ typedef struct _NativeContextContainer {
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
+
+	HWND hwnd;
 
 	HDC hdc;
 
