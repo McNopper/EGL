@@ -22,7 +22,7 @@ If you get build errors:
 
 SDKs and Libraries:
 
-- GLEW 1.11.0 http://glew.sourceforge.net/
+- GLEW 1.12.0 http://glew.sourceforge.net/
 
 Build configuration naming:
 
@@ -54,6 +54,8 @@ TODOs:
 - Cleanup source code.
 
 Changelog:
+
+29.01.2015 - Updated to GLEW 1.12.0. Current version: v0.3.3.
 
 25.01.2015 - Fixed bug during initialization under Windows. Current version: v0.3.3.
 
