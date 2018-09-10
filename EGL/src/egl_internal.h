@@ -38,8 +38,12 @@
 
 #include <windows.h>
 
+#if !defined(EGL_NO_GLEW)
 #include <GL/glew.h>
 #include <GL/wglew.h>
+#else
+#include <wingdi.h>
+#endif  // EGL_NO_GLEW
 
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
@@ -72,9 +76,12 @@ typedef struct _NativeLocalStorageContainer {
 
 #include <X11/X.h>
 
+#if !defined(EGL_NO_GLEW)
 #include <GL/glew.h>
 #include <GL/glxew.h>
-
+#else
+#include <GL/glx.h>
+#endif  // EGL_NO_GLEW
 #define CONTEXT_ATTRIB_LIST_SIZE 10
 
 typedef struct _NativeSurfaceContainer {
