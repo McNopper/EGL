@@ -156,6 +156,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
+#if !defined(EGL_NO_GLEW)
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GL_NO_ERROR)
 	{
@@ -172,7 +173,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 		return EGL_FALSE;
 	}
-
+#endif
 	return EGL_TRUE;
 }
 

@@ -26,6 +26,22 @@
 
 #include "egl_internal.h"
 
+#if defined(EGL_NO_GLEW)
+typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display *dpy, GLXFBConfig config,
+                    GLXContext share_context, Bool direct,
+                    const int *attrib_list);
+typedef void (*__PFN_glXSwapIntervalEXT)(Display *dpy, GLXDrawable drawable, int interval);
+typedef void(*__PFN_glFinish)();
+__PFN_glXCreateContextAttribsARB glXCreateContextAttribsARB = NULL;
+__PFN_glXSwapIntervalEXT glXSwapIntervalEXT = NULL;
+__PFN_glFinish glFinishPTR = NULL;
+#endif 
+
+__eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
+{
+	return (__eglMustCastToProperFunctionPointerType )glXGetProcAddress((const GLubyte *)procname);
+}
+
 EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer)
 {
 	if (nativeLocalStorageContainer->display && nativeLocalStorageContainer->window && nativeLocalStorageContainer->ctx)
@@ -133,6 +149,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
+#if !defined(EGL_NO_GLEW)
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GL_NO_ERROR)
 	{
@@ -148,7 +165,11 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 		return EGL_FALSE;
 	}
-
+#else
+  glXCreateContextAttribsARB = (__PFN_glXCreateContextAttribsARB)__getProcAddress("glXCreateContextAttribsARB");
+  glXSwapIntervalEXT = (__PFN_glXSwapIntervalEXT)__getProcAddress("glXSwapIntervalEXT");
+  glFinishPTR = (__PFN_glFinish)__getProcAddress("glXSwapIntervalEXT");
+#endif
 	return EGL_TRUE;
 }
 
@@ -572,11 +593,6 @@ EGLBoolean __destroySurface(EGLNativeWindowType win, const NativeSurfaceContaine
 	// Nothing to release.
 
 	return EGL_TRUE;
-}
-
-__eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
-{
-	return (__eglMustCastToProperFunctionPointerType )glXGetProcAddress((const GLubyte *)procname);
 }
 
 EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* error)
