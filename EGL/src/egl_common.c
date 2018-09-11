@@ -27,6 +27,7 @@
 #include "egl_internal.h"
 
 static __thread LocalStorage g_localStorage = {{0, 0, 0}, EGL_SUCCESS, EGL_NONE, 0, EGL_NO_CONTEXT };
+extern void (*glFinishPTR)();
 
 static EGLBoolean _eglInternalInit()
 {
@@ -2322,7 +2323,7 @@ EGLBoolean _eglWaitNative(EGLint engine)
 
 	if (g_localStorage.api == EGL_OPENGL_API)
 	{
-		glFinish();
+		glFinishPTR();
 	}
 
 	return EGL_TRUE;
@@ -2435,7 +2436,7 @@ EGLBoolean _eglWaitClient(void)
 
 	if (g_localStorage.api == EGL_OPENGL_API)
 	{
-		glFinish();
+		glFinishPTR();
 	}
 
 	return EGL_TRUE;
