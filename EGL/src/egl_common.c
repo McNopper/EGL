@@ -1686,7 +1686,7 @@ EGLDisplay _eglGetDisplay(EGLNativeDisplayType display_id)
 
 	newDpy->initialized = EGL_FALSE;
 	newDpy->destroy = EGL_FALSE;
-	newDpy->display_id = display_id;
+	newDpy->display_id = display_id ? display_id : g_localStorage.dummy.display;
 	newDpy->rootSurface = 0;
 	newDpy->rootCtx = 0;
 	newDpy->rootConfig = 0;
