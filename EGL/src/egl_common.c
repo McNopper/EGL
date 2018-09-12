@@ -373,7 +373,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 				{
 					case EGL_ALPHA_MASK_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -385,7 +385,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_ALPHA_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -421,7 +421,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_BLUE_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -433,7 +433,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_BUFFER_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -445,7 +445,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_COLOR_BUFFER_TYPE:
 					{
-						if (value != EGL_RGB_BUFFER && value != EGL_LUMINANCE_BUFFER)
+						if (value != EGL_DONT_CARE && value != EGL_RGB_BUFFER && value != EGL_LUMINANCE_BUFFER)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -474,7 +474,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_CONFORMANT:
 					{
-						if (value & ~(EGL_OPENGL_BIT | EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT | EGL_OPENVG_BIT))
+						if (value != EGL_DONT_CARE && value & ~(EGL_OPENGL_BIT | EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT | EGL_OPENVG_BIT))
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -486,7 +486,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_DEPTH_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -498,7 +498,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_GREEN_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -510,7 +510,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_LEVEL:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -522,7 +522,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_LUMINANCE_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -551,7 +551,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_MAX_SWAP_INTERVAL:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -563,7 +563,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_MIN_SWAP_INTERVAL:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -575,7 +575,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_RED_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -587,7 +587,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_SAMPLE_BUFFERS:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -599,7 +599,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_SAMPLES:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -611,7 +611,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_STENCIL_SIZE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -623,7 +623,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_RENDERABLE_TYPE:
 					{
-						if (value & ~(EGL_OPENGL_BIT | EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT | EGL_OPENVG_BIT))
+						if (value != EGL_DONT_CARE && value & ~(EGL_OPENGL_BIT | EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT | EGL_OPENVG_BIT))
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -635,7 +635,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_SURFACE_TYPE:
 					{
-						if (value & ~(EGL_MULTISAMPLE_RESOLVE_BOX_BIT | EGL_PBUFFER_BIT | EGL_PIXMAP_BIT | EGL_SWAP_BEHAVIOR_PRESERVED_BIT | EGL_VG_ALPHA_FORMAT_PRE_BIT | EGL_VG_COLORSPACE_LINEAR_BIT | EGL_WINDOW_BIT))
+						if (value != EGL_DONT_CARE && value & ~(EGL_MULTISAMPLE_RESOLVE_BOX_BIT | EGL_PBUFFER_BIT | EGL_PIXMAP_BIT | EGL_SWAP_BEHAVIOR_PRESERVED_BIT | EGL_VG_ALPHA_FORMAT_PRE_BIT | EGL_VG_COLORSPACE_LINEAR_BIT | EGL_WINDOW_BIT))
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -647,7 +647,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_TRANSPARENT_TYPE:
 					{
-						if (value != EGL_NONE && value != EGL_TRANSPARENT_TYPE)
+						if (value != EGL_DONT_CARE && value != EGL_NONE && value != EGL_TRANSPARENT_TYPE)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -659,7 +659,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_TRANSPARENT_RED_VALUE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -671,7 +671,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_TRANSPARENT_GREEN_VALUE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -683,7 +683,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_TRANSPARENT_BLUE_VALUE:
 					{
-						if (value < 0)
+						if (value != EGL_DONT_CARE && value < 0)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
