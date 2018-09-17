@@ -26,7 +26,7 @@ add_library(egl STATIC
 
 target_include_directories(egl PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/include)
-
+add_definitions(-DEGLAPI=)
 option(EGL_NO_GLEW "Do not use GLEW" OFF)
 if(EGL_NO_GLEW)
   add_definitions(-DEGL_NO_GLEW)
