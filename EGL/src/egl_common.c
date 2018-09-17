@@ -26,7 +26,13 @@
 
 #include "egl_internal.h"
 
-static __thread LocalStorage g_localStorage = {{0, 0, 0}, EGL_SUCCESS, EGL_NONE, 0, EGL_NO_CONTEXT };
+#if defined(_MSC_VER)
+#define EGL_THREADLOCAL __declspec(thread)
+#else
+#define EGL_THREADLOCAL __thread
+#endif
+
+static EGL_THREADLOCAL LocalStorage g_localStorage = {{0, 0, 0}, EGL_SUCCESS, EGL_NONE, 0, EGL_NO_CONTEXT };
 extern void (*glFinishPTR)();
 
 static EGLBoolean _eglInternalInit()
