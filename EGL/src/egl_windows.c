@@ -55,7 +55,8 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 	//
 
-    WNDCLASS wc = {};
+    WNDCLASS wc;
+    memset(&wc, 0, sizeof(WNDCLASS));
 
     wc.lpfnWndProc   = __DummyWndProc;
     wc.hInstance     = GetModuleHandle(NULL);
