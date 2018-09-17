@@ -168,7 +168,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 #else
   glXCreateContextAttribsARB = (__PFN_glXCreateContextAttribsARB)__getProcAddress("glXCreateContextAttribsARB");
   glXSwapIntervalEXT = (__PFN_glXSwapIntervalEXT)__getProcAddress("glXSwapIntervalEXT");
-  glFinishPTR = (__PFN_glFinish)__getProcAddress("glXSwapIntervalEXT");
+  glFinishPTR = (__PFN_glFinish)__getProcAddress("glFinish");
 #endif
 	return EGL_TRUE;
 }
