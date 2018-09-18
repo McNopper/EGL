@@ -632,7 +632,10 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		return EGL_FALSE;
 	}
 
-	EGLConfigImpl* lastConfig = 0;
+  int render_texture_supported = strstr(wglGetExtensionsStringARB(nativeLocalStorageContainer->hdc),
+		                                  "WGL_ARB_render_texture") != NULL;
+
+  EGLConfigImpl* lastConfig = 0;
 	for (EGLint currentPixelFormat = 1; currentPixelFormat <= numberPixelFormats; currentPixelFormat++)
 	{
 		EGLint value;
@@ -810,7 +813,8 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		//
 
 		attribute = WGL_BIND_TO_TEXTURE_RGB_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGB))
+		if (render_texture_supported &&
+        !wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGB))
 		{
 			*error = EGL_NOT_INITIALIZED;
 
@@ -819,7 +823,8 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		newConfig->bindToTextureRGB = newConfig->bindToTextureRGB ? EGL_TRUE : EGL_FALSE;
 
 		attribute = WGL_BIND_TO_TEXTURE_RGBA_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGBA))
+		if (render_texture_supported &&
+        !wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGBA))
 		{
 			*error = EGL_NOT_INITIALIZED;
 
