@@ -42,7 +42,10 @@
 #include <GL/glew.h>
 #include <GL/wglew.h>
 #else
-#include <wingdi.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <GL/gl.h>
+#include "wglext.h"
 #endif  // EGL_NO_GLEW
 
 #define CONTEXT_ATTRIB_LIST_SIZE 13

@@ -26,6 +26,18 @@
 
 #include "egl_internal.h"
 
+#if defined(EGL_NO_GLEW)
+typedef void(*__PFN_glFinish)();
+
+__PFN_glFinish glFinishPTR = NULL;
+PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB = NULL;
+PFNWGLGETPIXELFORMATATTRIBIVARBPROC wglGetPixelFormatAttribivARB = NULL;
+PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
+PFNWGLGETEXTENSIONSSTRINGARBPROC wglGetExtensionsStringARB = NULL;
+PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = NULL;
+#endif
+
+
 static LRESULT CALLBACK __DummyWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
      return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -174,6 +186,13 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 		return EGL_FALSE;
 	}
+#else
+	wglChoosePixelFormatARB = (PFNWGLCHOOSEPIXELFORMATARBPROC)__getProcAddress("wglChoosePixelFormatARB");
+	wglGetPixelFormatAttribivARB = (PFNWGLGETPIXELFORMATATTRIBIVARBPROC)__getProcAddress("wglGetPixelFormatAttribivARB");
+	wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)__getProcAddress("wglCreateContextAttribsARB");
+	wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)__getProcAddress("wglSwapIntervalEXT");
+	wglGetExtensionsStringARB = (PFNWGLGETEXTENSIONSSTRINGARBPROC)__getProcAddress("wglGetExtensionsStringARB");
+	glFinishPTR = (__PFN_glFinish)__getProcAddress("glFinish");
 #endif
 	return EGL_TRUE;
 }
