@@ -27,14 +27,19 @@
 #include "egl_internal.h"
 
 #if defined(EGL_NO_GLEW)
-typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display *dpy, GLXFBConfig config,
-                    GLXContext share_context, Bool direct,
-                    const int *attrib_list);
-typedef void (*__PFN_glXSwapIntervalEXT)(Display *dpy, GLXDrawable drawable, int interval);
+typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display*, GLXFBConfig,
+                                                       GLXContext, Bool,
+                                                       const int*);
+typedef void (*__PFN_glXSwapIntervalEXT)(Display*, GLXDrawable, int);
 typedef void(*__PFN_glFinish)();
-__PFN_glXCreateContextAttribsARB glXCreateContextAttribsARB = NULL;
-__PFN_glXSwapIntervalEXT glXSwapIntervalEXT = NULL;
-__PFN_glFinish glFinishPTR = NULL;
+
+__PFN_glXCreateContextAttribsARB glXCreateContextAttribsARB_PTR = NULL;
+__PFN_glXSwapIntervalEXT glXSwapIntervalEXT_PTR = NULL;
+__PFN_glFinish glFinish_PTR = NULL;
+
+#define glXSwapIntervalEXT(...) glXSwapIntervalEXT_PTR(__VA_ARGS__)
+#define glXCreateContextAttribsARB(...) \
+    glXCreateContextAttribsARB_PTR(__VA_ARGS__)
 #endif 
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
@@ -123,7 +128,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 		return EGL_FALSE;
 	}
-
+  
 	nativeLocalStorageContainer->ctx = glXCreateContext(nativeLocalStorageContainer->display, visualInfo, NULL, True);
 
 	if (!nativeLocalStorageContainer->ctx)
@@ -166,9 +171,12 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 #else
-  glXCreateContextAttribsARB = (__PFN_glXCreateContextAttribsARB)__getProcAddress("glXCreateContextAttribsARB");
-  glXSwapIntervalEXT = (__PFN_glXSwapIntervalEXT)__getProcAddress("glXSwapIntervalEXT");
-  glFinishPTR = (__PFN_glFinish)__getProcAddress("glFinish");
+  glXCreateContextAttribsARB_PTR =
+    (__PFN_glXCreateContextAttribsARB)
+        __getProcAddress("glXCreateContextAttribsARB");
+  glXSwapIntervalEXT_PTR =
+    (__PFN_glXSwapIntervalEXT)__getProcAddress("glXSwapIntervalEXT");
+  glFinish_PTR = (__PFN_glFinish)__getProcAddress("glFinish");
 #endif
 	return EGL_TRUE;
 }

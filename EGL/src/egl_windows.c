@@ -29,7 +29,7 @@
 #if defined(EGL_NO_GLEW)
 typedef void(*__PFN_glFinish)();
 
-__PFN_glFinish glFinishPTR = NULL;
+__PFN_glFinish glFinish_PTR = NULL;
 PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB = NULL;
 PFNWGLGETPIXELFORMATATTRIBIVARBPROC wglGetPixelFormatAttribivARB = NULL;
 PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
@@ -187,12 +187,21 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 #else
-	wglChoosePixelFormatARB = (PFNWGLCHOOSEPIXELFORMATARBPROC)__getProcAddress("wglChoosePixelFormatARB");
-	wglGetPixelFormatAttribivARB = (PFNWGLGETPIXELFORMATATTRIBIVARBPROC)__getProcAddress("wglGetPixelFormatAttribivARB");
-	wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)__getProcAddress("wglCreateContextAttribsARB");
-	wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)__getProcAddress("wglSwapIntervalEXT");
-	wglGetExtensionsStringARB = (PFNWGLGETEXTENSIONSSTRINGARBPROC)__getProcAddress("wglGetExtensionsStringARB");
-	glFinishPTR = (__PFN_glFinish)__getProcAddress("glFinish");
+	wglChoosePixelFormatARB =
+      (PFNWGLCHOOSEPIXELFORMATARBPROC)
+      __getProcAddress("wglChoosePixelFormatARB");
+	wglGetPixelFormatAttribivARB =
+      (PFNWGLGETPIXELFORMATATTRIBIVARBPROC)
+      __getProcAddress("wglGetPixelFormatAttribivARB");
+	wglCreateContextAttribsARB =
+      (PFNWGLCREATECONTEXTATTRIBSARBPROC)
+      __getProcAddress("wglCreateContextAttribsARB");
+	wglSwapIntervalEXT =
+      (PFNWGLSWAPINTERVALEXTPROC)__getProcAddress("wglSwapIntervalEXT");
+	wglGetExtensionsStringARB =
+      (PFNWGLGETEXTENSIONSSTRINGARBPROC)
+      __getProcAddress("wglGetExtensionsStringARB");
+	glFinish_PTR = (__PFN_glFinish)__getProcAddress("glFinish");
 #endif
 	return EGL_TRUE;
 }
