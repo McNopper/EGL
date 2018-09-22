@@ -32,8 +32,13 @@
 #define EGL_THREADLOCAL __thread
 #endif
 
-static EGL_THREADLOCAL LocalStorage g_localStorage = {{0, 0, 0}, EGL_SUCCESS, EGL_NONE, 0, EGL_NO_CONTEXT };
-extern void (*glFinishPTR)();
+static EGL_THREADLOCAL LocalStorage g_localStorage =
+    {{0, 0, 0}, EGL_SUCCESS, EGL_NONE, 0, EGL_NO_CONTEXT };
+
+#if defined(EGL_NO_GLEW)
+extern void (*glFinish_PTR)();
+#define glFinish(...) glFinish_PTR(__VA_ARGS__)
+#endif
 
 static EGLBoolean _eglInternalInit()
 {
@@ -2333,7 +2338,7 @@ EGLBoolean _eglWaitNative(EGLint engine)
 
 	if (g_localStorage.api == EGL_OPENGL_API)
 	{
-		glFinishPTR();
+		glFinish();
 	}
 
 	return EGL_TRUE;
@@ -2446,7 +2451,7 @@ EGLBoolean _eglWaitClient(void)
 
 	if (g_localStorage.api == EGL_OPENGL_API)
 	{
-		glFinishPTR();
+		glFinish();
 	}
 
 	return EGL_TRUE;
