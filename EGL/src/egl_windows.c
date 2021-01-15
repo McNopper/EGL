@@ -443,6 +443,9 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 			WGL_STENCIL_BITS_ARB, 8,
 			WGL_SAMPLE_BUFFERS_ARB, 0,
 			WGL_SAMPLES_ARB, 0,
+			WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
+			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_FALSE,
+			//WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
 			0
 	};
 
@@ -460,15 +463,11 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 				{
 					if (value == EGL_GL_COLORSPACE_LINEAR)
 					{
-						// Do nothing.
+						template_attrib_list[29] = GL_FALSE;
 					}
 					else if (value == EGL_GL_COLORSPACE_SRGB)
 					{
-						ReleaseDC(win, hdc);
-
-						*error = EGL_BAD_MATCH;
-
-						return EGL_FALSE;
+						template_attrib_list[29] = GL_TRUE;
 					}
 					else
 					{
@@ -922,10 +921,13 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const
 
 EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
 {
-	if (!walkerDpy || !nativeSurfaceContainer || !nativeContextContainer)
+	if (!walkerDpy || (nativeContextContainer && !nativeSurfaceContainer))
 	{
 		return EGL_FALSE;
 	}
+
+	if (!nativeContextContainer)
+		return (EGLBoolean)wglMakeCurrent(NULL, NULL);
 
 	return (EGLBoolean)wglMakeCurrent(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
 }

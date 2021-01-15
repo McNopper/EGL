@@ -396,6 +396,30 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 		return EGL_FALSE;
 	}
 
+	//TODO add support for srgb framebuffer on egl_x11.c
+#if 0
+	int attrib_list[] =
+	{
+		GLX_X_RENDERABLE    , True,
+		GLX_DRAWABLE_TYPE   , GLX_WINDOW_BIT,
+		GLX_RENDER_TYPE     , GLX_RGBA_BIT,
+		GLX_X_VISUAL_TYPE   , GLX_TRUE_COLOR,
+		GLX_RED_SIZE        , 8,
+		GLX_GREEN_SIZE      , 8,
+		GLX_BLUE_SIZE       , 8,
+		GLX_ALPHA_SIZE      , CreationParams.WithAlphaChannel ? 8 : 0,
+		GLX_DEPTH_SIZE      , CreationParams.ZBufferBits,
+		GLX_STENCIL_SIZE    , CreationParams.Stencilbuffer ? 8 : 0,
+		GLX_DOUBLEBUFFER    , CreationParams.Doublebuffer ? True : False,
+		GLX_STEREO          , CreationParams.Stereobuffer ? True : False,
+		GLX_SAMPLE_BUFFERS  , 0,
+		GLX_SAMPLES         , 0,
+		GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB, True,
+		None
+	};
+	//glXChooseFBConfig
+#endif
+
 	if (attrib_list)
 	{
 		EGLint indexAttribList = 0;
@@ -983,10 +1007,13 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const
 
 EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
 {
-	if (!walkerDpy || !nativeSurfaceContainer || !nativeContextContainer)
+	if (!walkerDpy || (!nativeSurfaceContainer && nativeContextContainer) || (nativeSurfaceContainer && !nativeContextContainer))
 	{
 		return EGL_FALSE;
 	}
+
+	if (!nativeContextContainer)
+		return (EGLBoolean)glXMakeCurrent(walkerDpy->display_id, None, NULL);
 
 	return (EGLBoolean)glXMakeCurrent(walkerDpy->display_id, nativeSurfaceContainer->drawable, nativeContextContainer->ctx);
 }
