@@ -389,6 +389,167 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 	return EGL_TRUE;
 }
 
+EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+{
+	if (!newSurface || !walkerDpy || !walkerConfig || !error)
+	{
+		return EGL_FALSE;
+	}
+
+	EGLNativeDisplayType display = walkerDpy->display_id;
+
+	int glxattribs[] =
+	{
+		GLX_PBUFFER_WIDTH, 0,
+		GLX_PBUFFER_HEIGHT, 0,
+		GLX_LARGEST_PBUFFER, False,
+
+		None
+	};
+	int* width = glxattribs + 1;
+	int* height = glxattribs + 3;
+	int* largest_pbuffer = glxattribs + 5;
+	EGLboolean colorspace_srgb = 0;
+
+	EGLint currAttrib = 0;
+	while (attrib_list[currAttrib] != EGL_NONE)
+	{
+		EGLint attrib = attrib_list[currAttrib];
+		EGLint value = attrib_list[currAttrib + 1];
+
+		switch (attrib)
+		{
+		case EGL_WIDTH:
+			*width = value; break;
+		case EGL_HEIGHT:
+			*height = value; break;
+		case EGL_LARGEST_PBUFFER:
+			*largest_pbuffer = value; break;
+		case EGL_GL_COLORSPACE:
+			colorspace_srgb = 1; break;
+		}
+
+		currAttrib += 2;
+	}
+
+
+	EGLint numberPixelFormats;
+
+	GLXFBConfig* fbConfigs = glXGetFBConfigs(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), &numberPixelFormats);
+
+	if (!fbConfigs || numberPixelFormats == 0)
+	{
+		if (fbConfigs)
+		{
+			XFree(fbConfigs);
+		}
+
+		return EGL_FALSE;
+	}
+
+	EGLint attribute;
+
+	XVisualInfo* visualInfo;
+
+	GLXFBConfig config = 0;
+
+	for (EGLint currentPixelFormat = 0; currentPixelFormat < numberPixelFormats; currentPixelFormat++)
+	{
+		EGLint value;
+
+		attribute = GLX_VISUAL_ID;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (!value)
+		{
+			continue;
+		}
+
+		// No check for OpenGL.
+
+		attribute = GLX_RENDER_TYPE;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (!(value & GLX_RGBA_BIT)) // TODO why?
+		{
+			continue;
+		}
+
+		attribute = GLX_TRANSPARENT_TYPE;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (value == GLX_TRANSPARENT_INDEX)
+		{
+			continue;
+		}
+
+		attribute = GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (colorspace_srgb && value == False)
+		{
+			continue;
+		}
+
+		//
+
+		visualInfo = glXGetVisualFromFBConfig(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
+
+		if (!visualInfo)
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+
+		if (walkerConfig->nativeVisualId == visualInfo->visualid)
+		{
+			config = fbConfigs[currentPixelFormat];
+
+			XFree(visualInfo);
+
+			break;
+		}
+
+		XFree(visualInfo);
+	}
+
+	XFree(fbConfigs);
+
+	if (!config)
+		return EGL_FALSE;
+
+	newSurface->drawToWindow = EGL_FALSE;
+	newSurface->drawToPixmap = EGL_FALSE;
+	newSurface->drawToPBuffer = EGL_TRUE;
+	newSurface->doubleBuffer = EGL_FALSE;
+	newSurface->configId = walkerConfig->configId;
+
+	newSurface->initialized = EGL_TRUE;
+	newSurface->destroy = EGL_FALSE;
+	newSurface->pbuf = glXCreatePbuffer(display, *config, glxattribs);
+	newSurface->nativeSurfaceContainer.config = *config;
+	newSurface->nativeSurfaceContainer.drawable = 0; // TODO (this function doesnt really have access to GLXDrawable)
+
+	return EGL_TRUE;
+}
+
 EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
 	if (!newSurface || !walkerDpy || !walkerConfig || !error)
@@ -396,30 +557,8 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 		return EGL_FALSE;
 	}
 
-	//TODO add support for srgb framebuffer on egl_x11.c
-#if 0
-	int attrib_list[] =
-	{
-		GLX_X_RENDERABLE    , True,
-		GLX_DRAWABLE_TYPE   , GLX_WINDOW_BIT,
-		GLX_RENDER_TYPE     , GLX_RGBA_BIT,
-		GLX_X_VISUAL_TYPE   , GLX_TRUE_COLOR,
-		GLX_RED_SIZE        , 8,
-		GLX_GREEN_SIZE      , 8,
-		GLX_BLUE_SIZE       , 8,
-		GLX_ALPHA_SIZE      , CreationParams.WithAlphaChannel ? 8 : 0,
-		GLX_DEPTH_SIZE      , CreationParams.ZBufferBits,
-		GLX_STENCIL_SIZE    , CreationParams.Stencilbuffer ? 8 : 0,
-		GLX_DOUBLEBUFFER    , CreationParams.Doublebuffer ? True : False,
-		GLX_STEREO          , CreationParams.Stereobuffer ? True : False,
-		GLX_SAMPLE_BUFFERS  , 0,
-		GLX_SAMPLES         , 0,
-		GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB, True,
-		None
-	};
-	//glXChooseFBConfig
-#endif
-
+	EGLBoolean colorspace_srgb = 0;
+	EGLBoolean doublebuffer = 0;
 	if (attrib_list)
 	{
 		EGLint indexAttribList = 0;
@@ -434,13 +573,11 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 				{
 					if (value == EGL_GL_COLORSPACE_LINEAR)
 					{
-						// Do nothing.
+						colorspace_srgb = 0;
 					}
 					else if (value == EGL_GL_COLORSPACE_SRGB)
 					{
-						*error = EGL_BAD_MATCH;
-
-						return EGL_FALSE;
+						colorspace_srgb = 1;
 					}
 					else
 					{
@@ -454,6 +591,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 				{
 					if (value == EGL_SINGLE_BUFFER)
 					{
+						doublebuffer = 0;
 						if (walkerConfig->doubleBuffer)
 						{
 							*error = EGL_BAD_MATCH;
@@ -463,6 +601,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 					}
 					else if (value == EGL_BACK_BUFFER)
 					{
+						doublebuffer = 1;
 						if (!walkerConfig->doubleBuffer)
 						{
 							*error = EGL_BAD_MATCH;
@@ -553,7 +692,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 
 			return EGL_FALSE;
 		}
-		if (!(value & GLX_RGBA_BIT))
+		if (!(value & GLX_RGBA_BIT)) // TODO why?
 		{
 			continue;
 		}
@@ -566,6 +705,30 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 			return EGL_FALSE;
 		}
 		if (value == GLX_TRANSPARENT_INDEX)
+		{
+			continue;
+		}
+
+		attribute = GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (colorspace_srgb && value == False)
+		{
+			continue;
+		}
+
+		attribute = GLX_DOUBLEBUFFER;
+		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			XFree(fbConfigs);
+
+			return EGL_FALSE;
+		}
+		if (doublebuffer && value == False)
 		{
 			continue;
 		}
@@ -602,7 +765,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 
 	newSurface->drawToWindow = EGL_TRUE;
 	newSurface->drawToPixmap = EGL_FALSE;
-	newSurface->drawToPixmap = EGL_FALSE;
+	newSurface->drawToPBuffer = EGL_FALSE;
 	newSurface->doubleBuffer = walkerConfig->doubleBuffer;
 	newSurface->configId = walkerConfig->configId;
 
@@ -615,14 +778,18 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 	return EGL_TRUE;
 }
 
-EGLBoolean __destroySurface(EGLNativeWindowType win, const NativeSurfaceContainer* nativeSurfaceContainer)
+EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface)
 {
-	if (!nativeSurfaceContainer)
+	if (!surface)
 	{
 		return EGL_FALSE;
 	}
 
-	// Nothing to release.
+	if (surface->surface->drawToPBuffer)
+	{
+		glXDestroyPbuffer(dpy, surface->pbuf);
+	}
+	// else Nothing to release.
 
 	return EGL_TRUE;
 }

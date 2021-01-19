@@ -74,6 +74,7 @@ typedef struct _NativeLocalStorageContainer {
 
 } NativeLocalStorageContainer;
 
+typedef HPBUFFERARB NativePbufferType;
 
 #elif defined(__unix__)
 
@@ -110,6 +111,8 @@ typedef struct _NativeLocalStorageContainer {
 	GLXContext ctx;
 
 } NativeLocalStorageContainer;
+
+typedef GLXPbuffer NativePbufferType;
 
 #else
 #error "Platform not recognized"
@@ -244,7 +247,10 @@ typedef struct _EGLSurfaceImpl
 	EGLBoolean doubleBuffer;
 	EGLint configId;
 
-	EGLNativeWindowType win;
+	union {
+		EGLNativeWindowType win;
+		NativePbufferType pbuf;
+	};
 
 	NativeSurfaceContainer nativeSurfaceContainer;
 
@@ -332,7 +338,9 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 
 EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 
-EGLBoolean __destroySurface(EGLNativeWindowType win, const NativeSurfaceContainer* nativeSurfaceContainer);
+EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
+
+EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface);
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname);
 

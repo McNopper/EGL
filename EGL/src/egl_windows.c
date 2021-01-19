@@ -35,6 +35,11 @@ PFNWGLGETPIXELFORMATATTRIBIVARBPROC wglGetPixelFormatAttribivARB = NULL;
 PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
 PFNWGLGETEXTENSIONSSTRINGARBPROC wglGetExtensionsStringARB = NULL;
 PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = NULL;
+
+PFNWGLCREATEPBUFFERARBPROC wglCreatePbufferARB = NULL;
+PFNWGLGETPBUFFERDCARBPROC wglGetPbufferDCARB = NULL;
+PFNWGLRELEASEPBUFFERDCARBPROC wglReleasePbufferDCARB = NULL;
+PFNWGLDESTROYPBUFFERARBPROC wglDestroyPbufferARB = NULL;
 #endif
 
 
@@ -202,6 +207,11 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
       (PFNWGLGETEXTENSIONSSTRINGARBPROC)
       __getProcAddress("wglGetExtensionsStringARB");
 	glFinish_PTR = (__PFN_glFinish)__getProcAddress("glFinish");
+
+	wglCreatePbufferARB = (PFNWGLCREATEPBUFFERARBPROC)__getProcAddress("wglCreatePbufferARB");
+	wglGetPbufferDCARB = (PFNWGLGETPBUFFERDCARBPROC)__getProcAddress("wglGetPbufferDCARB");
+	wglReleasePbufferDCARB = (PFNWGLRELEASEPBUFFERDCARBPROC)__getProcAddress("wglReleasePbufferDCARB");
+	wglDestroyPbufferARB = (PFNWGLDESTROYPBUFFERARBPROC)__getProcAddress("wglDestroyPbufferARB");
 #endif
 	return EGL_TRUE;
 }
@@ -412,6 +422,119 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 	return EGL_TRUE;
 }
 
+EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+{
+	if (!newSurface || !walkerDpy || !walkerConfig || !error)
+	{
+		return EGL_FALSE;
+	}
+
+	int iattribs[] = {
+			WGL_DRAW_TO_PBUFFER_ARB, GL_TRUE,
+			WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+			WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
+			WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
+			WGL_COLOR_BITS_ARB, 32,
+			WGL_RED_BITS_EXT, 8,
+			WGL_GREEN_BITS_EXT, 8,
+			WGL_BLUE_BITS_EXT, 8,
+			WGL_ALPHA_BITS_EXT, 8,
+			WGL_DEPTH_BITS_ARB, 24,
+			WGL_STENCIL_BITS_ARB, 8,
+			WGL_SAMPLE_BUFFERS_ARB, 0,
+			WGL_SAMPLES_ARB, 0,
+			WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
+			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_TRUE,
+			//WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
+			0
+	};
+
+	EGLint pbuf_attribs[] = {
+		WGL_PBUFFER_LARGEST_EXT, GL_FALSE,
+		0
+	};
+
+	int width;
+	int height;
+	EGLint currentAttribIndex = 0;
+	while (attrib_list[currentAttribIndex] != EGL_NONE)
+	{
+		EGLint attrib = attrib_list[currentAttribIndex];
+		EGLint value = attrib_list[currentAttribIndex + 1];
+		switch (attrib)
+		{
+		case EGL_HEIGHT:
+			height = value;
+			break;
+		case EGL_WIDTH:
+			width = value;
+			break;
+		case EGL_LARGEST_PBUFFER:
+			pbuf_attribs[1] = value;
+			break;
+		case EGL_GL_COLORSPACE:
+			if (value == EGL_GL_COLORSPACE_LINEAR)
+			{
+				iattribs[29] = GL_FALSE;
+			}
+			else if (value == EGL_GL_COLORSPACE_SRGB)
+			{
+				iattribs[29] = GL_TRUE;
+			}
+			else
+			{
+				return EGL_FALSE;
+			}
+			break;
+			// FIXME , more enum values https://www.khronos.org/registry/EGL/sdk/docs/man/html/eglCreatePbufferSurface.xhtml
+		}
+
+		currentAttribIndex += 2;
+	}
+
+	iattribs[9] = walkerConfig->bufferSize;
+	iattribs[11] = walkerConfig->redSize;
+	iattribs[13] = walkerConfig->blueSize;
+	iattribs[15] = walkerConfig->greenSize;
+	iattribs[17] = walkerConfig->alphaSize;
+	iattribs[19] = walkerConfig->depthSize;
+	iattribs[21] = walkerConfig->stencilSize;
+	iattribs[23] = walkerConfig->sampleBuffers;
+	iattribs[25] = walkerConfig->samples;
+
+	int pformat;
+	UINT max_formats = 1;
+	if (!wglChoosePixelFormatARB(walkerDpy->display_id, iattribs, NULL, max_formats, &pformat, &max_formats))
+		return EGL_FALSE;
+
+	// not sure im getting 1st arg ok (HDC)
+	HPBUFFERARB pbuf = wglCreatePbufferARB(walkerDpy->display_id, pformat, width, height, pbuf_attribs);
+	if (!pbuf)
+		return EGL_FALSE;
+
+	HDC hdc = wglGetPbufferDCARB(pbuf);
+
+	if (!hdc)
+	{
+		*error = EGL_BAD_NATIVE_WINDOW;
+
+		return EGL_FALSE;
+	}
+
+	newSurface->drawToWindow = EGL_FALSE;
+	newSurface->drawToPixmap = EGL_FALSE;
+	newSurface->drawToPBuffer = EGL_TRUE;
+	newSurface->doubleBuffer = (EGLBoolean)iattribs[7];
+	newSurface->configId = pformat;
+
+	newSurface->initialized = EGL_TRUE;
+	newSurface->destroy = EGL_FALSE;
+	newSurface->pbuf = pbuf;
+	newSurface->nativeSurfaceContainer.hdc = hdc;
+
+	return EGL_TRUE;
+}
+
 EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
 	if (!newSurface || !walkerDpy || !walkerConfig || !error)
@@ -444,7 +567,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 			WGL_SAMPLE_BUFFERS_ARB, 0,
 			WGL_SAMPLES_ARB, 0,
 			WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
-			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_FALSE,
+			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_TRUE,
 			//WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
 			0
 	};
@@ -604,14 +727,21 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 	return EGL_TRUE;
 }
 
-EGLBoolean __destroySurface(EGLNativeWindowType win, const NativeSurfaceContainer* nativeSurfaceContainer)
+EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface)
 {
-	if (!nativeSurfaceContainer)
+	if (!surface)
 	{
 		return EGL_FALSE;
 	}
+	const NativeSurfaceContainer* nativeSurfaceContainer = &surface->nativeSurfaceContainer;
 
-	ReleaseDC(win, nativeSurfaceContainer->hdc);
+	if (surface->drawToWindow)
+		ReleaseDC(surface->win, nativeSurfaceContainer->hdc);
+	else if (surface->drawToPBuffer)
+	{
+		wglReleasePbufferDCARB(surface->pbuf, surface->nativeSurfaceContainer.hdc);
+		wglDestroyPbufferARB(surface->pbuf);
+	}
 
 	return EGL_TRUE;
 }
