@@ -2533,3 +2533,138 @@ EGLContext _eglGetCurrentContext(void)
 //
 // EGL_VERSION_1_5
 //
+
+//
+// non-standard stuff
+//
+
+EGLBoolean _eglGetPlatformDependentHandles(void* out, EGLDisplay dpy, EGLSurface surface, EGLContext ctx)
+{
+	EGLDisplayImpl* walkerDpy = g_localStorage.rootDpy;
+
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+
+				return EGL_FALSE;
+			}
+
+			EGLSurfaceImpl* currentDraw = EGL_NO_SURFACE;
+			EGLContextImpl* currentCtx = EGL_NO_CONTEXT;
+
+			NativeSurfaceContainer* nativeSurfaceContainer = 0;
+			NativeContextContainer* nativeContextContainer = 0;
+
+			if (surface != EGL_NO_SURFACE)
+			{
+				EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
+
+				while (walkerSurface)
+				{
+					if ((EGLSurface)walkerSurface == surface)
+					{
+						if (!walkerSurface->initialized || walkerSurface->destroy)
+						{
+							g_localStorage.error = EGL_BAD_NATIVE_WINDOW;
+
+							return EGL_FALSE;
+						}
+
+						currentDraw = walkerSurface;
+
+						break;
+					}
+
+					walkerSurface = walkerSurface->next;
+				}
+
+				if (!currentDraw)
+				{
+					g_localStorage.error = EGL_BAD_SURFACE;
+
+					return EGL_FALSE;
+				}
+			}
+			else
+			{
+				g_localStorage.error = EGL_BAD_SURFACE;
+
+				return EGL_FALSE;
+			}
+
+			if (ctx != EGL_NO_CONTEXT)
+			{
+				EGLContextImpl* walkerCtx = walkerDpy->rootCtx;
+
+				while (walkerCtx)
+				{
+					if ((EGLContext)walkerCtx == ctx)
+					{
+						if (!walkerCtx->initialized || walkerCtx->destroy)
+						{
+							g_localStorage.error = EGL_BAD_CONTEXT;
+
+							return EGL_FALSE;
+						}
+
+						currentCtx = walkerCtx;
+
+						break;
+					}
+
+					walkerCtx = walkerCtx->next;
+				}
+
+				if (!currentCtx)
+				{
+					g_localStorage.error = EGL_BAD_CONTEXT;
+
+					return EGL_FALSE;
+				}
+			}
+			else
+			{
+				g_localStorage.error = EGL_BAD_CONTEXT;
+
+				return EGL_FALSE;
+			}
+
+			if (currentDraw != EGL_NO_SURFACE)
+			{
+				nativeSurfaceContainer = &currentDraw->nativeSurfaceContainer;
+			}
+
+			if (currentCtx != EGL_NO_CONTEXT)
+			{
+				EGLContextListImpl* ctxList = currentCtx->rootCtxList;
+
+				while (ctxList)
+				{
+					if (ctxList->surface == currentDraw)
+					{
+						break;
+					}
+
+					ctxList = ctxList->next;
+				}
+
+				nativeContextContainer = &ctxList->nativeContextContainer;
+			}
+
+			if (nativeSurfaceContainer && nativeContextContainer)
+			{
+				return __getPlatformDependentHandles(out, walkerDpy, nativeSurfaceContainer, nativeContextContainer);
+			}
+		}
+
+		walkerDpy = walkerDpy->next;
+	}
+
+	g_localStorage.error = EGL_BAD_DISPLAY;
+
+	return EGL_FALSE;
+}

@@ -25,6 +25,7 @@
  */
 
 #include "egl_internal.h"
+#include "../../EGL/include/EGL/eglctxinternals.h"
 
 #if defined(EGL_NO_GLEW)
 typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display*, GLXFBConfig,
@@ -1205,6 +1206,21 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 	}
 
 	glXSwapIntervalEXT(walkerDpy->display_id, walkerDpy->currentDraw->win, interval);
+
+	return EGL_TRUE;
+}
+
+EGLBoolean __getPlatformDependentHandles(void* _out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
+{
+	if (!nativeSurfaceContainer || !nativeContextContainer)
+		return EGL_FALSE;
+
+	EGLContextInternals* out = (EGLContextInternals*) _out;
+
+	out->display = walkerDpy->display_id;
+	out->context = nativeContextContainer->ctx;
+	out->surface.drawable = nativeSurfaceContainer->drawable;
+	out->surface.config = nativeSurfaceContainer->config;
 
 	return EGL_TRUE;
 }

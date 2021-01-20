@@ -25,6 +25,7 @@
  */
 
 #include "egl_internal.h"
+#include "../../EGL/include/EGL/eglctxinternals.h"
 
 #if defined(EGL_NO_GLEW)
 typedef void(*__PFN_glFinish)();
@@ -1080,4 +1081,18 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 	}
 
 	return (EGLBoolean)wglSwapIntervalEXT(interval);
+}
+
+EGLBoolean __getPlatformDependentHandles(void* _out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
+{
+	if (!nativeSurfaceContainer || !nativeContextContainer)
+		return EGL_FALSE;
+
+	EGLContextInternals* out = (EGLContextInternals*) _out;
+
+	out->display = walkerDpy->display_id;
+	out->context = nativeContextContainer->ctx;
+	out->surface = nativeSurfaceContainer->hdc;
+
+	return EGL_TRUE;
 }

@@ -46,8 +46,13 @@
  * KHRONOS_APICALL and KHRONOS_APIENTRY are defined in KHR/khrplatform.h
  */
 
+// define EGL_STATIC when using EGL as static lib
 #ifndef EGLAPI
+#ifdef EGL_STATIC
+#define EGLAPI
+#else
 #define EGLAPI KHRONOS_APICALL
+#endif
 #endif
 
 #ifndef EGLAPIENTRY

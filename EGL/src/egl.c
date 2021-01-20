@@ -76,6 +76,8 @@ extern EGLBoolean _eglTerminate (EGLDisplay dpy);
 
 extern EGLBoolean _eglWaitNative (EGLint engine);
 
+extern EGLBoolean _eglGetPlatformDependentHandles (void* out, EGLDisplay dpy, EGLSurface surface, EGLContext ctx);
+
 //
 // EGL_VERSION_1_1
 //
@@ -396,4 +398,9 @@ EGLAPI EGLBoolean EGLAPIENTRY eglWaitSync (EGLDisplay dpy, EGLSync sync, EGLint 
 	// TODO Implement.
 
 	return EGL_FALSE;
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglGetPlatformDependentHandles (EGLContextInternals* out, EGLDisplay dpy, EGLSurface surface, EGLContext ctx)
+{
+	return _eglGetPlatformDependentHandles (out, dpy, surface, ctx);
 }
