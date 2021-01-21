@@ -844,6 +844,12 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 			return EGL_FALSE;
 		}
 
+		attribute = WGL_DRAW_TO_PBUFFER_ARB;
+		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToPBuffer))
+		{
+			newConfig->drawToPBuffer = EGL_FALSE;
+		}
+
 		attribute = WGL_DOUBLE_BUFFER_ARB;
 		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->doubleBuffer))
 		{
@@ -853,8 +859,6 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		//
-
-		newConfig->drawToPBuffer = EGL_FALSE;
 
 		newConfig->conformant = EGL_OPENGL_BIT;
 		newConfig->renderableType = EGL_OPENGL_BIT;
@@ -1031,6 +1035,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 			return EGL_FALSE;
 		}
+
+		newConfig->matchNativePixmap = EGL_NONE;
+		newConfig->nativeRenderable = EGL_DONT_CARE; // ???
 
 		// FIXME: Query and save more values.
 	}

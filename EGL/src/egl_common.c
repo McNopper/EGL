@@ -268,6 +268,8 @@ static void _eglInternalSetDontCareConfig(EGLConfigImpl* config)
 		return;
 	}
 
+	// Set default values
+
 	config->alphaSize = EGL_DONT_CARE;
 	config->alphaMaskSize = EGL_DONT_CARE;
 
@@ -276,7 +278,7 @@ static void _eglInternalSetDontCareConfig(EGLConfigImpl* config)
 	config->blueSize = EGL_DONT_CARE;
 	config->bufferSize = EGL_DONT_CARE;
 
-	config->colorBufferType = EGL_DONT_CARE;
+	config->colorBufferType = EGL_RGB_BUFFER;
 	config->configCaveat = EGL_DONT_CARE;
 	config->configId = EGL_DONT_CARE;
 	config->conformant = EGL_DONT_CARE;
@@ -305,7 +307,7 @@ static void _eglInternalSetDontCareConfig(EGLConfigImpl* config)
 	config->sampleBuffers = EGL_DONT_CARE;
 	config->samples = EGL_DONT_CARE;
 	config->stencilSize = EGL_DONT_CARE;
-	config->surfaceType = EGL_DONT_CARE;
+	config->surfaceType = EGL_WINDOW_BIT;
 
 	config->transparentBlueValue = EGL_DONT_CARE;
 	config->transparentGreenValue = EGL_DONT_CARE;
@@ -315,8 +317,8 @@ static void _eglInternalSetDontCareConfig(EGLConfigImpl* config)
 	// Following parameters always do care.
 
 	config->drawToWindow = EGL_TRUE;
-	config->drawToPixmap = EGL_DONT_CARE;
-	config->drawToPBuffer = EGL_DONT_CARE;
+	config->drawToPixmap = EGL_FALSE;
+	config->drawToPBuffer = EGL_FALSE;
 
 	config->doubleBuffer = EGL_TRUE;
 
@@ -326,6 +328,69 @@ static void _eglInternalSetDontCareConfig(EGLConfigImpl* config)
 //
 // EGL_VERSION_1_0
 //
+
+static int _ChooseConfig_sort_predicate(const void* _lhs, const void* _rhs)
+{
+	const EGLConfigImpl* lhs = *(const EGLConfigImpl**)_lhs;
+	const EGLConfigImpl* rhs = *(const EGLConfigImpl**)_rhs;
+
+	if (lhs->configCaveat == rhs->configCaveat)
+	{
+		if (lhs->colorBufferType == rhs->colorBufferType)
+		{
+			GLint color_bits[2] = { 0, 0 };
+			switch (lhs->colorBufferType)
+			{
+			case EGL_RGB_BUFFER:
+				color_bits[0] = lhs->redSize + lhs->greenSize + lhs->blueSize + lhs->alphaSize;
+				color_bits[1] = rhs->redSize + rhs->greenSize + rhs->blueSize + rhs->alphaSize;
+				break;
+			case EGL_LUMINANCE_BUFFER:
+				color_bits[0] = lhs->luminanceSize + lhs->alphaSize;
+				color_bits[1] = rhs->luminanceSize + rhs->alphaSize;
+				break;
+			default:
+				break;
+			}
+
+			if (color_bits[0] == color_bits[1])
+			{
+				if (lhs->bufferSize == rhs->bufferSize)
+				{
+					if (lhs->sampleBuffers == rhs->sampleBuffers)
+					{
+						if (lhs->samples == rhs->samples)
+						{
+							if (lhs->depthSize == rhs->depthSize)
+							{
+								if (lhs->stencilSize == rhs->stencilSize)
+								{
+									if (lhs->alphaMaskSize == rhs->alphaMaskSize)
+									{
+										// skip rule 10 since it's impl-defined
+										// 10. Special: EGL_NATIVE_VISUAL_TYPE (the actual sort order is implementation-defined, depending on the meaning of native visual types).
+
+										// 11. Smaller EGL_CONFIG_ID (guarantees a unique ordering)
+										return (lhs->configId - rhs->configId);
+									}
+									else return (lhs->alphaMaskSize - rhs->alphaMaskSize); // 9. Smaller EGL_ALPHA_MASK_SIZE
+								}
+								else return (lhs->stencilSize - rhs->stencilSize); // 8. Smaller EGL_STENCIL_SIZE
+							}
+							else return (lhs->depthSize - rhs->depthSize); // 7. Smaller EGL_DEPTH_SIZE
+						}
+						else return (lhs->samples - rhs->samples); // 6. Smaller EGL_SAMPLES
+					}
+					else return (lhs->sampleBuffers - rhs->sampleBuffers); // 5. Smaller EGL_SAMPLE_BUFFERS
+				}
+				else return (lhs->bufferSize - rhs->bufferSize); // 4. Smaller EGL_BUFFER_SIZE
+			}
+			else return color_bits[1] - color_bits[0]; // 3. by larger total number of color bits
+		}
+		else return (lhs->colorBufferType - rhs->colorBufferType); // 2. by EGL_COLOR_BUFFER_TYPE
+	}
+	else return (lhs->configCaveat - rhs->configCaveat); // 1. by EGL_CONFIG_CAVEAT
+}
 
 EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig *configs, EGLint config_size, EGLint *num_config)
 {
@@ -374,7 +439,8 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 			EGLConfigImpl config;
 
-			_eglInternalSetDontCareConfig(&config);
+			_eglInternalSetDefaultConfig(&config);
+			config.configCaveat = EGL_DONT_CARE; // dont care for this attribute since it cant be queried on both WGL and GLX
 
 			while (attrib_list[attribListIndex] != EGL_NONE)
 			{
@@ -723,21 +789,39 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					return EGL_FALSE;
 				}
 			}
+			config.drawToWindow = (config.surfaceType & EGL_WINDOW_BIT) ? EGL_TRUE : EGL_FALSE;
+			config.drawToPixmap = (config.surfaceType & EGL_PIXMAP_BIT) ? EGL_TRUE : EGL_FALSE;
+			config.drawToPBuffer = (config.surfaceType & EGL_PBUFFER_BIT) ? EGL_TRUE : EGL_FALSE;
 
 			// Check, if this configuration exists.
 			EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
+			EGLConfigImpl* cc = walkerConfig;
+			while (cc)
+			{
+				if (cc->surfaceType & EGL_WINDOW_BIT)
+				{
+					cc = cc->next;
+					continue;
+				}
+				cc = cc->next;
+			}
+
+			#define stack_mem_sz (1ull << 13) // 8k
+			EGLbyte stack_mem[stack_mem_sz];
+			const EGLint max_configs = stack_mem_sz / sizeof(EGLConfig);
+			EGLConfig* configsOnStack = (EGLConfig*)stack_mem;
 
 			EGLint configIndex = 0;
 
-			while (walkerConfig && configIndex < config_size)
+			while (walkerConfig && configIndex < max_configs)
 			{
-				if (config.alphaMaskSize != EGL_DONT_CARE && config.alphaMaskSize != walkerConfig->alphaMaskSize)
+				if (config.alphaMaskSize > walkerConfig->alphaMaskSize)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.alphaSize != EGL_DONT_CARE && config.alphaSize != walkerConfig->alphaSize)
+				if (config.alphaSize > walkerConfig->alphaSize)
 				{
 					walkerConfig = walkerConfig->next;
 
@@ -755,13 +839,13 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 					continue;
 				}
-				if (config.blueSize != EGL_DONT_CARE && config.blueSize != walkerConfig->blueSize)
+				if (config.blueSize > walkerConfig->blueSize)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.bufferSize != EGL_DONT_CARE && config.bufferSize != walkerConfig->bufferSize)
+				if (config.bufferSize > walkerConfig->bufferSize)
 				{
 					walkerConfig = walkerConfig->next;
 
@@ -785,37 +869,37 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 					continue;
 				}
-				if (config.conformant != EGL_DONT_CARE && config.conformant != walkerConfig->conformant)
+				if ((config.conformant & walkerConfig->conformant) != config.conformant)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.depthSize != EGL_DONT_CARE && config.depthSize != walkerConfig->depthSize)
+				if (config.depthSize > walkerConfig->depthSize)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.greenSize != EGL_DONT_CARE && config.greenSize != walkerConfig->greenSize)
+				if (config.greenSize > walkerConfig->greenSize)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.level != EGL_DONT_CARE && config.level != walkerConfig->level)
+				if (config.level != walkerConfig->level)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.luminanceSize != EGL_DONT_CARE && config.luminanceSize != walkerConfig->luminanceSize)
+				if (config.luminanceSize > walkerConfig->luminanceSize)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.matchNativePixmap != EGL_DONT_CARE && config.matchNativePixmap != walkerConfig->matchNativePixmap)
+				if (config.matchNativePixmap != EGL_NONE && config.matchNativePixmap != walkerConfig->matchNativePixmap)
 				{
 					walkerConfig = walkerConfig->next;
 
@@ -839,84 +923,87 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 					continue;
 				}
-				if (config.redSize != EGL_DONT_CARE && config.redSize != walkerConfig->redSize)
+				if (config.redSize > walkerConfig->redSize)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.sampleBuffers != EGL_DONT_CARE && config.sampleBuffers != walkerConfig->sampleBuffers)
+				if (config.sampleBuffers > walkerConfig->sampleBuffers)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.samples != EGL_DONT_CARE && config.samples != walkerConfig->samples)
+				if (config.samples > walkerConfig->samples)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.stencilSize != EGL_DONT_CARE && config.stencilSize != walkerConfig->stencilSize)
+				if ((config.stencilSize != EGL_DONT_CARE) && (config.stencilSize != walkerConfig->stencilSize))
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.renderableType != EGL_DONT_CARE && config.renderableType != walkerConfig->renderableType)
+				if ((config.renderableType & walkerConfig->renderableType) != config.renderableType)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.surfaceType != EGL_DONT_CARE && !(config.surfaceType & walkerConfig->surfaceType))
+				if ((config.surfaceType & walkerConfig->surfaceType) != config.surfaceType)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.transparentType != EGL_DONT_CARE && config.transparentType != walkerConfig->transparentType)
+				if (config.transparentType != walkerConfig->transparentType)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
-				if (config.transparentRedValue != EGL_DONT_CARE && config.transparentRedValue != walkerConfig->transparentRedValue)
+				if (walkerConfig->transparentType == EGL_TRANSPARENT_RGB)
 				{
-					walkerConfig = walkerConfig->next;
+					if (config.transparentRedValue != EGL_DONT_CARE && config.transparentRedValue != walkerConfig->transparentRedValue)
+					{
+						walkerConfig = walkerConfig->next;
 
-					continue;
-				}
-				if (config.transparentGreenValue != EGL_DONT_CARE && config.transparentGreenValue != walkerConfig->transparentGreenValue)
-				{
-					walkerConfig = walkerConfig->next;
+						continue;
+					}
+					if (config.transparentGreenValue != EGL_DONT_CARE && config.transparentGreenValue != walkerConfig->transparentGreenValue)
+					{
+						walkerConfig = walkerConfig->next;
 
-					continue;
-				}
-				if (config.transparentBlueValue != EGL_DONT_CARE && config.transparentBlueValue != walkerConfig->transparentBlueValue)
-				{
-					walkerConfig = walkerConfig->next;
+						continue;
+					}
+					if (config.transparentBlueValue != EGL_DONT_CARE && config.transparentBlueValue != walkerConfig->transparentBlueValue)
+					{
+						walkerConfig = walkerConfig->next;
 
-					continue;
+						continue;
+					}
 				}
 
 				//
 
-				if (config.drawToWindow != EGL_DONT_CARE && config.drawToWindow != walkerConfig->drawToWindow)
+				if (config.drawToWindow != walkerConfig->drawToWindow)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
 
-				if (config.drawToPixmap != EGL_DONT_CARE && config.drawToPixmap != walkerConfig->drawToPixmap)
+				if (config.drawToPixmap != walkerConfig->drawToPixmap)
 				{
 					walkerConfig = walkerConfig->next;
 
 					continue;
 				}
 
-				if (config.drawToPBuffer != EGL_DONT_CARE && config.drawToPBuffer != walkerConfig->drawToPBuffer)
+				if (config.drawToPBuffer != walkerConfig->drawToPBuffer)
 				{
 					walkerConfig = walkerConfig->next;
 
@@ -932,14 +1019,18 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 				//
 
-				configs[configIndex] = walkerConfig;
+				configsOnStack[configIndex] = walkerConfig;
 
 				walkerConfig = walkerConfig->next;
 
 				configIndex++;
 			}
 
-			*num_config = configIndex;
+			if (configIndex)
+				qsort(configsOnStack, configIndex, sizeof(*configs), &_ChooseConfig_sort_predicate);
+
+			*num_config = min(configIndex, config_size);
+			memcpy(configs, configsOnStack, *num_config*sizeof(EGLConfig));
 
 			return EGL_TRUE;
 		}

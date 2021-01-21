@@ -1153,6 +1153,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		XFree(visualInfo);
 
+		newConfig->matchNativePixmap = EGL_NONE;
+		newConfig->nativeRenderable = EGL_DONT_CARE; // ???
+
 		// FIXME: Query and save more values.
 	}
 

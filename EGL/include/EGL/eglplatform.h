@@ -126,5 +126,6 @@ typedef EGLNativeWindowType  NativeWindowType;
  * integer type.
  */
 typedef khronos_int32_t EGLint;
+typedef char            EGLbyte;
 
 #endif /* __eglplatform_h */
