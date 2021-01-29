@@ -33,6 +33,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <mutex>
 
 #if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__) /* Win32 and WinCE */
 
@@ -289,6 +290,7 @@ typedef struct _EGLContextImpl
 
 typedef struct _EGLDisplayImpl
 {
+	std::mutex mutex;
 
 	EGLBoolean initialized;
 	EGLBoolean destroy;
@@ -309,22 +311,21 @@ typedef struct _EGLDisplayImpl
 
 typedef struct _LocalStorage
 {
-
-	NativeLocalStorageContainer dummy;
-
 	EGLint error;
 
 	EGLenum api;
 
-	EGLDisplayImpl* rootDpy;
-
 	EGLContextImpl* currentCtx;
-
 } LocalStorage;
 
 //
-
+#if __cplusplus
+extern "C" {
+#endif
 void _eglInternalSetDefaultConfig(EGLConfigImpl* config);
+#if __cplusplus
+}
+#endif
 
 //
 

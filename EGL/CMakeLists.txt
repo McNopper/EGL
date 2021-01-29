@@ -2,17 +2,17 @@ cmake_minimum_required(VERSION 3.0.2)
 
 if(WIN32)
   set(EGL_PLATFORM_SOURCES
-      ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.c)
+      ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp)
 else()
   if(UNIX AND NOT APPLE)
     set(EGL_PLATFORM_SOURCES
-        ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11.c)
+        ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11.cpp)
   endif()
 endif()
 
 set(EGL_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/egl.c
-    ${CMAKE_CURRENT_LIST_DIR}/src/egl_common.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_common.cpp
     ${EGL_PLATFORM_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_internal.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/egl.h
