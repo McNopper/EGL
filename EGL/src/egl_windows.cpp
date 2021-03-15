@@ -27,7 +27,10 @@
 #include "egl_internal.h"
 #include "../../EGL/include/EGL/eglctxinternals.h"
 
+HMODULE opengl32dll = NULL;
+
 #if defined(EGL_NO_GLEW)
+
 typedef void(*__PFN_glFinish)();
 
 __PFN_glFinish glFinish_PTR = NULL;
@@ -175,6 +178,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
+	opengl32dll = GetModuleHandle("opengl32.dll");
 #if !defined(EGL_NO_GLEW)
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GL_NO_ERROR)
@@ -749,7 +753,12 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
 {
-	return (__eglMustCastToProperFunctionPointerType )wglGetProcAddress(procname);
+	__eglMustCastToProperFunctionPointerType ptr = NULL;
+	ptr = (__eglMustCastToProperFunctionPointerType) wglGetProcAddress(procname);
+	if (ptr != NULL)
+		return ptr;
+	// https://www.khronos.org/opengl/wiki/Talk:Platform_specifics:_Windows
+	return (__eglMustCastToProperFunctionPointerType) GetProcAddress(opengl32dll, procname);
 }
 
 EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* error)
