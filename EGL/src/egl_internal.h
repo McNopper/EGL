@@ -337,17 +337,17 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
 
 EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error);
 
-EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
+EGLBoolean __createWindowSurface(const NativeLocalStorageContainer* dummyContext, EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 
-EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
+EGLBoolean __createPbufferSurface(const NativeLocalStorageContainer* dummyContext, EGLSurfaceImpl* newSurface, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 
-EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface);
+EGLBoolean __destroySurface(const NativeLocalStorageContainer* dummyContext, EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface);
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname);
 
 EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* error);
 
-EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList);
+EGLBoolean __createContext(const NativeLocalStorageContainer* dummyContext, NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList);
 
 EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer);
 

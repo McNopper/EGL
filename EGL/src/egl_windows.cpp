@@ -275,7 +275,7 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 			WGL_CONTEXT_MINOR_VERSION_ARB, 0,
 			WGL_CONTEXT_LAYER_PLANE_ARB, 0,
 			WGL_CONTEXT_FLAGS_ARB, 0,
-			WGL_CONTEXT_PROFILE_MASK_ARB, 0,
+			WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
 			WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, WGL_NO_RESET_NOTIFICATION_ARB,
 			0
 	};
@@ -427,7 +427,7 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 	return EGL_TRUE;
 }
 
-EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+EGLBoolean __createPbufferSurface(const NativeLocalStorageContainer* dummyContext, EGLSurfaceImpl* newSurface, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
 	if (!newSurface || !walkerDpy || !walkerConfig || !error)
 	{
@@ -507,6 +507,10 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
 	iattribs[23] = walkerConfig->sampleBuffers;
 	iattribs[25] = walkerConfig->samples;
 
+	HGLRC curr = wglGetCurrentContext();
+	if (curr != dummyContext->ctx)
+		wglMakeCurrent(dummyContext->hdc, dummyContext->ctx);
+
 	int pformat;
 	UINT max_formats = 1;
 	if (!wglChoosePixelFormatARB(walkerDpy->display_id, iattribs, NULL, max_formats, &pformat, &max_formats))
@@ -540,7 +544,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
 	return EGL_TRUE;
 }
 
-EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+EGLBoolean __createWindowSurface(const NativeLocalStorageContainer* dummyContext, EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
 	if (!newSurface || !walkerDpy || !walkerConfig || !error)
 	{
@@ -674,6 +678,10 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 	template_attrib_list[23] = walkerConfig->sampleBuffers;
 	template_attrib_list[25] = walkerConfig->samples;
 
+	HGLRC curr = wglGetCurrentContext();
+	if (curr != dummyContext->ctx)
+		wglMakeCurrent(dummyContext->hdc, dummyContext->ctx);
+
 	//
 
 	UINT wgl_max_formats = 1;
@@ -732,13 +740,17 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 	return EGL_TRUE;
 }
 
-EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface)
+EGLBoolean __destroySurface(const NativeLocalStorageContainer* dummyContext, EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface)
 {
 	if (!surface)
 	{
 		return EGL_FALSE;
 	}
 	const NativeSurfaceContainer* nativeSurfaceContainer = &surface->nativeSurfaceContainer;
+
+	HGLRC curr = wglGetCurrentContext();
+	if (curr != dummyContext->ctx)
+		wglMakeCurrent(dummyContext->hdc, dummyContext->ctx);
 
 	if (surface->drawToWindow)
 		ReleaseDC(surface->win, nativeSurfaceContainer->hdc);
@@ -1054,14 +1066,18 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 	return EGL_TRUE;
 }
 
-EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeSurfaceContainer, const EGLint* attribList)
+EGLBoolean __createContext(const NativeLocalStorageContainer* dummyContext, NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeSurfaceContainer, const EGLint* attribList)
 {
 	if (!walkerDpy || !nativeContextContainer || !nativeSurfaceContainer)
 	{
 		return EGL_FALSE;
 	}
 
+	HGLRC curr = wglGetCurrentContext();
+	if (curr != dummyContext->ctx)
+		wglMakeCurrent(dummyContext->hdc, dummyContext->ctx);
 	nativeContextContainer->ctx = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeSurfaceContainer ? sharedNativeSurfaceContainer->ctx : 0, attribList);
+	DWORD err = GetLastError();
 
 	return nativeContextContainer->ctx != 0;
 }
@@ -1076,7 +1092,8 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
 	if (!nativeContextContainer)
 		return (EGLBoolean)wglMakeCurrent(NULL, NULL);
 
-	return (EGLBoolean)wglMakeCurrent(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
+	BOOL res = (EGLBoolean)wglMakeCurrent(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
+	return res;
 }
 
 EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface)
