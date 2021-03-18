@@ -76,26 +76,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 	//
 
-    WNDCLASS wc;
-    memset(&wc, 0, sizeof(WNDCLASS));
-
-    wc.lpfnWndProc   = __DummyWndProc;
-    wc.hInstance     = GetModuleHandle(NULL);
-    wc.lpszClassName = "DummyWindow";
-
-    RegisterClass(&wc);
-
-    nativeLocalStorageContainer->hwnd = CreateWindowEx(
-        0,
-        "DummyWindow",
-        "",
-        0,
-        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-        NULL,
-        NULL,
-		wc.hInstance,
-        NULL
-    );
+    nativeLocalStorageContainer->hwnd = CreateWindowA("STATIC", "dummy", 0, 0, 0, 1, 1, NULL, NULL, NULL, NULL);
 
     //
 
@@ -114,18 +95,14 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
-	PIXELFORMATDESCRIPTOR dummyPfd = {
-			sizeof(PIXELFORMATDESCRIPTOR),
-			1,
-			PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    	//Flags
-			PFD_TYPE_RGBA,            									   	//The kind of framebuffer. RGBA or palette.
-			32,                        									   	//Colordepth of the framebuffer.
-			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24,                     	//Number of bits for the depthbuffer
-			8,                        										//Number of bits for the stencilbuffer
-			0,                        										//Number of Aux buffers in the framebuffer.
-			PFD_MAIN_PLANE,
-			0, 0, 0, 0
-	};
+	PIXELFORMATDESCRIPTOR dummyPfd = {};
+	dummyPfd.nSize = sizeof(dummyPfd);
+	dummyPfd.nVersion = 1;
+	dummyPfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	dummyPfd.iPixelType = PFD_TYPE_RGBA;
+	dummyPfd.cColorBits = 32;
+	dummyPfd.cAlphaBits = 8;
+	dummyPfd.cDepthBits = 24;
 
 	EGLint dummyPixelFormat = ChoosePixelFormat(nativeLocalStorageContainer->hdc, &dummyPfd);
 
@@ -217,6 +194,8 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	wglGetPbufferDCARB = (PFNWGLGETPBUFFERDCARBPROC)__getProcAddress("wglGetPbufferDCARB");
 	wglReleasePbufferDCARB = (PFNWGLRELEASEPBUFFERDCARBPROC)__getProcAddress("wglReleasePbufferDCARB");
 	wglDestroyPbufferARB = (PFNWGLDESTROYPBUFFERARBPROC)__getProcAddress("wglDestroyPbufferARB");
+
+	wglMakeCurrent(NULL, NULL);
 #endif
 	return EGL_TRUE;
 }
@@ -427,7 +406,7 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 	return EGL_TRUE;
 }
 
-EGLBoolean __createPbufferSurface(const NativeLocalStorageContainer* dummyContext, EGLSurfaceImpl* newSurface, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
 	if (!newSurface || !walkerDpy || !walkerConfig || !error)
 	{
@@ -507,21 +486,19 @@ EGLBoolean __createPbufferSurface(const NativeLocalStorageContainer* dummyContex
 	iattribs[23] = walkerConfig->sampleBuffers;
 	iattribs[25] = walkerConfig->samples;
 
-	HGLRC curr = wglGetCurrentContext();
-	if (curr != dummyContext->ctx)
-		wglMakeCurrent(dummyContext->hdc, dummyContext->ctx);
+	HDC hdc = walkerDpy->display_id;
 
 	int pformat;
 	UINT max_formats = 1;
-	if (!wglChoosePixelFormatARB(walkerDpy->display_id, iattribs, NULL, max_formats, &pformat, &max_formats))
+	if (!wglChoosePixelFormatARB(hdc, iattribs, NULL, max_formats, &pformat, &max_formats))
 		return EGL_FALSE;
 
 	// not sure im getting 1st arg ok (HDC)
-	HPBUFFERARB pbuf = wglCreatePbufferARB(walkerDpy->display_id, pformat, width, height, pbuf_attribs);
+	HPBUFFERARB pbuf = wglCreatePbufferARB(hdc, pformat, width, height, pbuf_attribs);
 	if (!pbuf)
 		return EGL_FALSE;
 
-	HDC hdc = wglGetPbufferDCARB(pbuf);
+	hdc = wglGetPbufferDCARB(pbuf);
 
 	if (!hdc)
 	{
@@ -544,7 +521,7 @@ EGLBoolean __createPbufferSurface(const NativeLocalStorageContainer* dummyContex
 	return EGL_TRUE;
 }
 
-EGLBoolean __createWindowSurface(const NativeLocalStorageContainer* dummyContext, EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
 	if (!newSurface || !walkerDpy || !walkerConfig || !error)
 	{
@@ -677,11 +654,6 @@ EGLBoolean __createWindowSurface(const NativeLocalStorageContainer* dummyContext
 	template_attrib_list[21] = walkerConfig->stencilSize;
 	template_attrib_list[23] = walkerConfig->sampleBuffers;
 	template_attrib_list[25] = walkerConfig->samples;
-
-	HGLRC curr = wglGetCurrentContext();
-	if (curr != dummyContext->ctx)
-		wglMakeCurrent(dummyContext->hdc, dummyContext->ctx);
-
 	//
 
 	UINT wgl_max_formats = 1;
@@ -740,17 +712,13 @@ EGLBoolean __createWindowSurface(const NativeLocalStorageContainer* dummyContext
 	return EGL_TRUE;
 }
 
-EGLBoolean __destroySurface(const NativeLocalStorageContainer* dummyContext, EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface)
+EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface)
 {
 	if (!surface)
 	{
 		return EGL_FALSE;
 	}
 	const NativeSurfaceContainer* nativeSurfaceContainer = &surface->nativeSurfaceContainer;
-
-	HGLRC curr = wglGetCurrentContext();
-	if (curr != dummyContext->ctx)
-		wglMakeCurrent(dummyContext->hdc, dummyContext->ctx);
 
 	if (surface->drawToWindow)
 		ReleaseDC(surface->win, nativeSurfaceContainer->hdc);
@@ -1066,16 +1034,13 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 	return EGL_TRUE;
 }
 
-EGLBoolean __createContext(const NativeLocalStorageContainer* dummyContext, NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeSurfaceContainer, const EGLint* attribList)
+EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeSurfaceContainer, const EGLint* attribList)
 {
 	if (!walkerDpy || !nativeContextContainer || !nativeSurfaceContainer)
 	{
 		return EGL_FALSE;
 	}
 
-	HGLRC curr = wglGetCurrentContext();
-	if (curr != dummyContext->ctx)
-		wglMakeCurrent(dummyContext->hdc, dummyContext->ctx);
 	nativeContextContainer->ctx = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeSurfaceContainer ? sharedNativeSurfaceContainer->ctx : 0, attribList);
 	DWORD err = GetLastError();
 

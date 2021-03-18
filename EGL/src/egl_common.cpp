@@ -1310,8 +1310,6 @@ EGLSurface _eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, const EGLi
 
 			EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
 
-			const auto dummy = g_globalStorage.dummy_read();
-
 			while (walkerConfig)
 			{
 				if ((EGLConfig)walkerConfig == config)
@@ -1325,7 +1323,7 @@ EGLSurface _eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, const EGLi
 						return EGL_NO_SURFACE;
 					}
 
-					if (!__createPbufferSurface(&dummy, newSurface, attrib_list, walkerDpy, walkerConfig, &g_localStorage.error))
+					if (!__createPbufferSurface(newSurface, attrib_list, walkerDpy, walkerConfig, &g_localStorage.error))
 					{
 						free(newSurface);
 
@@ -1376,8 +1374,6 @@ EGLSurface _eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWi
 
 			EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
 
-			const auto dummy = g_globalStorage.dummy_read();
-
 			while (walkerConfig)
 			{
 				if ((EGLConfig)walkerConfig == config)
@@ -1391,7 +1387,7 @@ EGLSurface _eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWi
 						return EGL_NO_SURFACE;
 					}
 
-					if (!__createWindowSurface(&dummy, newSurface, win, attrib_list, walkerDpy, walkerConfig, &g_localStorage.error))
+					if (!__createWindowSurface(newSurface, win, attrib_list, walkerDpy, walkerConfig, &g_localStorage.error))
 					{
 						free(newSurface);
 
@@ -1504,8 +1500,6 @@ EGLBoolean _eglDestroySurface(EGLDisplay dpy, EGLSurface surface)
 					return EGL_FALSE;
 				}
 
-				const auto dummy = g_globalStorage.dummy_read();
-
 				EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
 
 				while (walkerSurface)
@@ -1522,7 +1516,7 @@ EGLBoolean _eglDestroySurface(EGLDisplay dpy, EGLSurface surface)
 						walkerSurface->initialized = EGL_FALSE;
 						walkerSurface->destroy = EGL_TRUE;
 
-						__destroySurface(&dummy, walkerDpy->display_id, walkerSurface);
+						__destroySurface(walkerDpy->display_id, walkerSurface);
 
 						success = EGL_TRUE;
 						break;
@@ -2242,8 +2236,6 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 					nativeSurfaceContainer = &currentDraw->nativeSurfaceContainer;
 				}
 
-				const auto dummy = g_globalStorage.dummy_read();
-
 				if (currentCtx != EGL_NO_CONTEXT)
 				{
 					EGLContextListImpl* ctxList = currentCtx->rootCtxList;
@@ -2299,7 +2291,7 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 										return EGL_FALSE;
 									}
 
-									result = __createContext(&dummy, &sharedCtxList->nativeContextContainer, walkerDpy, &currentDraw->nativeSurfaceContainer, 0, beforeSharedWalkerCtx->attribList);
+									result = __createContext(&sharedCtxList->nativeContextContainer, walkerDpy, &currentDraw->nativeSurfaceContainer, 0, beforeSharedWalkerCtx->attribList);
 
 									if (!result)
 									{
@@ -2324,7 +2316,7 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 							sharedCtxList = currentCtx->rootCtxList;
 						}
 
-						result = __createContext(&dummy, &ctxList->nativeContextContainer, walkerDpy, &currentDraw->nativeSurfaceContainer, sharedCtxList ? &sharedCtxList->nativeContextContainer : 0, currentCtx->attribList);
+						result = __createContext(&ctxList->nativeContextContainer, walkerDpy, &currentDraw->nativeSurfaceContainer, sharedCtxList ? &sharedCtxList->nativeContextContainer : 0, currentCtx->attribList);
 
 						if (!result)
 						{
