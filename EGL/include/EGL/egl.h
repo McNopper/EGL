@@ -37,7 +37,7 @@ extern "C" {
 */
 
 #include <EGL/eglplatform.h>
-#include <EGL/eglctxinternals.h>
+//#include <EGL/eglctxinternals.h>
 
 /* Generated on date 20141001 */
 
@@ -298,7 +298,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglWaitSync (EGLDisplay dpy, EGLSync sync, EGLint 
 #endif /* EGL_VERSION_1_5 */
 
 // non-standard stuff
-EGLAPI EGLBoolean EGLAPIENTRY eglGetPlatformDependentHandles (EGLContextInternals* out, EGLDisplay dpy, EGLSurface surface, EGLContext ctx);
+//EGLAPI EGLBoolean EGLAPIENTRY eglGetPlatformDependentHandles (EGLContextInternals* out, EGLDisplay dpy, EGLSurface surface, EGLContext ctx);
 
 #ifdef __cplusplus
 }

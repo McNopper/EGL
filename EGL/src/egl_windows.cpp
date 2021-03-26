@@ -760,10 +760,13 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		return EGL_FALSE;
 	}
 
-  int render_texture_supported = strstr(wglGetExtensionsStringARB(nativeLocalStorageContainer->hdc),
-		                                  "WGL_ARB_render_texture") != NULL;
+	const char* extensions_str = wglGetExtensionsStringARB(nativeLocalStorageContainer->hdc);
 
-  EGLConfigImpl* lastConfig = 0;
+	const int render_texture_supported = strstr(extensions_str, "WGL_ARB_render_texture") != NULL;
+	const int ES_supported = strstr(extensions_str, "WGL_EXT_create_context_es_profile") != NULL;
+	const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+
+	EGLConfigImpl* lastConfig = 0;
 	for (EGLint currentPixelFormat = 1; currentPixelFormat <= numberPixelFormats; currentPixelFormat++)
 	{
 		EGLint value;
@@ -848,9 +851,8 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		//
-
-		newConfig->conformant = EGL_OPENGL_BIT;
-		newConfig->renderableType = EGL_OPENGL_BIT;
+		newConfig->conformant = (EGL_OPENGL_BIT | ES_mask);
+		newConfig->renderableType = (EGL_OPENGL_BIT | ES_mask);
 		newConfig->surfaceType = 0;
 		if (newConfig->drawToWindow)
 		{

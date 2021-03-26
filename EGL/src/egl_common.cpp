@@ -25,6 +25,7 @@
  */
 
 #include <atomic>
+#include <thread>
 #include "egl_internal.h"
 
 #define EGL_NO_SURFACE_IMPL static_cast<EGLSurfaceImpl*>(EGL_NO_SURFACE)
@@ -931,8 +932,10 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 			EGLint configIndex = 0;
 
+			int itercount = 0;
 			while (walkerConfig && configIndex < max_configs)
 			{
+				++itercount;
 				if (config.alphaMaskSize > walkerConfig->alphaMaskSize)
 				{
 					walkerConfig = walkerConfig->next;
@@ -1106,7 +1109,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 				}
 
 				//
-
+				/*
 				if (config.drawToWindow != walkerConfig->drawToWindow)
 				{
 					walkerConfig = walkerConfig->next;
@@ -1127,6 +1130,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 					continue;
 				}
+				*/
 
 				if (config.doubleBuffer != EGL_DONT_CARE && config.doubleBuffer != walkerConfig->doubleBuffer)
 				{
@@ -1147,7 +1151,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 			if (configIndex)
 				qsort(configsOnStack, configIndex, sizeof(*configs), &_ChooseConfig_sort_predicate);
 
-			*num_config = min(configIndex, config_size);
+			*num_config = std::min(configIndex, config_size);
 			memcpy(configs, configsOnStack, *num_config*sizeof(EGLConfig));
 
 			return EGL_TRUE;
@@ -2018,7 +2022,7 @@ EGLDisplay _eglGetDisplay(EGLNativeDisplayType display_id)
 #if defined(_WIN32) || defined(_WIN64)
 	newDpy->display_id = display_id ? display_id : g_globalStorage.dummy_read().hdc;
 #else
-	newDpy->display_id = display_id ? display_id : g_globalStorage.dummy.display;
+	newDpy->display_id = display_id ? display_id : g_globalStorage.dummy_read().display;
 #endif
 	newDpy->rootSurface = 0;
 	newDpy->rootCtx = 0;
@@ -2836,6 +2840,7 @@ EGLContext _eglGetCurrentContext(void)
 // non-standard stuff
 //
 
+/*
 EGLBoolean _eglGetPlatformDependentHandles(void* out, EGLDisplay dpy, EGLSurface surface, EGLContext ctx)
 {
 	auto _rl = g_globalStorage.placeRootDpy_readlock();
@@ -2969,5 +2974,6 @@ EGLBoolean _eglGetPlatformDependentHandles(void* out, EGLDisplay dpy, EGLSurface
 
 	return EGL_FALSE;
 }
+*/
 
 } // extern "C"

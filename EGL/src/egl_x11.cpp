@@ -26,6 +26,7 @@
 
 #include "egl_internal.h"
 #include "../../EGL/include/EGL/eglctxinternals.h"
+#include <iostream>
 
 #if defined(EGL_NO_GLEW)
 typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display*, GLXFBConfig,
@@ -238,7 +239,7 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 			GLX_CONTEXT_MAJOR_VERSION_ARB, 1,
 			GLX_CONTEXT_MINOR_VERSION_ARB, 0,
 			GLX_CONTEXT_FLAGS_ARB, 0,
-			GLX_CONTEXT_PROFILE_MASK_ARB, 0,
+			GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
 			GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_NO_RESET_NOTIFICATION_ARB,
 			0
 	};
@@ -410,7 +411,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	int* width = glxattribs + 1;
 	int* height = glxattribs + 3;
 	int* largest_pbuffer = glxattribs + 5;
-	EGLboolean colorspace_srgb = 0;
+	EGLBoolean colorspace_srgb = 0;
 
 	EGLint currAttrib = 0;
 	while (attrib_list[currAttrib] != EGL_NONE)
@@ -544,8 +545,8 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
-	newSurface->pbuf = glXCreatePbuffer(display, *config, glxattribs);
-	newSurface->nativeSurfaceContainer.config = *config;
+	newSurface->pbuf = glXCreatePbuffer(display, config, glxattribs);
+	newSurface->nativeSurfaceContainer.config = config;
 	newSurface->nativeSurfaceContainer.drawable = 0; // TODO (this function doesnt really have access to GLXDrawable)
 
 	return EGL_TRUE;
@@ -786,7 +787,7 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 		return EGL_FALSE;
 	}
 
-	if (surface->surface->drawToPBuffer)
+	if (surface->drawToPBuffer)
 	{
 		glXDestroyPbuffer(dpy, surface->pbuf);
 	}
@@ -801,6 +802,10 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 	{
 		return EGL_FALSE;
 	}
+
+	const char* extensions_str = glXQueryExtensionsString(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id));
+	int ES_supported = strstr(extensions_str, "GLX_EXT_create_context_es_profile") != NULL;
+	const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
 
 	// Create configuration list.
 
@@ -925,9 +930,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		//
-
-		newConfig->conformant = EGL_OPENGL_BIT;
-		newConfig->renderableType = EGL_OPENGL_BIT;
+		//TODO check for `GLX_EXT_create_context_es_profile` extension
+		newConfig->conformant = (EGL_OPENGL_BIT | ES_mask);
+		newConfig->renderableType = (EGL_OPENGL_BIT | ES_mask);
 		newConfig->surfaceType = 0;
 		if (newConfig->drawToWindow)
 		{
@@ -1164,13 +1169,21 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 	return EGL_TRUE;
 }
 
+static int xerrorhandler(Display *dsp, XErrorEvent *error)
+{
+  char errorstring[1024];
+  XGetErrorText(dsp, error->error_code, errorstring, 1024);
+    
+  std::cerr << "ack!fatal: X error--" << errorstring << std::endl;
+  exit(-1);
+}
 EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList)
 {
 	if (!nativeContextContainer || !walkerDpy || !nativeSurfaceContainer)
 	{
 		return EGL_FALSE;
 	}
-
+	XSetErrorHandler(xerrorhandler);
 	nativeContextContainer->ctx = glXCreateContextAttribsARB(walkerDpy->display_id, nativeSurfaceContainer->config, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, True, attribList);
 
 	return nativeContextContainer->ctx != 0;
@@ -1213,6 +1226,7 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 	return EGL_TRUE;
 }
 
+/*
 EGLBoolean __getPlatformDependentHandles(void* _out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
 {
 	if (!nativeSurfaceContainer || !nativeContextContainer)
@@ -1227,3 +1241,4 @@ EGLBoolean __getPlatformDependentHandles(void* _out, const EGLDisplayImpl* walke
 
 	return EGL_TRUE;
 }
+*/

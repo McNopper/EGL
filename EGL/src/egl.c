@@ -400,7 +400,9 @@ EGLAPI EGLBoolean EGLAPIENTRY eglWaitSync (EGLDisplay dpy, EGLSync sync, EGLint 
 	return EGL_FALSE;
 }
 
+/*
 EGLAPI EGLBoolean EGLAPIENTRY eglGetPlatformDependentHandles (EGLContextInternals* out, EGLDisplay dpy, EGLSurface surface, EGLContext ctx)
 {
 	return _eglGetPlatformDependentHandles (out, dpy, surface, ctx);
 }
+*/
