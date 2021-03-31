@@ -914,16 +914,6 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 			// Check, if this configuration exists.
 			EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
-			EGLConfigImpl* cc = walkerConfig;
-			while (cc)
-			{
-				if (cc->surfaceType & EGL_WINDOW_BIT)
-				{
-					cc = cc->next;
-					continue;
-				}
-				cc = cc->next;
-			}
 
 			#define stack_mem_sz (1ull << 13) // 8k
 			EGLbyte stack_mem[stack_mem_sz];

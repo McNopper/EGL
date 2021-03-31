@@ -87,7 +87,7 @@ typedef HPBUFFERARB NativePbufferType;
 #else
 #include <GL/glx.h>
 #endif  // EGL_NO_GLEW
-#define CONTEXT_ATTRIB_LIST_SIZE 10
+#define CONTEXT_ATTRIB_LIST_SIZE 9
 
 typedef struct _NativeSurfaceContainer {
 

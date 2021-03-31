@@ -27,6 +27,7 @@
 #include "egl_internal.h"
 #include "../../EGL/include/EGL/eglctxinternals.h"
 #include <iostream>
+#include <thread>
 
 #if defined(EGL_NO_GLEW)
 typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display*, GLXFBConfig,
@@ -48,6 +49,19 @@ __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
 {
 	return (__eglMustCastToProperFunctionPointerType )glXGetProcAddress((const GLubyte *)procname);
 }
+
+//#define DEBUG_EGL_X11_BACKEND
+
+#ifdef DEBUG_EGL_X11_BACKEND
+static void logglxcall(const char* fname)
+{
+	auto tid = std::this_thread::get_id();
+	size_t t = std::hash<std::thread::id>{}(tid);
+	std::cout << "tid=" << t << ": " << fname << std::endl;
+}
+#else
+#	define logglxcall(fname)
+#endif
 
 EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer)
 {
@@ -84,6 +98,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	int glxMinor;
 
 	// GLX version 1.4 or higher needed.
+	logglxcall("glXQueryVersion");
 	if (!glXQueryVersion(nativeLocalStorageContainer->display, &glxMajor, &glxMinor))
 	{
 		XCloseDisplay(nativeLocalStorageContainer->display);
@@ -119,6 +134,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		None
 	};
 
+	logglxcall("glXChooseVisual");
 	XVisualInfo* visualInfo = glXChooseVisual(nativeLocalStorageContainer->display, 0, dummyAttribList);
 
 	if (!visualInfo)
@@ -131,6 +147,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
   
+	logglxcall("glXCreateContext");
 	nativeLocalStorageContainer->ctx = glXCreateContext(nativeLocalStorageContainer->display, visualInfo, NULL, True);
 
 	if (!nativeLocalStorageContainer->ctx)
@@ -143,6 +160,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
+	logglxcall("glXMakeCurrent");
 	if (!glXMakeCurrent(nativeLocalStorageContainer->display, nativeLocalStorageContainer->window, nativeLocalStorageContainer->ctx))
 	{
 		glXDestroyContext(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
@@ -192,11 +210,13 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 
 	if (nativeLocalStorageContainer->display)
 	{
+		logglxcall("glXMakeContextCurrent");
 		glXMakeContextCurrent(nativeLocalStorageContainer->display, 0, 0, 0);
 	}
 
 	if (nativeLocalStorageContainer->display && nativeLocalStorageContainer->ctx)
 	{
+		logglxcall("glXDestroyContext");
 		glXDestroyContext(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
 		nativeLocalStorageContainer->ctx = 0;
 	}
@@ -223,6 +243,7 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
 		return EGL_FALSE;
 	}
 
+	logglxcall("glXDestroyContext");
 	glXDestroyContext(walkerDpy->display_id, nativeContextContainer->ctx);
 
 	return EGL_TRUE;
@@ -235,14 +256,15 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 		return EGL_FALSE;
 	}
 
-	EGLint template_attrib_list[] = {
+	EGLint template_attrib_list[CONTEXT_ATTRIB_LIST_SIZE] = {
 			GLX_CONTEXT_MAJOR_VERSION_ARB, 1,
 			GLX_CONTEXT_MINOR_VERSION_ARB, 0,
 			GLX_CONTEXT_FLAGS_ARB, 0,
 			GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
-			GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_NO_RESET_NOTIFICATION_ARB,
+			//GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_NO_RESET_NOTIFICATION_ARB,
 			0
 	};
+	template_attrib_list[CONTEXT_ATTRIB_LIST_SIZE-1] = 0;
 
 	EGLint attribListIndex = 0;
 
@@ -348,24 +370,24 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 				}
 			}
 			break;
-			case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
-			{
-				if (value == EGL_NO_RESET_NOTIFICATION)
-				{
-					template_attrib_list[9] = GLX_NO_RESET_NOTIFICATION_ARB;
-				}
-				else if (value == EGL_LOSE_CONTEXT_ON_RESET)
-				{
-					template_attrib_list[9] = GLX_LOSE_CONTEXT_ON_RESET_ARB;
-				}
-				else
-				{
-					*error = EGL_BAD_ATTRIBUTE;
+			// case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
+			// {
+			// 	if (value == EGL_NO_RESET_NOTIFICATION)
+			// 	{
+			// 		template_attrib_list[9] = GLX_NO_RESET_NOTIFICATION_ARB;
+			// 	}
+			// 	else if (value == EGL_LOSE_CONTEXT_ON_RESET)
+			// 	{
+			// 		template_attrib_list[9] = GLX_LOSE_CONTEXT_ON_RESET_ARB;
+			// 	}
+			// 	else
+			// 	{
+			// 		*error = EGL_BAD_ATTRIBUTE;
 
-					return EGL_FALSE;
-				}
-			}
-			break;
+			// 		return EGL_FALSE;
+			// 	}
+			// }
+			// break;
 			default:
 			{
 				*error = EGL_BAD_ATTRIBUTE;
@@ -397,6 +419,10 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	{
 		return EGL_FALSE;
 	}
+	if (!walkerConfig->drawToPBuffer)
+	{
+		return EGL_FALSE;
+	}
 
 	EGLNativeDisplayType display = walkerDpy->display_id;
 
@@ -411,7 +437,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	int* width = glxattribs + 1;
 	int* height = glxattribs + 3;
 	int* largest_pbuffer = glxattribs + 5;
-	EGLBoolean colorspace_srgb = 0;
+	EGLBoolean colorspace_srgb = 1;
 
 	EGLint currAttrib = 0;
 	while (attrib_list[currAttrib] != EGL_NONE)
@@ -428,114 +454,37 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 		case EGL_LARGEST_PBUFFER:
 			*largest_pbuffer = value; break;
 		case EGL_GL_COLORSPACE:
-			colorspace_srgb = 1; break;
+			colorspace_srgb = (value == EGL_GL_COLORSPACE_SRGB); break;
 		}
 
 		currAttrib += 2;
 	}
 
-
-	EGLint numberPixelFormats;
-
-	GLXFBConfig* fbConfigs = glXGetFBConfigs(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), &numberPixelFormats);
-
-	if (!fbConfigs || numberPixelFormats == 0)
-	{
-		if (fbConfigs)
-		{
-			XFree(fbConfigs);
-		}
-
-		return EGL_FALSE;
-	}
-
-	EGLint attribute;
-
-	XVisualInfo* visualInfo;
-
 	GLXFBConfig config = 0;
+	int glxchooseAttribs[] = {
+		GLX_BUFFER_SIZE, walkerConfig->bufferSize,
+		GLX_LEVEL, walkerConfig->level,
+		GLX_DOUBLEBUFFER, walkerConfig->doubleBuffer,
+		GLX_RED_SIZE, walkerConfig->redSize,
+		GLX_GREEN_SIZE, walkerConfig->greenSize,
+		GLX_BLUE_SIZE, walkerConfig->blueSize,
+		GLX_ALPHA_SIZE, walkerConfig->alphaSize,
+		GLX_DEPTH_SIZE, walkerConfig->depthSize,
+		GLX_STENCIL_SIZE, walkerConfig->stencilSize,
+		GLX_RENDER_TYPE, GLX_RGBA_BIT,
+		//GLX_DRAWABLE_TYPE, (walkerConfig->drawToWindow ?  GLX_WINDOW_BIT : 0) | (walkerConfig->drawToPBuffer ? GLX_PBUFFER_BIT : 0) | (walkerConfig->drawToPixmap ?  GLX_PIXMAP_BIT : 0),
+		GLX_DRAWABLE_TYPE, GLX_PBUFFER_BIT,
+		GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB, colorspace_srgb,
+		GLX_X_RENDERABLE, True,
+		None
+	};
 
-	for (EGLint currentPixelFormat = 0; currentPixelFormat < numberPixelFormats; currentPixelFormat++)
-	{
-		EGLint value;
-
-		attribute = GLX_VISUAL_ID;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (!value)
-		{
-			continue;
-		}
-
-		// No check for OpenGL.
-
-		attribute = GLX_RENDER_TYPE;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (!(value & GLX_RGBA_BIT)) // TODO why?
-		{
-			continue;
-		}
-
-		attribute = GLX_TRANSPARENT_TYPE;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (value == GLX_TRANSPARENT_INDEX)
-		{
-			continue;
-		}
-
-		attribute = GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (colorspace_srgb && value == False)
-		{
-			continue;
-		}
-
-		//
-
-		visualInfo = glXGetVisualFromFBConfig(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
-
-		if (!visualInfo)
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-
-		if (walkerConfig->nativeVisualId == visualInfo->visualid)
-		{
-			config = fbConfigs[currentPixelFormat];
-
-			XFree(visualInfo);
-
-			break;
-		}
-
-		XFree(visualInfo);
-	}
-
-	XFree(fbConfigs);
-
-	if (!config)
+	EGLint numConfigs = 0;
+	GLXFBConfig* chooseRetval = glXChooseFBConfig(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), glxchooseAttribs, &numConfigs);
+	if (chooseRetval==NULL || numConfigs==0)
 		return EGL_FALSE;
+	config = chooseRetval[0];
+	XFree(chooseRetval);
 
 	newSurface->drawToWindow = EGL_FALSE;
 	newSurface->drawToPixmap = EGL_FALSE;
@@ -545,9 +494,10 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
+	logglxcall("glXCreatePbuffer");
 	newSurface->pbuf = glXCreatePbuffer(display, config, glxattribs);
 	newSurface->nativeSurfaceContainer.config = config;
-	newSurface->nativeSurfaceContainer.drawable = 0; // TODO (this function doesnt really have access to GLXDrawable)
+	newSurface->nativeSurfaceContainer.drawable = newSurface->pbuf;
 
 	return EGL_TRUE;
 }
@@ -649,121 +599,31 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 
 	//
 
-	EGLint numberPixelFormats;
-
-	GLXFBConfig* fbConfigs = glXGetFBConfigs(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), &numberPixelFormats);
-
-	if (!fbConfigs || numberPixelFormats == 0)
-	{
-		if (fbConfigs)
-		{
-			XFree(fbConfigs);
-		}
-
-		return EGL_FALSE;
-	}
-
-	EGLint attribute;
-
-	XVisualInfo* visualInfo;
-
 	GLXFBConfig config = 0;
+	int glxchooseAttribs[] = {
+		GLX_BUFFER_SIZE, walkerConfig->bufferSize,
+		GLX_LEVEL, walkerConfig->level,
+		GLX_DOUBLEBUFFER, doublebuffer,
+		GLX_RED_SIZE, walkerConfig->redSize,
+		GLX_GREEN_SIZE, walkerConfig->greenSize,
+		GLX_BLUE_SIZE, walkerConfig->blueSize,
+		GLX_ALPHA_SIZE, walkerConfig->alphaSize,
+		GLX_DEPTH_SIZE, walkerConfig->depthSize,
+		GLX_STENCIL_SIZE, walkerConfig->stencilSize,
+		GLX_RENDER_TYPE, GLX_RGBA_BIT,
+		//GLX_DRAWABLE_TYPE, (walkerConfig->drawToWindow ?  GLX_WINDOW_BIT : 0) | (walkerConfig->drawToPBuffer ? GLX_PBUFFER_BIT : 0) | (walkerConfig->drawToPixmap ?  GLX_PIXMAP_BIT : 0),
+		GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+		GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB, colorspace_srgb,
+		GLX_X_RENDERABLE, True,
+		None
+	};
 
-	for (EGLint currentPixelFormat = 0; currentPixelFormat < numberPixelFormats; currentPixelFormat++)
-	{
-		EGLint value;
-
-		attribute = GLX_VISUAL_ID;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (!value)
-		{
-			continue;
-		}
-
-		// No check for OpenGL.
-
-		attribute = GLX_RENDER_TYPE;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (!(value & GLX_RGBA_BIT)) // TODO why?
-		{
-			continue;
-		}
-
-		attribute = GLX_TRANSPARENT_TYPE;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (value == GLX_TRANSPARENT_INDEX)
-		{
-			continue;
-		}
-
-		attribute = GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (colorspace_srgb && value == False)
-		{
-			continue;
-		}
-
-		attribute = GLX_DOUBLEBUFFER;
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-		if (doublebuffer && value == False)
-		{
-			continue;
-		}
-
-		//
-
-		visualInfo = glXGetVisualFromFBConfig(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
-
-		if (!visualInfo)
-		{
-			XFree(fbConfigs);
-
-			return EGL_FALSE;
-		}
-
-		if (walkerConfig->nativeVisualId == visualInfo->visualid)
-		{
-			config = fbConfigs[currentPixelFormat];
-
-			XFree(visualInfo);
-
-			break;
-		}
-
-		XFree(visualInfo);
-	}
-
-	XFree(fbConfigs);
-
-	if (!config)
-	{
+	EGLint numConfigs = 0;
+	GLXFBConfig* chooseRetval = glXChooseFBConfig(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), glxchooseAttribs, &numConfigs);
+	if (chooseRetval==NULL || numConfigs==0)
 		return EGL_FALSE;
-	}
+	config = chooseRetval[0];
+	XFree(chooseRetval);
 
 	newSurface->drawToWindow = EGL_TRUE;
 	newSurface->drawToPixmap = EGL_FALSE;
@@ -789,6 +649,7 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 
 	if (surface->drawToPBuffer)
 	{
+		logglxcall("glXDestroyPbuffer");
 		glXDestroyPbuffer(dpy, surface->pbuf);
 	}
 	// else Nothing to release.
@@ -803,6 +664,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		return EGL_FALSE;
 	}
 
+	logglxcall("glXQueryExtensionsString");
 	const char* extensions_str = glXQueryExtensionsString(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id));
 	int ES_supported = strstr(extensions_str, "GLX_EXT_create_context_es_profile") != NULL;
 	const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
@@ -811,6 +673,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 	EGLint numberPixelFormats;
 
+	logglxcall("glXGetFBConfigs");
 	GLXFBConfig* fbConfigs = glXGetFBConfigs(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), &numberPixelFormats);
 
 	if (!fbConfigs || numberPixelFormats == 0)
@@ -835,6 +698,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		EGLint value;
 
 		attribute = GLX_VISUAL_ID;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 		{
 			XFree(fbConfigs);
@@ -851,6 +715,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		// No check for OpenGL.
 
 		attribute = GLX_RENDER_TYPE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 		{
 			XFree(fbConfigs);
@@ -865,6 +730,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_TRANSPARENT_TYPE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 		{
 			XFree(fbConfigs);
@@ -906,6 +772,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		//
 
 		attribute = GLX_DRAWABLE_TYPE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 		{
 			XFree(fbConfigs);
@@ -920,6 +787,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		newConfig->drawToPBuffer = value & GLX_PBUFFER_BIT ? EGL_TRUE : EGL_FALSE;
 
 		attribute = GLX_DOUBLEBUFFER;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->doubleBuffer))
 		{
 			XFree(fbConfigs);
@@ -950,6 +818,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		newConfig->configId = currentPixelFormat;
 
 		attribute = GLX_BUFFER_SIZE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bufferSize))
 		{
 			XFree(fbConfigs);
@@ -960,6 +829,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_RED_SIZE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->redSize))
 		{
 			XFree(fbConfigs);
@@ -970,6 +840,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_GREEN_SIZE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->greenSize))
 		{
 			XFree(fbConfigs);
@@ -980,6 +851,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_BLUE_SIZE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->blueSize))
 		{
 			XFree(fbConfigs);
@@ -990,6 +862,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_ALPHA_SIZE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->alphaSize))
 		{
 			XFree(fbConfigs);
@@ -1000,6 +873,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_DEPTH_SIZE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->depthSize))
 		{
 			XFree(fbConfigs);
@@ -1010,6 +884,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_STENCIL_SIZE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->stencilSize))
 		{
 			XFree(fbConfigs);
@@ -1023,6 +898,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		//
 
 		attribute = GLX_SAMPLE_BUFFERS;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->sampleBuffers))
 		{
 			XFree(fbConfigs);
@@ -1033,6 +909,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_SAMPLES;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->samples))
 		{
 			XFree(fbConfigs);
@@ -1045,6 +922,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		//
 
 		attribute = GLX_BIND_TO_TEXTURE_RGB_EXT;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bindToTextureRGB))
 		{
 			XFree(fbConfigs);
@@ -1056,6 +934,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		newConfig->bindToTextureRGB = newConfig->bindToTextureRGB ? EGL_TRUE : EGL_FALSE;
 
 		attribute = GLX_BIND_TO_TEXTURE_RGBA_EXT;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bindToTextureRGBA))
 		{
 			XFree(fbConfigs);
@@ -1069,6 +948,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		//
 
 		attribute = GLX_MAX_PBUFFER_PIXELS;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferPixels))
 		{
 			XFree(fbConfigs);
@@ -1079,6 +959,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_MAX_PBUFFER_WIDTH;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferWidth))
 		{
 			XFree(fbConfigs);
@@ -1089,6 +970,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_MAX_PBUFFER_HEIGHT;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferHeight))
 		{
 			XFree(fbConfigs);
@@ -1101,6 +983,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		//
 
 		attribute = GLX_TRANSPARENT_TYPE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentType))
 		{
 			XFree(fbConfigs);
@@ -1112,6 +995,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		newConfig->transparentType = newConfig->transparentType == GLX_TRANSPARENT_RGB ? EGL_TRANSPARENT_RGB : EGL_NONE;
 
 		attribute = GLX_TRANSPARENT_RED_VALUE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentRedValue))
 		{
 			XFree(fbConfigs);
@@ -1122,6 +1006,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_TRANSPARENT_GREEN_VALUE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentGreenValue))
 		{
 			XFree(fbConfigs);
@@ -1132,6 +1017,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		attribute = GLX_TRANSPARENT_BLUE_VALUE;
+		logglxcall("glXGetFBConfigAttrib");
 		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentBlueValue))
 		{
 			XFree(fbConfigs);
@@ -1142,7 +1028,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		//
-
+		logglxcall("glXGetVisualFromFBConfig");
 		visualInfo = glXGetVisualFromFBConfig(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
 
 		if (!visualInfo)
@@ -1173,8 +1059,10 @@ static int xerrorhandler(Display *dsp, XErrorEvent *error)
 {
   char errorstring[1024];
   XGetErrorText(dsp, error->error_code, errorstring, 1024);
+  int minor = error->minor_code;
+  int err = error->error_code;
     
-  std::cerr << "ack!fatal: X error--" << errorstring << std::endl;
+  std::cerr << "X error--" << errorstring << " minor = " << minor << " major = " << err << std::endl;
   exit(-1);
 }
 EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList)
@@ -1184,6 +1072,7 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const
 		return EGL_FALSE;
 	}
 	XSetErrorHandler(xerrorhandler);
+	logglxcall("glXCreateContextAttribsARB");
 	nativeContextContainer->ctx = glXCreateContextAttribsARB(walkerDpy->display_id, nativeSurfaceContainer->config, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, True, attribList);
 
 	return nativeContextContainer->ctx != 0;
@@ -1197,8 +1086,12 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
 	}
 
 	if (!nativeContextContainer)
+	{
+		logglxcall("glXMakeCurrent");
 		return (EGLBoolean)glXMakeCurrent(walkerDpy->display_id, None, NULL);
+	}
 
+	logglxcall("glXMakeCurrent");
 	return (EGLBoolean)glXMakeCurrent(walkerDpy->display_id, nativeSurfaceContainer->drawable, nativeContextContainer->ctx);
 }
 
@@ -1209,6 +1102,7 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 		return EGL_FALSE;
 	}
 
+	logglxcall("glXSwapBuffers");
 	glXSwapBuffers(walkerDpy->display_id, walkerSurface->win);
 
 	return EGL_TRUE;
@@ -1221,6 +1115,7 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 		return EGL_FALSE;
 	}
 
+	logglxcall("glXSwapIntervalEXT");
 	glXSwapIntervalEXT(walkerDpy->display_id, walkerDpy->currentDraw->win, interval);
 
 	return EGL_TRUE;
