@@ -242,19 +242,20 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
 	return wglDeleteContext(nativeContextContainer->ctx);
 }
 
-EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error)
+EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error)
 {
 	if (!target_attrib_list || !attrib_list || !error)
 	{
 		return EGL_FALSE;
 	}
 
+	const EGLint defaultProfileMask = ((api == EGL_OPENGL_ES_API) ? WGL_CONTEXT_ES_PROFILE_BIT_EXT : WGL_CONTEXT_CORE_PROFILE_BIT_ARB);
 	EGLint template_attrib_list[] = {
 			WGL_CONTEXT_MAJOR_VERSION_ARB, 1,
 			WGL_CONTEXT_MINOR_VERSION_ARB, 0,
 			WGL_CONTEXT_LAYER_PLANE_ARB, 0,
 			WGL_CONTEXT_FLAGS_ARB, 0,
-			WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+			WGL_CONTEXT_PROFILE_MASK_ARB, defaultProfileMask,
 			WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, WGL_NO_RESET_NOTIFICATION_ARB,
 			0
 	};

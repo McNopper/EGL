@@ -249,19 +249,20 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
 	return EGL_TRUE;
 }
 
-EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error)
+EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error)
 {
 	if (!target_attrib_list || !attrib_list || !error)
 	{
 		return EGL_FALSE;
 	}
 
+	const EGLint defaultProfileMask = ((api == EGL_OPENGL_ES_API) ? GLX_CONTEXT_ES_PROFILE_BIT_EXT : GLX_CONTEXT_CORE_PROFILE_BIT_ARB);
 	EGLint template_attrib_list[CONTEXT_ATTRIB_LIST_SIZE] = {
 			GLX_CONTEXT_MAJOR_VERSION_ARB, 1,
 			GLX_CONTEXT_MINOR_VERSION_ARB, 0,
 			GLX_CONTEXT_FLAGS_ARB, 0,
-			GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
-			//GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_NO_RESET_NOTIFICATION_ARB,
+			GLX_CONTEXT_PROFILE_MASK_ARB, defaultProfileMask,
+			GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_NO_RESET_NOTIFICATION_ARB,
 			0
 	};
 	template_attrib_list[CONTEXT_ATTRIB_LIST_SIZE-1] = 0;
@@ -370,24 +371,24 @@ EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_
 				}
 			}
 			break;
-			// case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
-			// {
-			// 	if (value == EGL_NO_RESET_NOTIFICATION)
-			// 	{
-			// 		template_attrib_list[9] = GLX_NO_RESET_NOTIFICATION_ARB;
-			// 	}
-			// 	else if (value == EGL_LOSE_CONTEXT_ON_RESET)
-			// 	{
-			// 		template_attrib_list[9] = GLX_LOSE_CONTEXT_ON_RESET_ARB;
-			// 	}
-			// 	else
-			// 	{
-			// 		*error = EGL_BAD_ATTRIBUTE;
+			case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
+			{
+				if (value == EGL_NO_RESET_NOTIFICATION)
+				{
+					template_attrib_list[9] = GLX_NO_RESET_NOTIFICATION_ARB;
+				}
+				else if (value == EGL_LOSE_CONTEXT_ON_RESET)
+				{
+					template_attrib_list[9] = GLX_LOSE_CONTEXT_ON_RESET_ARB;
+				}
+				else
+				{
+					*error = EGL_BAD_ATTRIBUTE;
 
-			// 		return EGL_FALSE;
-			// 	}
-			// }
-			// break;
+					return EGL_FALSE;
+				}
+			}
+			break;
 			default:
 			{
 				*error = EGL_BAD_ATTRIBUTE;

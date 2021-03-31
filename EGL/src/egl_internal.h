@@ -87,7 +87,7 @@ typedef HPBUFFERARB NativePbufferType;
 #else
 #include <GL/glx.h>
 #endif  // EGL_NO_GLEW
-#define CONTEXT_ATTRIB_LIST_SIZE 9
+#define CONTEXT_ATTRIB_LIST_SIZE 11
 
 typedef struct _NativeSurfaceContainer {
 
@@ -335,7 +335,7 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 
 EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextContainer* nativeContextContainer);
 
-EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error);
+EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error);
 
 EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 

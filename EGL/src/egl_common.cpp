@@ -1198,7 +1198,11 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 				{
 					EGLint target_attrib_list[CONTEXT_ATTRIB_LIST_SIZE];
 
-					if (!__processAttribList(target_attrib_list, attrib_list, &g_localStorage.error))
+					if (g_localStorage.api == EGL_OPENGL_ES_API && (walkerConfig->conformant & EGL_OPENGL_ES3_BIT) == 0)
+					{
+						return EGL_FALSE;
+					}
+					if (!__processAttribList(g_localStorage.api, target_attrib_list, attrib_list, &g_localStorage.error))
 					{
 						return EGL_FALSE;
 					}
@@ -2743,7 +2747,7 @@ EGLBoolean _eglSwapInterval(EGLDisplay dpy, EGLint interval)
 
 EGLBoolean _eglBindAPI(EGLenum api)
 {
-	if (api == EGL_OPENGL_API)
+	if (api == EGL_OPENGL_API || api == EGL_OPENGL_ES_API)
 	{
 		g_localStorage.api = api;
 
