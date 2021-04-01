@@ -28,6 +28,7 @@
 #include "../../EGL/include/EGL/eglctxinternals.h"
 #include <iostream>
 #include <thread>
+#include <dlfcn.h>
 
 #if defined(EGL_NO_GLEW)
 typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display*, GLXFBConfig,
@@ -43,11 +44,36 @@ __PFN_glFinish glFinish_PTR = NULL;
 #define glXSwapIntervalEXT(...) glXSwapIntervalEXT_PTR(__VA_ARGS__)
 #define glXCreateContextAttribsARB(...) \
     glXCreateContextAttribsARB_PTR(__VA_ARGS__)
-#endif 
+#endif
+
+void* libx11 = NULL;
+void* libgl = NULL;
+//X
+decltype(XOpenDisplay)* XOpenDisplay_PTR = NULL;
+decltype(XCloseDisplay)* XCloseDisplay_PTR = NULL;
+decltype(XDestroyWindow)* XDestroyWindow_PTR = NULL;
+decltype(XFree)* XFree_PTR = NULL;
+decltype(XGetErrorText)* XGetErrorText_PTR = NULL;
+decltype(XSetErrorHandler)* XSetErrorHandler_PTR = NULL;
+//glX
+decltype(glXGetProcAddress)* glXGetProcAddress_PTR = NULL;
+Bool(*glXQueryVersion_PTR)(Display*,int*,int*) = NULL;
+XVisualInfo*(*glXChooseVisual_PTR)(Display*,int,int*) = NULL;
+GLXContext(*glXCreateContext_PTR)(Display*, XVisualInfo*, GLXContext, Bool);
+Bool(*glXMakeCurrent_PTR)(Display*,GLXDrawable,GLXContext) = NULL;
+void(*glXDestroyContext_PTR)(Display*,GLXContext) = NULL;
+GLXFBConfig*(*glXChooseFBConfig_PTR)(Display*,int,const int*, int*) = NULL;
+int(*glXGetFBConfigAttrib_PTR)(Display*,GLXFBConfig,int,int*) = NULL;
+XVisualInfo*(*glXGetVisualFromFBConfig_PTR)(Display*,GLXFBConfig) = NULL;
+void(*glXSwapBuffers_PTR)(Display*,GLXDrawable) = NULL;
+GLXPbuffer(*glXCreatePbuffer_PTR)(Display*,GLXFBConfig,const int*) = NULL;
+void(*glXDestroyPbuffer_PTR)(Display*,GLXPbuffer) = NULL;
+const char*(*glXQueryExtensionsString_PTR)(Display*,int) = NULL;
+GLXFBConfig*(*glXGetFBConfigs_PTR)(Display*,int,int*) = NULL;
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
 {
-	return (__eglMustCastToProperFunctionPointerType )glXGetProcAddress((const GLubyte *)procname);
+	return (__eglMustCastToProperFunctionPointerType) glXGetProcAddress_PTR((const GLubyte *)procname);
 }
 
 //#define DEBUG_EGL_X11_BACKEND
@@ -85,7 +111,35 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
-	nativeLocalStorageContainer->display = XOpenDisplay(NULL);
+	libx11 = dlopen("libX11.so", RTLD_LAZY);
+	libgl = dlopen("libGL.so", RTLD_LAZY);
+#define LOAD_X11_FUNC_PTR(fname) fname##_PTR = (decltype(fname##_PTR)) dlsym(libx11, #fname)
+	LOAD_X11_FUNC_PTR(XOpenDisplay);
+	LOAD_X11_FUNC_PTR(XCloseDisplay);
+	LOAD_X11_FUNC_PTR(XDestroyWindow);
+	LOAD_X11_FUNC_PTR(XFree);
+	LOAD_X11_FUNC_PTR(XGetErrorText);
+	LOAD_X11_FUNC_PTR(XSetErrorHandler);
+	//LOAD_GLX_FUNC_PTR(glXGetProcAddress);
+	glXGetProcAddress_PTR = (decltype(glXGetProcAddress_PTR)) dlsym(libgl, "glXGetProcAddress");
+	if (!glXGetProcAddress_PTR)
+		glXGetProcAddress_PTR = (decltype(glXGetProcAddress_PTR)) dlsym(libgl, "glXGetProcAddressARB");
+#define LOAD_GLX_FUNC_PTR(fname) fname##_PTR = (decltype(fname##_PTR)) __getProcAddress(#fname);
+	LOAD_GLX_FUNC_PTR(glXQueryVersion);
+	LOAD_GLX_FUNC_PTR(glXChooseVisual);
+	LOAD_GLX_FUNC_PTR(glXCreateContext);
+	LOAD_GLX_FUNC_PTR(glXMakeCurrent);
+	LOAD_GLX_FUNC_PTR(glXDestroyContext);
+	LOAD_GLX_FUNC_PTR(glXChooseFBConfig);
+	LOAD_GLX_FUNC_PTR(glXGetFBConfigAttrib);
+	LOAD_GLX_FUNC_PTR(glXGetVisualFromFBConfig);
+	LOAD_GLX_FUNC_PTR(glXSwapBuffers);
+	LOAD_GLX_FUNC_PTR(glXCreatePbuffer);
+	LOAD_GLX_FUNC_PTR(glXDestroyPbuffer);
+	LOAD_GLX_FUNC_PTR(glXQueryExtensionsString);
+	LOAD_GLX_FUNC_PTR(glXGetFBConfigs);
+
+	nativeLocalStorageContainer->display = XOpenDisplay_PTR(NULL);
 
 	if (!nativeLocalStorageContainer->display)
 	{
@@ -99,9 +153,9 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 	// GLX version 1.4 or higher needed.
 	logglxcall("glXQueryVersion");
-	if (!glXQueryVersion(nativeLocalStorageContainer->display, &glxMajor, &glxMinor))
+	if (!glXQueryVersion_PTR(nativeLocalStorageContainer->display, &glxMajor, &glxMinor))
 	{
-		XCloseDisplay(nativeLocalStorageContainer->display);
+		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
 		nativeLocalStorageContainer->display = 0;
 
 		return EGL_FALSE;
@@ -109,7 +163,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 	if (glxMajor < 1 || (glxMajor == 1 && glxMinor < 4))
 	{
-		XCloseDisplay(nativeLocalStorageContainer->display);
+		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
 		nativeLocalStorageContainer->display = 0;
 
 		return EGL_FALSE;
@@ -121,7 +175,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 	if (!nativeLocalStorageContainer->window)
 	{
-		XCloseDisplay(nativeLocalStorageContainer->display);
+		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
 		nativeLocalStorageContainer->display = 0;
 
 		return EGL_FALSE;
@@ -135,40 +189,40 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	};
 
 	logglxcall("glXChooseVisual");
-	XVisualInfo* visualInfo = glXChooseVisual(nativeLocalStorageContainer->display, 0, dummyAttribList);
+	XVisualInfo* visualInfo = glXChooseVisual_PTR(nativeLocalStorageContainer->display, 0, dummyAttribList);
 
 	if (!visualInfo)
 	{
 		nativeLocalStorageContainer->window = 0;
 
-		XCloseDisplay(nativeLocalStorageContainer->display);
+		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
 		nativeLocalStorageContainer->display = 0;
 
 		return EGL_FALSE;
 	}
   
 	logglxcall("glXCreateContext");
-	nativeLocalStorageContainer->ctx = glXCreateContext(nativeLocalStorageContainer->display, visualInfo, NULL, True);
+	nativeLocalStorageContainer->ctx = glXCreateContext_PTR(nativeLocalStorageContainer->display, visualInfo, NULL, True);
 
 	if (!nativeLocalStorageContainer->ctx)
 	{
 		nativeLocalStorageContainer->window = 0;
 
-		XCloseDisplay(nativeLocalStorageContainer->display);
+		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
 		nativeLocalStorageContainer->display = 0;
 
 		return EGL_FALSE;
 	}
 
 	logglxcall("glXMakeCurrent");
-	if (!glXMakeCurrent(nativeLocalStorageContainer->display, nativeLocalStorageContainer->window, nativeLocalStorageContainer->ctx))
+	if (!glXMakeCurrent_PTR(nativeLocalStorageContainer->display, nativeLocalStorageContainer->window, nativeLocalStorageContainer->ctx))
 	{
-		glXDestroyContext(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
+		glXDestroyContext_PTR(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
 		nativeLocalStorageContainer->ctx = 0;
 
 		nativeLocalStorageContainer->window = 0;
 
-		XCloseDisplay(nativeLocalStorageContainer->display);
+		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
 		nativeLocalStorageContainer->display = 0;
 
 		return EGL_FALSE;
@@ -178,14 +232,14 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GL_NO_ERROR)
 	{
-		glXMakeCurrent(nativeLocalStorageContainer->display, 0, 0);
+		glXMakeCurrent_PTR(nativeLocalStorageContainer->display, 0, 0);
 
-		glXDestroyContext(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
+		glXDestroyContext_PTR(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
 		nativeLocalStorageContainer->ctx = 0;
 
 		nativeLocalStorageContainer->window = 0;
 
-		XCloseDisplay(nativeLocalStorageContainer->display);
+		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
 		nativeLocalStorageContainer->display = 0;
 
 		return EGL_FALSE;
@@ -217,21 +271,24 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 	if (nativeLocalStorageContainer->display && nativeLocalStorageContainer->ctx)
 	{
 		logglxcall("glXDestroyContext");
-		glXDestroyContext(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
+		glXDestroyContext_PTR(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
 		nativeLocalStorageContainer->ctx = 0;
 	}
 
 	if (nativeLocalStorageContainer->display && nativeLocalStorageContainer->window)
 	{
-		XDestroyWindow(nativeLocalStorageContainer->display, nativeLocalStorageContainer->window);
+		XDestroyWindow_PTR(nativeLocalStorageContainer->display, nativeLocalStorageContainer->window);
 		nativeLocalStorageContainer->window = 0;
 	}
 
 	if (nativeLocalStorageContainer->display)
 	{
-		XCloseDisplay(nativeLocalStorageContainer->display);
+		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
 		nativeLocalStorageContainer->display = 0;
 	}
+
+	dlclose(libx11);
+	dlclose(libgl);
 
 	return EGL_TRUE;
 }
@@ -244,7 +301,7 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
 	}
 
 	logglxcall("glXDestroyContext");
-	glXDestroyContext(walkerDpy->display_id, nativeContextContainer->ctx);
+	glXDestroyContext_PTR(walkerDpy->display_id, nativeContextContainer->ctx);
 
 	return EGL_TRUE;
 }
@@ -481,11 +538,11 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	};
 
 	EGLint numConfigs = 0;
-	GLXFBConfig* chooseRetval = glXChooseFBConfig(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), glxchooseAttribs, &numConfigs);
+	GLXFBConfig* chooseRetval = glXChooseFBConfig_PTR(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), glxchooseAttribs, &numConfigs);
 	if (chooseRetval==NULL || numConfigs==0)
 		return EGL_FALSE;
 	config = chooseRetval[0];
-	XFree(chooseRetval);
+	XFree_PTR(chooseRetval);
 
 	newSurface->drawToWindow = EGL_FALSE;
 	newSurface->drawToPixmap = EGL_FALSE;
@@ -496,7 +553,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
 	logglxcall("glXCreatePbuffer");
-	newSurface->pbuf = glXCreatePbuffer(display, config, glxattribs);
+	newSurface->pbuf = glXCreatePbuffer_PTR(display, config, glxattribs);
 	newSurface->nativeSurfaceContainer.config = config;
 	newSurface->nativeSurfaceContainer.drawable = newSurface->pbuf;
 
@@ -620,11 +677,11 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 	};
 
 	EGLint numConfigs = 0;
-	GLXFBConfig* chooseRetval = glXChooseFBConfig(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), glxchooseAttribs, &numConfigs);
+	GLXFBConfig* chooseRetval = glXChooseFBConfig_PTR(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), glxchooseAttribs, &numConfigs);
 	if (chooseRetval==NULL || numConfigs==0)
 		return EGL_FALSE;
 	config = chooseRetval[0];
-	XFree(chooseRetval);
+	XFree_PTR(chooseRetval);
 
 	newSurface->drawToWindow = EGL_TRUE;
 	newSurface->drawToPixmap = EGL_FALSE;
@@ -651,7 +708,7 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 	if (surface->drawToPBuffer)
 	{
 		logglxcall("glXDestroyPbuffer");
-		glXDestroyPbuffer(dpy, surface->pbuf);
+		glXDestroyPbuffer_PTR(dpy, surface->pbuf);
 	}
 	// else Nothing to release.
 
@@ -666,7 +723,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 	}
 
 	logglxcall("glXQueryExtensionsString");
-	const char* extensions_str = glXQueryExtensionsString(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id));
+	const char* extensions_str = glXQueryExtensionsString_PTR(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id));
 	int ES_supported = strstr(extensions_str, "GLX_EXT_create_context_es_profile") != NULL;
 	const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
 
@@ -675,13 +732,13 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 	EGLint numberPixelFormats;
 
 	logglxcall("glXGetFBConfigs");
-	GLXFBConfig* fbConfigs = glXGetFBConfigs(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), &numberPixelFormats);
+	GLXFBConfig* fbConfigs = glXGetFBConfigs_PTR(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id), &numberPixelFormats);
 
 	if (!fbConfigs || numberPixelFormats == 0)
 	{
 		if (fbConfigs)
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 		}
 
 		*error = EGL_NOT_INITIALIZED;
@@ -700,9 +757,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_VISUAL_ID;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -717,9 +774,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_RENDER_TYPE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -732,9 +789,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_TRANSPARENT_TYPE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -750,7 +807,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		EGLConfigImpl* newConfig = (EGLConfigImpl*)malloc(sizeof(EGLConfigImpl));
 		if (!newConfig)
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -774,9 +831,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_DRAWABLE_TYPE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -789,9 +846,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_DOUBLEBUFFER;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->doubleBuffer))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->doubleBuffer))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -820,9 +877,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_BUFFER_SIZE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bufferSize))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bufferSize))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -831,9 +888,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_RED_SIZE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->redSize))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->redSize))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -842,9 +899,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_GREEN_SIZE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->greenSize))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->greenSize))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -853,9 +910,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_BLUE_SIZE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->blueSize))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->blueSize))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -864,9 +921,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_ALPHA_SIZE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->alphaSize))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->alphaSize))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -875,9 +932,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_DEPTH_SIZE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->depthSize))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->depthSize))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -886,9 +943,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_STENCIL_SIZE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->stencilSize))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->stencilSize))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -900,9 +957,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_SAMPLE_BUFFERS;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->sampleBuffers))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->sampleBuffers))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -911,9 +968,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_SAMPLES;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->samples))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->samples))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -924,9 +981,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_BIND_TO_TEXTURE_RGB_EXT;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bindToTextureRGB))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bindToTextureRGB))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -936,9 +993,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_BIND_TO_TEXTURE_RGBA_EXT;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bindToTextureRGBA))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->bindToTextureRGBA))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -950,9 +1007,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_MAX_PBUFFER_PIXELS;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferPixels))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferPixels))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -961,9 +1018,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_MAX_PBUFFER_WIDTH;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferWidth))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferWidth))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -972,9 +1029,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_MAX_PBUFFER_HEIGHT;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferHeight))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->maxPBufferHeight))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -985,9 +1042,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_TRANSPARENT_TYPE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentType))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentType))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -997,9 +1054,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_TRANSPARENT_RED_VALUE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentRedValue))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentRedValue))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -1008,9 +1065,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_TRANSPARENT_GREEN_VALUE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentGreenValue))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentGreenValue))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -1019,9 +1076,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		attribute = GLX_TRANSPARENT_BLUE_VALUE;
 		logglxcall("glXGetFBConfigAttrib");
-		if (glXGetFBConfigAttrib(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentBlueValue))
+		if (glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &newConfig->transparentBlueValue))
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -1030,11 +1087,11 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		//
 		logglxcall("glXGetVisualFromFBConfig");
-		visualInfo = glXGetVisualFromFBConfig(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
+		visualInfo = glXGetVisualFromFBConfig_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat]);
 
 		if (!visualInfo)
 		{
-			XFree(fbConfigs);
+			XFree_PTR(fbConfigs);
 
 			*error = EGL_NOT_INITIALIZED;
 
@@ -1043,7 +1100,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
 		newConfig->nativeVisualId = visualInfo->visualid;
 
-		XFree(visualInfo);
+		XFree_PTR(visualInfo);
 
 		newConfig->matchNativePixmap = EGL_NONE;
 		newConfig->nativeRenderable = EGL_DONT_CARE; // ???
@@ -1051,7 +1108,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		// FIXME: Query and save more values.
 	}
 
-	XFree(fbConfigs);
+	XFree_PTR(fbConfigs);
 
 	return EGL_TRUE;
 }
@@ -1059,7 +1116,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 static int xerrorhandler(Display *dsp, XErrorEvent *error)
 {
   char errorstring[1024];
-  XGetErrorText(dsp, error->error_code, errorstring, 1024);
+  XGetErrorText_PTR(dsp, error->error_code, errorstring, 1024);
   int minor = error->minor_code;
   int err = error->error_code;
     
@@ -1072,9 +1129,9 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const
 	{
 		return EGL_FALSE;
 	}
-	XSetErrorHandler(xerrorhandler);
+	//XSetErrorHandler(xerrorhandler);
 	logglxcall("glXCreateContextAttribsARB");
-	nativeContextContainer->ctx = glXCreateContextAttribsARB(walkerDpy->display_id, nativeSurfaceContainer->config, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, True, attribList);
+	nativeContextContainer->ctx = glXCreateContextAttribsARB_PTR(walkerDpy->display_id, nativeSurfaceContainer->config, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, True, attribList);
 
 	return nativeContextContainer->ctx != 0;
 }
@@ -1089,11 +1146,11 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
 	if (!nativeContextContainer)
 	{
 		logglxcall("glXMakeCurrent");
-		return (EGLBoolean)glXMakeCurrent(walkerDpy->display_id, None, NULL);
+		return (EGLBoolean)glXMakeCurrent_PTR(walkerDpy->display_id, None, NULL);
 	}
 
 	logglxcall("glXMakeCurrent");
-	return (EGLBoolean)glXMakeCurrent(walkerDpy->display_id, nativeSurfaceContainer->drawable, nativeContextContainer->ctx);
+	return (EGLBoolean)glXMakeCurrent_PTR(walkerDpy->display_id, nativeSurfaceContainer->drawable, nativeContextContainer->ctx);
 }
 
 EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface)
@@ -1104,7 +1161,7 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 	}
 
 	logglxcall("glXSwapBuffers");
-	glXSwapBuffers(walkerDpy->display_id, walkerSurface->win);
+	glXSwapBuffers_PTR(walkerDpy->display_id, walkerSurface->win);
 
 	return EGL_TRUE;
 }
@@ -1117,7 +1174,7 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 	}
 
 	logglxcall("glXSwapIntervalEXT");
-	glXSwapIntervalEXT(walkerDpy->display_id, walkerDpy->currentDraw->win, interval);
+	glXSwapIntervalEXT_PTR(walkerDpy->display_id, walkerDpy->currentDraw->win, interval);
 
 	return EGL_TRUE;
 }
