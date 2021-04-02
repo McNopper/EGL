@@ -1141,7 +1141,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 			if (configIndex)
 				qsort(configsOnStack, configIndex, sizeof(*configs), &_ChooseConfig_sort_predicate);
 
-			*num_config = std::min(configIndex, config_size);
+			*num_config = (std::min)(configIndex, config_size);
 			memcpy(configs, configsOnStack, *num_config*sizeof(EGLConfig));
 
 			return EGL_TRUE;
