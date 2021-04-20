@@ -33,7 +33,18 @@ HMODULE opengl32dll = NULL;
 
 typedef void(*__PFN_glFinish)();
 
+typedef HGLRC(__stdcall *__PFN_wglCreateContext)(HDC);
+typedef BOOL(__stdcall *__PFN_wglDeleteContext)(HGLRC);
+typedef BOOL(__stdcall *__PFN_wglMakeCurrent)(HDC,HGLRC);
+typedef PROC(__stdcall *__PFN_wglGetProcAddress)(LPCSTR);
+
 __PFN_glFinish glFinish_PTR = NULL;
+
+__PFN_wglCreateContext wglCreateContext_PTR = NULL;
+__PFN_wglDeleteContext wglDeleteContext_PTR = NULL;
+__PFN_wglMakeCurrent wglMakeCurrent_PTR = NULL;
+__PFN_wglGetProcAddress wglGetProcAddress_PTR = NULL;
+
 PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB = NULL;
 PFNWGLGETPIXELFORMATATTRIBIVARBPROC wglGetPixelFormatAttribivARB = NULL;
 PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
@@ -73,6 +84,15 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	{
 		return EGL_FALSE;
 	}
+
+	//
+
+	opengl32dll = LoadLibrary("opengl32.dll");
+
+	wglCreateContext_PTR = (__PFN_wglCreateContext)GetProcAddress(opengl32dll, "wglCreateContext");
+	wglDeleteContext_PTR = (__PFN_wglDeleteContext)GetProcAddress(opengl32dll, "wglDeleteContext");
+	wglMakeCurrent_PTR = (__PFN_wglMakeCurrent)GetProcAddress(opengl32dll, "wglMakeCurrent");
+	wglGetProcAddress_PTR = (__PFN_wglGetProcAddress)GetProcAddress(opengl32dll, "wglGetProcAddress");
 
 	//
 
@@ -128,7 +148,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
-	nativeLocalStorageContainer->ctx = wglCreateContext(nativeLocalStorageContainer->hdc);
+	nativeLocalStorageContainer->ctx = wglCreateContext_PTR(nativeLocalStorageContainer->hdc);
 
 	if (!nativeLocalStorageContainer->ctx)
 	{
@@ -141,9 +161,9 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
-	if (!wglMakeCurrent(nativeLocalStorageContainer->hdc, nativeLocalStorageContainer->ctx))
+	if (!wglMakeCurrent_PTR(nativeLocalStorageContainer->hdc, nativeLocalStorageContainer->ctx))
 	{
-		wglDeleteContext(nativeLocalStorageContainer->ctx);
+		wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
 		nativeLocalStorageContainer->ctx = 0;
 
 		ReleaseDC(0, nativeLocalStorageContainer->hdc);
@@ -155,7 +175,6 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
-	opengl32dll = GetModuleHandle("opengl32.dll");
 #if !defined(EGL_NO_GLEW)
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GL_NO_ERROR)
@@ -174,6 +193,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 #else
+
 	wglChoosePixelFormatARB =
       (PFNWGLCHOOSEPIXELFORMATARBPROC)
       __getProcAddress("wglChoosePixelFormatARB");
@@ -195,7 +215,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	wglReleasePbufferDCARB = (PFNWGLRELEASEPBUFFERDCARBPROC)__getProcAddress("wglReleasePbufferDCARB");
 	wglDestroyPbufferARB = (PFNWGLDESTROYPBUFFERARBPROC)__getProcAddress("wglDestroyPbufferARB");
 
-	wglMakeCurrent(NULL, NULL);
+	wglMakeCurrent_PTR(NULL, NULL);
 #endif
 	return EGL_TRUE;
 }
@@ -207,11 +227,11 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 		return EGL_FALSE;
 	}
 
-	wglMakeCurrent(0, 0);
+	wglMakeCurrent_PTR(0, 0);
 
 	if (nativeLocalStorageContainer->ctx)
 	{
-		wglDeleteContext(nativeLocalStorageContainer->ctx);
+		wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
 		nativeLocalStorageContainer->ctx = 0;
 	}
 
@@ -229,6 +249,8 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 
 	UnregisterClass("DummyWindow", NULL);
 
+	FreeLibrary(opengl32dll);
+
 	return EGL_TRUE;
 }
 
@@ -239,7 +261,7 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
 		return EGL_FALSE;
 	}
 
-	return wglDeleteContext(nativeContextContainer->ctx);
+	return wglDeleteContext_PTR(nativeContextContainer->ctx);
 }
 
 EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error)
@@ -735,7 +757,7 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
 {
 	__eglMustCastToProperFunctionPointerType ptr = NULL;
-	ptr = (__eglMustCastToProperFunctionPointerType) wglGetProcAddress(procname);
+	ptr = (__eglMustCastToProperFunctionPointerType) wglGetProcAddress_PTR(procname);
 	if (ptr != NULL)
 		return ptr;
 	// https://www.khronos.org/opengl/wiki/Talk:Platform_specifics:_Windows
@@ -1058,9 +1080,9 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
 	}
 
 	if (!nativeContextContainer)
-		return (EGLBoolean)wglMakeCurrent(NULL, NULL);
+		return (EGLBoolean)wglMakeCurrent_PTR(NULL, NULL);
 
-	BOOL res = (EGLBoolean)wglMakeCurrent(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
+	BOOL res = (EGLBoolean)wglMakeCurrent_PTR(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
 	return res;
 }
 
