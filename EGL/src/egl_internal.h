@@ -77,6 +77,24 @@ typedef struct _NativeLocalStorageContainer {
 
 typedef HPBUFFERARB NativePbufferType;
 
+#elif defined(__ANDROID__) || defined(ANDROID) || defined(WL_EGL_PLATFORM)
+
+#define CONTEXT_ATTRIB_LIST_SIZE 1
+
+typedef struct _NativeSurfaceContainer {
+
+} NativeSurfaceContainer;
+
+typedef struct _NativeContextContainer {
+
+} NativeContextContainer;
+
+typedef struct _NativeLocalStorageContainer {
+
+} NativeLocalStorageContainer;
+
+typedef void* NativePbufferType;
+
 #elif defined(__unix__)
 
 #include <X11/X.h>

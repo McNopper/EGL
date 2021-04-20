@@ -96,8 +96,13 @@ struct GlobalStorage
 	ReadLock  placeRootDpy_readlock() { return this; }
 	WriteLock placeRootDpy_writelock() { return this; }
 
+	GlobalStorage()
+	{
+		memset(&dummy, 0, sizeof(dummy));
+	}
+
 private:
-	NativeLocalStorageContainer dummy = { 0,0,0 };
+	NativeLocalStorageContainer dummy;
 
 	std::atomic_uint32_t lock_dpy = 0u;
 	std::atomic_uint32_t lock_dummy = 0u;
@@ -454,7 +459,7 @@ static int _ChooseConfig_sort_predicate(const void* _lhs, const void* _rhs)
 	{
 		if (lhs->colorBufferType == rhs->colorBufferType)
 		{
-			GLint color_bits[2] = { 0, 0 };
+			EGLint color_bits[2] = { 0, 0 };
 			switch (lhs->colorBufferType)
 			{
 			case EGL_RGB_BUFFER:
@@ -916,7 +921,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 			EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
 
 			#define stack_mem_sz (1ull << 13) // 8k
-			EGLbyte stack_mem[stack_mem_sz];
+			char stack_mem[stack_mem_sz];
 			const EGLint max_configs = stack_mem_sz / sizeof(EGLConfig);
 			EGLConfig* configsOnStack = (EGLConfig*)stack_mem;
 
@@ -2015,6 +2020,8 @@ EGLDisplay _eglGetDisplay(EGLNativeDisplayType display_id)
 	newDpy->destroy = EGL_FALSE;
 #if defined(_WIN32) || defined(_WIN64)
 	newDpy->display_id = display_id ? display_id : g_globalStorage.dummy_read().hdc;
+#elif defined(__ANDROID__) || defined(ANDROID) || defined(WL_EGL_PLATFORM)
+	newDpy->display_id = 0;
 #else
 	newDpy->display_id = display_id ? display_id : g_globalStorage.dummy_read().display;
 #endif
@@ -2647,6 +2654,8 @@ EGLBoolean _eglTerminate(EGLDisplay dpy)
 
 	return EGL_FALSE;
 }
+
+
 
 EGLBoolean _eglWaitNative(EGLint engine)
 {
