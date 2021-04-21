@@ -35,6 +35,7 @@ add_library(egl STATIC
 
 target_include_directories(egl PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/include)
+target_compile_definitions(egl PUBLIC KHRONOS_STATIC) # PUBLIC - make it go down to every target linking egl
 add_definitions(-DEGLAPI=)
 option(EGL_NO_GLEW "Do not use GLEW" OFF)
 if(EGL_NO_GLEW)
