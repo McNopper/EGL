@@ -70,6 +70,7 @@ GLXPbuffer(*glXCreatePbuffer_PTR)(Display*,GLXFBConfig,const int*) = NULL;
 void(*glXDestroyPbuffer_PTR)(Display*,GLXPbuffer) = NULL;
 const char*(*glXQueryExtensionsString_PTR)(Display*,int) = NULL;
 GLXFBConfig*(*glXGetFBConfigs_PTR)(Display*,int,int*) = NULL;
+Bool(*glXMakeContextCurrent_PTR)(Display*,GLXDrawable,GLXDrawable,GLXContext) = NULL;
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
 {
@@ -138,6 +139,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	LOAD_GLX_FUNC_PTR(glXDestroyPbuffer);
 	LOAD_GLX_FUNC_PTR(glXQueryExtensionsString);
 	LOAD_GLX_FUNC_PTR(glXGetFBConfigs);
+	LOAD_GLX_FUNC_PTR(glXMakeContextCurrent);
 
 	nativeLocalStorageContainer->display = XOpenDisplay_PTR(NULL);
 
@@ -336,7 +338,7 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 	if (nativeLocalStorageContainer->display)
 	{
 		logglxcall("glXMakeContextCurrent");
-		glXMakeContextCurrent(nativeLocalStorageContainer->display, 0, 0, 0);
+		glXMakeContextCurrent_PTR(nativeLocalStorageContainer->display, 0, 0, 0);
 	}
 
 	if (nativeLocalStorageContainer->display && nativeLocalStorageContainer->ctx)
