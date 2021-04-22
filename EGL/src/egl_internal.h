@@ -347,7 +347,7 @@ void _eglInternalSetDefaultConfig(EGLConfigImpl* config);
 
 //
 
-EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer);
+EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* GL_max_supported, EGLint* ES_max_supported);
 
 EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageContainer);
 

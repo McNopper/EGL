@@ -63,7 +63,7 @@ static LRESULT CALLBACK __DummyWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
      return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer)
+EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* GL_max_supported, EGLint* ES_max_supported)
 {
 	if (!nativeLocalStorageContainer)
 	{
@@ -217,6 +217,69 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
 	wglMakeCurrent_PTR(NULL, NULL);
 #endif
+
+	EGLint attrib_list[] = {
+		WGL_CONTEXT_MAJOR_VERSION_ARB, 1,
+		WGL_CONTEXT_MINOR_VERSION_ARB, 0,
+		WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+		0
+	};
+
+	HGLRC testctx = NULL;
+	EGLint GL_major = 4, GL_minor = 6;
+	for (; GL_major >= 1 && !testctx; --GL_major)
+	{
+		for (; GL_minor >= 0 && !testctx; --GL_minor)
+		{
+			attrib_list[1] = GL_major;
+			attrib_list[3] = GL_minor;
+			testctx = wglCreateContextAttribsARB(nativeLocalStorageContainer->hdc, NULL, attrib_list);
+		}
+	}
+	++GL_major;
+	++GL_minor;
+
+	if (testctx)
+	{
+		wglDeleteContext_PTR(testctx);
+		testctx = NULL;
+	}
+	else
+	{
+		GL_major = 0;
+		GL_minor = 0;
+	}
+	GL_max_supported[0] = GL_major;
+	GL_max_supported[1] = GL_minor;
+
+
+	attrib_list[5] = WGL_CONTEXT_ES_PROFILE_BIT_EXT;
+	EGLint ES_major = 3, ES_minor = 2;
+	for (; ES_major >= 1 && !testctx; --ES_major)
+	{
+		for (; ES_minor >= 0 && !testctx; --ES_minor)
+		{
+			attrib_list[1] = ES_major;
+			attrib_list[3] = ES_minor;
+			testctx = wglCreateContextAttribsARB(nativeLocalStorageContainer->hdc, NULL, attrib_list);
+		}
+	}
+	++ES_major;
+	++ES_minor;
+
+	if (testctx)
+	{
+		wglDeleteContext_PTR(testctx);
+		testctx = NULL;
+	}
+	else
+	{
+		ES_major = 0;
+		ES_minor = 0;
+	}
+	ES_max_supported[0] = ES_major;
+	ES_max_supported[1] = ES_minor;
+
 	return EGL_TRUE;
 }
 

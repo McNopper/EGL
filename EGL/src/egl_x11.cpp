@@ -89,7 +89,7 @@ static void logglxcall(const char* fname)
 #	define logglxcall(fname)
 #endif
 
-EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer)
+EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* GL_max_supported, EGLint* ES_max_supported)
 {
 	if (nativeLocalStorageContainer->display && nativeLocalStorageContainer->window && nativeLocalStorageContainer->ctx)
 	{
@@ -252,7 +252,78 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
     (__PFN_glXSwapIntervalEXT)__getProcAddress("glXSwapIntervalEXT");
   glFinish_PTR = (__PFN_glFinish)__getProcAddress("glFinish");
 #endif
-	return EGL_TRUE;
+
+  int count;
+  GLXFBConfig config = NULL;
+  {
+	  GLXFBConfig* configs = glXGetFBConfigs_PTR(nativeLocalStorageContainer->display, 0, &count);
+	  config = configs[0];
+	  XFree_PTR(configs);
+  }
+
+  EGLint attrib_list[CONTEXT_ATTRIB_LIST_SIZE] = {
+		  GLX_CONTEXT_MAJOR_VERSION_ARB, 1,
+		  GLX_CONTEXT_MINOR_VERSION_ARB, 0,
+		  GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+		  0
+  };
+
+  GLXContext testctx;
+  EGLint GL_major = 4, GL_minor = 6;
+  for (; GL_major >= 1 && !testctx; --GL_major)
+  {
+	  for (; GL_minor >= 0 && !testctx; --GL_minor)
+	  {
+		  attrib_list[1] = GL_major;
+		  attrib_list[3] = GL_minor;
+		  testctx = glXCreateContextAttribsARB_PTR(nativeLocalStorageContainer->display, config, NULL, True, attrib_list);
+	  }
+  }
+  ++GL_major;
+  ++GL_minor;
+
+  if (testctx)
+  {
+	  glXDestroyContext_PTR(nativeLocalStorageContainer->display, testctx);
+	  testctx = NULL;
+  }
+  else
+  {
+	  GL_major = 0;
+	  GL_minor = 0;
+  }
+  GL_max_supported[0] = GL_major;
+  GL_max_supported[1] = GL_minor;
+
+
+  attrib_list[5] = GLX_CONTEXT_ES_PROFILE_BIT_EXT;
+  EGLint ES_major = 3, ES_minor = 2;
+  for (; ES_major >= 1 && !testctx; --ES_major)
+  {
+	  for (; ES_minor >= 0 && !testctx; --ES_minor)
+	  {
+		  attrib_list[1] = ES_major;
+		  attrib_list[3] = ES_minor;
+		  testctx = glXCreateContextAttribsARB_PTR(nativeLocalStorageContainer->display, config, NULL, True, attrib_list);
+	  }
+  }
+  ++ES_major;
+  ++ES_minor;
+
+  if (testctx)
+  {
+	  glXDestroyContext_PTR(nativeLocalStorageContainer->display, testctx);
+	  testctx = NULL;
+  }
+  else
+  {
+	  ES_major = 0;
+	  ES_minor = 0;
+  }
+  ES_max_supported[0] = ES_major;
+  ES_max_supported[1] = ES_minor;
+
+  return EGL_TRUE;
 }
 
 EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageContainer)

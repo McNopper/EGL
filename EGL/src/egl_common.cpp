@@ -143,6 +143,9 @@ static thread_local LocalStorage g_localStorage =
 
 static GlobalStorage g_globalStorage;
 
+static EGLint g_GL_max_supported_version[2] = { 0, 0 };
+static EGLint g_ES_max_supported_version[2] = { 0, 0 };
+
 #if defined(EGL_NO_GLEW)
 extern void (*glFinish_PTR)();
 #define glFinish(...) glFinish_PTR(__VA_ARGS__)
@@ -154,7 +157,7 @@ extern "C"
 static EGLBoolean _eglInternalInit()
 {
 	auto dummy = g_globalStorage.dummy_read();
-	EGLBoolean r = __internalInit(&dummy);
+	EGLBoolean r = __internalInit(&dummy, g_GL_max_supported_version, g_ES_max_supported_version);
 	g_globalStorage.dummy_write(dummy);
 
 	return r;
@@ -1169,7 +1172,7 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 	{
 		g_localStorage.error = EGL_BAD_PARAMETER;
 
-		return EGL_FALSE;
+		return EGL_NO_CONTEXT;
 	}
 
 	if (g_localStorage.api == EGL_NONE)
@@ -1178,6 +1181,36 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 
 		return EGL_NO_CONTEXT;
 	}
+
+	EGLint requested_version[2]{ 1, 0 };
+	for (EGLint i = 0; attrib_list[i] != EGL_NONE; i += 2)
+	{
+		switch (attrib_list[i])
+		{
+		case EGL_CONTEXT_MAJOR_VERSION:
+			requested_version[0] = attrib_list[i + 1];
+			break;
+		case EGL_CONTEXT_MINOR_VERSION:
+			requested_version[1] = attrib_list[i + 1];
+			break;
+		}
+	}
+
+	if (g_localStorage.api == EGL_OPENGL_API)
+	{
+		if (requested_version[0] > g_GL_max_supported_version[0] || requested_version[1] > g_GL_max_supported_version[1])
+			return EGL_NO_CONTEXT;
+	}
+	else if (g_localStorage.api == EGL_OPENGL_ES_API)
+	{
+		if (requested_version[0] > g_ES_max_supported_version[0] || requested_version[1] > g_ES_max_supported_version[1])
+			return EGL_NO_CONTEXT;
+	}
+	else
+	{
+		return EGL_NO_CONTEXT;
+	}
+
 
 	auto _rl = g_globalStorage.placeRootDpy_readlock();
 	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
