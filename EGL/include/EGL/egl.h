@@ -37,6 +37,7 @@ extern "C" {
 */
 
 #include <EGL/eglplatform.h>
+//#include <EGL/eglctxinternals.h>
 
 /* Generated on date 20141001 */
 
@@ -295,6 +296,9 @@ EGLAPI EGLSurface EGLAPIENTRY eglCreatePlatformWindowSurface (EGLDisplay dpy, EG
 EGLAPI EGLSurface EGLAPIENTRY eglCreatePlatformPixmapSurface (EGLDisplay dpy, EGLConfig config, void *native_pixmap, const EGLAttrib *attrib_list);
 EGLAPI EGLBoolean EGLAPIENTRY eglWaitSync (EGLDisplay dpy, EGLSync sync, EGLint flags);
 #endif /* EGL_VERSION_1_5 */
+
+// non-standard stuff
+//EGLAPI EGLBoolean EGLAPIENTRY eglGetPlatformDependentHandles (EGLContextInternals* out, EGLDisplay dpy, EGLSurface surface, EGLContext ctx);
 
 #ifdef __cplusplus
 }

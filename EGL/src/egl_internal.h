@@ -33,6 +33,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <mutex>
 
 #if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__) /* Win32 and WinCE */
 
@@ -74,6 +75,25 @@ typedef struct _NativeLocalStorageContainer {
 
 } NativeLocalStorageContainer;
 
+typedef HPBUFFERARB NativePbufferType;
+
+#elif defined(__ANDROID__) || defined(ANDROID) || defined(WL_EGL_PLATFORM)
+
+#define CONTEXT_ATTRIB_LIST_SIZE 1
+
+typedef struct _NativeSurfaceContainer {
+
+} NativeSurfaceContainer;
+
+typedef struct _NativeContextContainer {
+
+} NativeContextContainer;
+
+typedef struct _NativeLocalStorageContainer {
+
+} NativeLocalStorageContainer;
+
+typedef void* NativePbufferType;
 
 #elif defined(__unix__)
 
@@ -85,7 +105,7 @@ typedef struct _NativeLocalStorageContainer {
 #else
 #include <GL/glx.h>
 #endif  // EGL_NO_GLEW
-#define CONTEXT_ATTRIB_LIST_SIZE 10
+#define CONTEXT_ATTRIB_LIST_SIZE 11
 
 typedef struct _NativeSurfaceContainer {
 
@@ -110,6 +130,8 @@ typedef struct _NativeLocalStorageContainer {
 	GLXContext ctx;
 
 } NativeLocalStorageContainer;
+
+typedef GLXPbuffer NativePbufferType;
 
 #else
 #error "Platform not recognized"
@@ -244,7 +266,10 @@ typedef struct _EGLSurfaceImpl
 	EGLBoolean doubleBuffer;
 	EGLint configId;
 
-	EGLNativeWindowType win;
+	union {
+		EGLNativeWindowType win;
+		NativePbufferType pbuf;
+	};
 
 	NativeSurfaceContainer nativeSurfaceContainer;
 
@@ -283,6 +308,7 @@ typedef struct _EGLContextImpl
 
 typedef struct _EGLDisplayImpl
 {
+	std::mutex mutex;
 
 	EGLBoolean initialized;
 	EGLBoolean destroy;
@@ -303,36 +329,37 @@ typedef struct _EGLDisplayImpl
 
 typedef struct _LocalStorage
 {
-
-	NativeLocalStorageContainer dummy;
-
 	EGLint error;
 
 	EGLenum api;
 
-	EGLDisplayImpl* rootDpy;
-
 	EGLContextImpl* currentCtx;
-
 } LocalStorage;
 
 //
-
+#if __cplusplus
+extern "C" {
+#endif
 void _eglInternalSetDefaultConfig(EGLConfigImpl* config);
+#if __cplusplus
+}
+#endif
 
 //
 
-EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer);
+EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* GL_max_supported, EGLint* ES_max_supported);
 
 EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageContainer);
 
 EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextContainer* nativeContextContainer);
 
-EGLBoolean __processAttribList(EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error);
+EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error);
 
 EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 
-EGLBoolean __destroySurface(EGLNativeWindowType win, const NativeSurfaceContainer* nativeSurfaceContainer);
+EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
+
+EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface);
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname);
 
@@ -345,5 +372,7 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
 EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface);
 
 EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval);
+
+EGLBoolean __getPlatformDependentHandles(void* out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer);
 
 #endif /* EGL_INTERNAL_H_ */
