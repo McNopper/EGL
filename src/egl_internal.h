@@ -39,15 +39,9 @@
 
 #include <windows.h>
 
-#if !defined(EGL_NO_GLEW)
-#include <GL/glew.h>
-#include <GL/wglew.h>
-#else
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <GL/gl.h>
 #include "wglext.h"
-#endif  // EGL_NO_GLEW
 
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
@@ -99,12 +93,7 @@ typedef void* NativePbufferType;
 
 #include <X11/X.h>
 
-#if !defined(EGL_NO_GLEW)
-#include <GL/glew.h>
-#include <GL/glxew.h>
-#else
 #include <GL/glx.h>
-#endif  // EGL_NO_GLEW
 #define CONTEXT_ATTRIB_LIST_SIZE 11
 
 typedef struct _NativeSurfaceContainer {

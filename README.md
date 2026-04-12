@@ -22,21 +22,16 @@ How to build EGL:
 
 CMake options:
 
-   EGL_NO_GLEW         Do not use GLEW (default: OFF)
    EGL_UNIX_USE_WAYLAND  Define functions for Wayland platform (Linux only, default: OFF)
 
 Example (out-of-source, Release build):
 
-   cmake -DCMAKE_BUILD_TYPE=Release -DEGL_NO_GLEW=ON ..
+   cmake -DCMAKE_BUILD_TYPE=Release ..
    cmake --build . --config Release
 
 If you get build errors:
 
 - Please make sure that you have installed all needed headers and libraries.
-
-SDKs and Libraries:
-
-- GLEW http://glew.sourceforge.net/ (optional, only needed when EGL_NO_GLEW=OFF)
 
 
 Yours Norbert Nopper

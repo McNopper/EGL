@@ -48,10 +48,8 @@ target_include_directories(EGL PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/include)
 target_compile_definitions(EGL PUBLIC KHRONOS_STATIC) # PUBLIC - make it go down to every target linking EGL
 add_definitions(-DEGLAPI=)
-option(EGL_NO_GLEW "Do not use GLEW" OFF)
-if(EGL_NO_GLEW)
-  add_definitions(-DEGL_NO_GLEW)
-endif()
 if(UNIX AND NOT APPLE AND EGL_UNIX_USE_WAYLAND)
   add_definitions(-DWL_EGL_PLATFORM)
 endif()
+
+add_subdirectory(examples)

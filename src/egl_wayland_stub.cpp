@@ -1,10 +1,8 @@
 #include "egl_internal.h"
 
-#if defined(EGL_NO_GLEW)
 typedef void(*__PFN_glFinish)();
 
 __PFN_glFinish glFinish_PTR = NULL;
-#endif
 
 EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* GL_max_supported, EGLint* ES_max_supported)
 {

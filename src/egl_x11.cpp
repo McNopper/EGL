@@ -30,7 +30,6 @@
 #include <thread>
 #include <dlfcn.h>
 
-#if defined(EGL_NO_GLEW)
 typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display*, GLXFBConfig,
                                                        GLXContext, Bool,
                                                        const int*);
@@ -58,7 +57,6 @@ __PFN_glXReleaseTexImageEXT glXReleaseTexImageEXT_PTR = NULL;
 #define glXSwapIntervalEXT(...) glXSwapIntervalEXT_PTR(__VA_ARGS__)
 #define glXCreateContextAttribsARB(...) \
     glXCreateContextAttribsARB_PTR(__VA_ARGS__)
-#endif
 
 void* libx11 = NULL;
 void* libgl = NULL;
@@ -264,23 +262,6 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
-#if !defined(EGL_NO_GLEW)
-	glewExperimental = GL_TRUE;
-	if (glewInit() != GL_NO_ERROR)
-	{
-		glXMakeCurrent_PTR(nativeLocalStorageContainer->display, 0, 0);
-
-		glXDestroyContext_PTR(nativeLocalStorageContainer->display, nativeLocalStorageContainer->ctx);
-		nativeLocalStorageContainer->ctx = 0;
-
-		nativeLocalStorageContainer->window = 0;
-
-		XCloseDisplay_PTR(nativeLocalStorageContainer->display);
-		nativeLocalStorageContainer->display = 0;
-
-		return EGL_FALSE;
-	}
-#else
   glXCreateContextAttribsARB_PTR =
     (__PFN_glXCreateContextAttribsARB)
         __getProcAddress("glXCreateContextAttribsARB");
@@ -292,7 +273,6 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
   glClientWaitSync_PTR = (__PFN_glClientWaitSync)__getProcAddress("glClientWaitSync");
   glWaitSync_PTR = (__PFN_glWaitSync)__getProcAddress("glWaitSync");
   glGetSynciv_PTR = (__PFN_glGetSynciv)__getProcAddress("glGetSynciv");
-#endif
 
   int count;
   GLXFBConfig config = NULL;

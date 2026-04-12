@@ -29,8 +29,6 @@
 
 HMODULE opengl32dll = NULL;
 
-#if defined(EGL_NO_GLEW)
-
 typedef void(*__PFN_glFinish)();
 typedef void* (*__PFN_glFenceSync)(GLenum condition, GLbitfield flags);
 typedef void  (*__PFN_glDeleteSync)(void* sync);
@@ -67,7 +65,6 @@ PFNWGLRELEASEPBUFFERDCARBPROC wglReleasePbufferDCARB = NULL;
 PFNWGLDESTROYPBUFFERARBPROC wglDestroyPbufferARB = NULL;
 PFNWGLBINDTEXIMAGEARBPROC wglBindTexImageARB_PTR = NULL;
 PFNWGLRELEASETEXIMAGEARBPROC wglReleaseTexImageARB_PTR = NULL;
-#endif
 
 
 static LRESULT CALLBACK __DummyWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -187,25 +184,6 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 		return EGL_FALSE;
 	}
 
-#if !defined(EGL_NO_GLEW)
-	glewExperimental = GL_TRUE;
-	if (glewInit() != GL_NO_ERROR)
-	{
-		wglMakeCurrent(0, 0);
-
-		wglDeleteContext(nativeLocalStorageContainer->ctx);
-		nativeLocalStorageContainer->ctx = 0;
-
-		ReleaseDC(0, nativeLocalStorageContainer->hdc);
-		nativeLocalStorageContainer->hdc = 0;
-
-		DestroyWindow(nativeLocalStorageContainer->hwnd);
-		nativeLocalStorageContainer->hwnd = 0;
-
-		return EGL_FALSE;
-	}
-#else
-
 	wglChoosePixelFormatARB =
       (PFNWGLCHOOSEPIXELFORMATARBPROC)
       __getProcAddress("wglChoosePixelFormatARB");
@@ -235,7 +213,6 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	wglReleaseTexImageARB_PTR = (PFNWGLRELEASETEXIMAGEARBPROC)__getProcAddress("wglReleaseTexImageARB");
 
 	wglMakeCurrent_PTR(NULL, NULL);
-#endif
 
 	EGLint attrib_list[] = {
 		WGL_CONTEXT_MAJOR_VERSION_ARB, 1,

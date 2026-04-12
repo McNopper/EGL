@@ -172,12 +172,10 @@ static GlobalStorage g_globalStorage;
 static EGLint g_GL_max_supported_version[2] = { 0, 0 };
 static EGLint g_ES_max_supported_version[2] = { 0, 0 };
 
-#if defined(EGL_NO_GLEW)
 extern void (*glFinish_PTR)();
 #define glFinish(...) glFinish_PTR(__VA_ARGS__)
-#endif
 
-extern "C" 
+extern "C"
 {
 
 static EGLBoolean _eglInternalInit()
@@ -1086,7 +1084,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
 					continue;
 				}
-				if ((config.stencilSize != EGL_DONT_CARE) && (config.stencilSize != walkerConfig->stencilSize))
+				if (config.stencilSize > walkerConfig->stencilSize)
 				{
 					walkerConfig = walkerConfig->next;
 
