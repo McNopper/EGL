@@ -42,7 +42,9 @@ Yours Norbert Nopper
 
 Changelog:
 
-12.04.2026 - Added green window example (examples/green_window). Fixed EGL_STENCIL_SIZE config matching to use minimum-value semantics per spec (was exact match, causing eglChooseConfig to return no configs on D24S8 hardware). Removed GLEW dependency entirely; the library now has zero external dependencies.
+12.04.2026 - Fixed 19 EGL 1.5 spec compliance issues: correct return values from eglDestroyContext/eglDestroySurface/eglTerminate, two-call pattern for eglChooseConfig/eglGetConfigs (configs=NULL returns count), lexicographic version comparison in eglCreateContext, attrib_list=NULL treated as empty, EGL_TRANSPARENT_TYPE value validation, ES conformance bit selected per requested version, eglQueryContext CLIENT_TYPE/CLIENT_VERSION, eglSwapBuffers returns EGL_FALSE, WGL software renderer maps to EGL_SLOW_CONFIG, and EGL_LEVEL allows negative values.
+
+12.04.2026 - Added green window example(examples/green_window). Fixed EGL_STENCIL_SIZE config matching to use minimum-value semantics per spec (was exact match, causing eglChooseConfig to return no configs on D24S8 hardware). Removed GLEW dependency entirely; the library now has zero external dependencies.
 
 12.04.2026 - Implemented full EGL 1.5 API: window/pbuffer/pixmap surfaces, sync objects (GL_ARB_sync), image objects, eglCopyBuffers, eglBindTexImage/eglReleaseTexImage, eglGetPlatformDisplay, platform window/pixmap surfaces, and all remaining surface/config queries.
 
