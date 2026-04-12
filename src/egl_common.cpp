@@ -2595,9 +2595,257 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
 
 EGLBoolean _eglQuerySurface (EGLDisplay dpy, EGLSurface surface, EGLint attribute, EGLint *value)
 {
-	// TODO Implement querying a surface.
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			guard_t _{ walkerDpy->mutex };
+
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+
+				return EGL_FALSE;
+			}
+
+			EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
+
+			while (walkerSurface)
+			{
+				if ((EGLSurface)walkerSurface == surface)
+				{
+					if (!walkerSurface->initialized || walkerSurface->destroy)
+					{
+						g_localStorage.error = EGL_BAD_SURFACE;
+
+						return EGL_FALSE;
+					}
+
+					switch (attribute)
+					{
+						case EGL_CONFIG_ID:
+						{
+							if (value) *value = walkerSurface->configId;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_WIDTH:
+						{
+							if (value) *value = walkerSurface->width;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_HEIGHT:
+						{
+							if (value) *value = walkerSurface->height;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_LARGEST_PBUFFER:
+						{
+							if (value) *value = walkerSurface->largestPbuffer;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_MIPMAP_TEXTURE:
+						{
+							if (value) *value = walkerSurface->mipmapTexture;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_MIPMAP_LEVEL:
+						{
+							if (value) *value = walkerSurface->mipmapLevel;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_MULTISAMPLE_RESOLVE:
+						{
+							if (value) *value = walkerSurface->multisampleResolve;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_RENDER_BUFFER:
+						{
+							if (value)
+							{
+								if (walkerSurface->drawToWindow)
+									*value = walkerSurface->doubleBuffer ? EGL_BACK_BUFFER : EGL_SINGLE_BUFFER;
+								else if (walkerSurface->drawToPixmap)
+									*value = EGL_SINGLE_BUFFER;
+								else
+									*value = EGL_BACK_BUFFER;
+							}
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_SWAP_BEHAVIOR:
+						{
+							if (value) *value = walkerSurface->swapBehavior;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_TEXTURE_FORMAT:
+						{
+							if (value) *value = walkerSurface->textureFormat;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_TEXTURE_TARGET:
+						{
+							if (value) *value = walkerSurface->textureTarget;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_VG_ALPHA_FORMAT:
+						{
+							if (value) *value = EGL_VG_ALPHA_FORMAT_NONPRE;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_VG_COLORSPACE:
+						{
+							if (value) *value = EGL_VG_COLORSPACE_sRGB;
+							return EGL_TRUE;
+						}
+						break;
+					}
+
+					g_localStorage.error = EGL_BAD_ATTRIBUTE;
+
+					return EGL_FALSE;
+				}
+
+				walkerSurface = walkerSurface->next;
+			}
+
+			g_localStorage.error = EGL_BAD_SURFACE;
+
+			return EGL_FALSE;
+		}
+
+		walkerDpy = walkerDpy->next;
+	}
+
+	g_localStorage.error = EGL_BAD_DISPLAY;
 
 	return EGL_FALSE;
+}
+
+EGLBoolean _eglSurfaceAttrib(EGLDisplay dpy, EGLSurface surface, EGLint attribute, EGLint value)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			guard_t _{ walkerDpy->mutex };
+
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+
+				return EGL_FALSE;
+			}
+
+			EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
+
+			while (walkerSurface)
+			{
+				if ((EGLSurface)walkerSurface == surface)
+				{
+					if (!walkerSurface->initialized || walkerSurface->destroy)
+					{
+						g_localStorage.error = EGL_BAD_SURFACE;
+
+						return EGL_FALSE;
+					}
+
+					switch (attribute)
+					{
+						case EGL_MIPMAP_LEVEL:
+						{
+							walkerSurface->mipmapLevel = value;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_MULTISAMPLE_RESOLVE:
+						{
+							if (value != EGL_MULTISAMPLE_RESOLVE_DEFAULT && value != EGL_MULTISAMPLE_RESOLVE_BOX)
+							{
+								g_localStorage.error = EGL_BAD_ATTRIBUTE;
+								return EGL_FALSE;
+							}
+							walkerSurface->multisampleResolve = value;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_SWAP_BEHAVIOR:
+						{
+							if (value != EGL_BUFFER_PRESERVED && value != EGL_BUFFER_DESTROYED)
+							{
+								g_localStorage.error = EGL_BAD_ATTRIBUTE;
+								return EGL_FALSE;
+							}
+							walkerSurface->swapBehavior = value;
+							return EGL_TRUE;
+						}
+						break;
+					}
+
+					g_localStorage.error = EGL_BAD_ATTRIBUTE;
+
+					return EGL_FALSE;
+				}
+
+				walkerSurface = walkerSurface->next;
+			}
+
+			g_localStorage.error = EGL_BAD_SURFACE;
+
+			return EGL_FALSE;
+		}
+
+		walkerDpy = walkerDpy->next;
+	}
+
+	g_localStorage.error = EGL_BAD_DISPLAY;
+
+	return EGL_FALSE;
+}
+
+EGLBoolean _eglReleaseThread(void)
+{
+	if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
+	{
+		auto _rl = g_globalStorage.placeRootDpy_readlock();
+		EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+		while (walkerDpy)
+		{
+			guard_t _{ walkerDpy->mutex };
+
+			if (walkerDpy->currentCtx == g_localStorage.currentCtx)
+			{
+				__makeCurrent(walkerDpy, nullptr, nullptr);
+				walkerDpy->currentDraw = EGL_NO_SURFACE_IMPL;
+				walkerDpy->currentRead = EGL_NO_SURFACE_IMPL;
+				walkerDpy->currentCtx = EGL_NO_CONTEXT_IMPL;
+				break;
+			}
+
+			walkerDpy = walkerDpy->next;
+		}
+	}
+
+	g_localStorage = { EGL_SUCCESS, EGL_NONE, EGL_NO_CONTEXT_IMPL };
+
+	return EGL_TRUE;
 }
 
 EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
@@ -2858,6 +3106,23 @@ EGLBoolean _eglWaitClient(void)
 //
 // EGL_VERSION_1_3
 //
+
+EGLSurface _eglCreatePbufferFromClientBuffer(EGLDisplay dpy, EGLenum buftype, EGLClientBuffer buffer, EGLConfig config, const EGLint *attrib_list)
+{
+	// Only EGL_OPENVG_IMAGE is a defined buftype, and OpenVG is not supported on desktop.
+	(void)dpy; (void)buffer; (void)config; (void)attrib_list;
+
+	if (buftype != EGL_OPENVG_IMAGE)
+	{
+		g_localStorage.error = EGL_BAD_PARAMETER;
+	}
+	else
+	{
+		g_localStorage.error = EGL_BAD_ACCESS;
+	}
+
+	return EGL_NO_SURFACE;
+}
 
 //
 // EGL_VERSION_1_4

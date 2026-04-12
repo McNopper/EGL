@@ -11,7 +11,7 @@ https://www.khronos.org/registry/egl/sdk/docs/man/html/eglIntro.xhtml under Wind
 
 How to build EGL:
 
-1. Install CMake (3.0.2 or newer) and a C/C++ compiler (GCC, MinGW, MSVC, or Clang).
+1. Install CMake (3.10 or newer) and a C/C++ compiler (GCC, MinGW, MSVC, or Clang).
 2. Create a build directory and run CMake:
 
    mkdir build
@@ -35,7 +35,7 @@ If you get build errors:
 
 SDKs and Libraries:
 
-- GLEW 1.12.0 http://glew.sourceforge.net/ (optional when EGL_NO_GLEW=ON)
+- GLEW 1.12.0 http://glew.sourceforge.net/ (optional, only needed when EGL_NO_GLEW=OFF)
 
 
 Yours Norbert Nopper
@@ -54,6 +54,8 @@ TODOs:
 - Cleanup source code.
 
 Changelog:
+
+12.04.2026 - Switched build system to CMake (3.10+). Updated Khronos headers to latest (egl.h 2026-03-19, eglext.h 20260319). Library output renamed to libEGL per Khronos convention.
 
 29.01.2015 - Updated to GLEW 1.12.0. Current version: v0.3.3.
 

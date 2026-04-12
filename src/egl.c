@@ -94,6 +94,12 @@ extern EGLenum _eglQueryAPI (void);
 
 extern EGLBoolean _eglWaitClient (void);
 
+extern EGLBoolean _eglReleaseThread (void);
+
+extern EGLBoolean _eglSurfaceAttrib (EGLDisplay dpy, EGLSurface surface, EGLint attribute, EGLint value);
+
+extern EGLSurface _eglCreatePbufferFromClientBuffer (EGLDisplay dpy, EGLenum buftype, EGLClientBuffer buffer, EGLConfig config, const EGLint *attrib_list);
+
 //
 // EGL_VERSION_1_3
 //
@@ -270,9 +276,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglReleaseTexImage (EGLDisplay dpy, EGLSurface sur
 
 EGLAPI EGLBoolean EGLAPIENTRY eglSurfaceAttrib (EGLDisplay dpy, EGLSurface surface, EGLint attribute, EGLint value)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglSurfaceAttrib (dpy, surface, attribute, value);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglSwapInterval (EGLDisplay dpy, EGLint interval)
@@ -296,16 +300,12 @@ EGLAPI EGLenum EGLAPIENTRY eglQueryAPI (void)
 
 EGLAPI EGLSurface EGLAPIENTRY eglCreatePbufferFromClientBuffer (EGLDisplay dpy, EGLenum buftype, EGLClientBuffer buffer, EGLConfig config, const EGLint *attrib_list)
 {
-	// TODO Implement.
-
-	return EGL_NO_SURFACE;
+	return _eglCreatePbufferFromClientBuffer (dpy, buftype, buffer, config, attrib_list);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglReleaseThread (void)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglReleaseThread ();
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglWaitClient (void)

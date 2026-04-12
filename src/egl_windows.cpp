@@ -524,8 +524,11 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
 		0
 	};
 
-	int width;
-	int height;
+	int width = 0;
+	int height = 0;
+	EGLBoolean mipmapTexture = EGL_FALSE;
+	EGLint textureFormat = EGL_NO_TEXTURE;
+	EGLint textureTarget = EGL_NO_TEXTURE;
 	EGLint currentAttribIndex = 0;
 	while (attrib_list[currentAttribIndex] != EGL_NONE)
 	{
@@ -556,7 +559,29 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
 				return EGL_FALSE;
 			}
 			break;
-			// FIXME , more enum values https://www.khronos.org/registry/EGL/sdk/docs/man/html/eglCreatePbufferSurface.xhtml
+		case EGL_MIPMAP_TEXTURE:
+			mipmapTexture = (EGLBoolean)value;
+			break;
+		case EGL_TEXTURE_FORMAT:
+			if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_RGB && value != EGL_TEXTURE_RGBA)
+			{
+				*error = EGL_BAD_ATTRIBUTE;
+				return EGL_FALSE;
+			}
+			textureFormat = value;
+			break;
+		case EGL_TEXTURE_TARGET:
+			if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_2D)
+			{
+				*error = EGL_BAD_ATTRIBUTE;
+				return EGL_FALSE;
+			}
+			textureTarget = value;
+			break;
+		case EGL_VG_ALPHA_FORMAT:
+		case EGL_VG_COLORSPACE:
+			*error = EGL_BAD_MATCH;
+			return EGL_FALSE;
 		}
 
 		currentAttribIndex += 2;
@@ -598,6 +623,15 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
 	newSurface->drawToPBuffer = EGL_TRUE;
 	newSurface->doubleBuffer = (EGLBoolean)iattribs[7];
 	newSurface->configId = pformat;
+	newSurface->width = width;
+	newSurface->height = height;
+	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+	newSurface->mipmapLevel = 0;
+	newSurface->mipmapTexture = mipmapTexture;
+	newSurface->largestPbuffer = (EGLBoolean)pbuf_attribs[1];
+	newSurface->textureFormat = textureFormat;
+	newSurface->textureTarget = textureTarget;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
@@ -628,7 +662,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 			WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
 			WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
 			WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-			WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
+			WGL_DOUBLE_BUFFER_ARB, walkerConfig->doubleBuffer ? GL_TRUE : GL_FALSE,
 			WGL_COLOR_BITS_ARB, 32,
 			WGL_RED_BITS_EXT, 8,
 			WGL_GREEN_BITS_EXT, 8,
@@ -786,9 +820,21 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 
 	newSurface->drawToWindow = EGL_TRUE;
 	newSurface->drawToPixmap = EGL_FALSE;
-	newSurface->drawToPixmap = EGL_FALSE;
+	newSurface->drawToPBuffer = EGL_FALSE;
 	newSurface->doubleBuffer = (EGLBoolean)template_attrib_list[7];
 	newSurface->configId = wgl_formats;
+
+	RECT rect = { 0 };
+	GetClientRect(win, &rect);
+	newSurface->width = rect.right - rect.left;
+	newSurface->height = rect.bottom - rect.top;
+	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+	newSurface->mipmapLevel = 0;
+	newSurface->mipmapTexture = EGL_FALSE;
+	newSurface->largestPbuffer = EGL_FALSE;
+	newSurface->textureFormat = EGL_NO_TEXTURE;
+	newSurface->textureTarget = EGL_NO_TEXTURE;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;

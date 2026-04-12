@@ -569,6 +569,9 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	int* height = glxattribs + 3;
 	int* largest_pbuffer = glxattribs + 5;
 	EGLBoolean colorspace_srgb = 1;
+	EGLBoolean mipmapTexture = EGL_FALSE;
+	EGLint textureFormat = EGL_NO_TEXTURE;
+	EGLint textureTarget = EGL_NO_TEXTURE;
 
 	EGLint currAttrib = 0;
 	while (attrib_list[currAttrib] != EGL_NONE)
@@ -586,6 +589,26 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 			*largest_pbuffer = value; break;
 		case EGL_GL_COLORSPACE:
 			colorspace_srgb = (value == EGL_GL_COLORSPACE_SRGB); break;
+		case EGL_MIPMAP_TEXTURE:
+			mipmapTexture = (EGLBoolean)value; break;
+		case EGL_TEXTURE_FORMAT:
+			if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_RGB && value != EGL_TEXTURE_RGBA)
+			{
+				*error = EGL_BAD_ATTRIBUTE;
+				return EGL_FALSE;
+			}
+			textureFormat = value; break;
+		case EGL_TEXTURE_TARGET:
+			if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_2D)
+			{
+				*error = EGL_BAD_ATTRIBUTE;
+				return EGL_FALSE;
+			}
+			textureTarget = value; break;
+		case EGL_VG_ALPHA_FORMAT:
+		case EGL_VG_COLORSPACE:
+			*error = EGL_BAD_MATCH;
+			return EGL_FALSE;
 		}
 
 		currAttrib += 2;
@@ -622,6 +645,15 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	newSurface->drawToPBuffer = EGL_TRUE;
 	newSurface->doubleBuffer = EGL_FALSE;
 	newSurface->configId = walkerConfig->configId;
+	newSurface->width = *width;
+	newSurface->height = *height;
+	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+	newSurface->mipmapLevel = 0;
+	newSurface->mipmapTexture = mipmapTexture;
+	newSurface->largestPbuffer = (EGLBoolean)*largest_pbuffer;
+	newSurface->textureFormat = textureFormat;
+	newSurface->textureTarget = textureTarget;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
@@ -761,6 +793,18 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 	newSurface->drawToPBuffer = EGL_FALSE;
 	newSurface->doubleBuffer = walkerConfig->doubleBuffer;
 	newSurface->configId = walkerConfig->configId;
+
+	XWindowAttributes xwa;
+	XGetWindowAttributes(walkerDpy->display_id, win, &xwa);
+	newSurface->width = xwa.width;
+	newSurface->height = xwa.height;
+	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+	newSurface->mipmapLevel = 0;
+	newSurface->mipmapTexture = EGL_FALSE;
+	newSurface->largestPbuffer = EGL_FALSE;
+	newSurface->textureFormat = EGL_NO_TEXTURE;
+	newSurface->textureTarget = EGL_NO_TEXTURE;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;

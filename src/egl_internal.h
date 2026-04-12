@@ -266,6 +266,17 @@ typedef struct _EGLSurfaceImpl
 	EGLBoolean doubleBuffer;
 	EGLint configId;
 
+	EGLint width;
+	EGLint height;
+
+	EGLint swapBehavior;
+	EGLint multisampleResolve;
+	EGLint mipmapLevel;
+	EGLBoolean mipmapTexture;
+	EGLBoolean largestPbuffer;
+	EGLint textureFormat;
+	EGLint textureTarget;
+
 	union {
 		EGLNativeWindowType win;
 		NativePbufferType pbuf;
