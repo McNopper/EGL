@@ -1286,7 +1286,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 			if (accelValue == WGL_NO_ACCELERATION_ARB)
 				newConfig->configCaveat = EGL_SLOW_CONFIG;
 			else if (accelValue == WGL_GENERIC_ACCELERATION_ARB)
-				newConfig->configCaveat = EGL_NON_CONFORMANT_CONFIG;
+				newConfig->configCaveat = EGL_SLOW_CONFIG;
 			else
 				newConfig->configCaveat = EGL_NONE;
 		}

@@ -296,6 +296,7 @@ typedef struct _EGLContextImpl
 	EGLBoolean destroy;
 
 	EGLint configId;
+	EGLenum clientAPI;
 
 	struct _EGLContextImpl* sharedCtx;
 

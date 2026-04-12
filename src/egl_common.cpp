@@ -542,26 +542,9 @@ static int _ChooseConfig_sort_predicate(const void* _lhs, const void* _rhs)
 
 EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig *configs, EGLint config_size, EGLint *num_config)
 {
+	static const EGLint emptyList[] = { EGL_NONE };
 	if (!attrib_list)
-	{
-		g_localStorage.error = EGL_BAD_PARAMETER;
-
-		return EGL_FALSE;
-	}
-
-	if (!configs)
-	{
-		g_localStorage.error = EGL_BAD_PARAMETER;
-
-		return EGL_FALSE;
-	}
-
-	if (config_size == 0)
-	{
-		g_localStorage.error = EGL_BAD_PARAMETER;
-
-		return EGL_FALSE;
-	}
+		attrib_list = emptyList;
 
 	if (!num_config)
 	{
@@ -738,13 +721,6 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_LEVEL:
 					{
-						if (value != EGL_DONT_CARE && value < 0)
-						{
-							g_localStorage.error = EGL_BAD_ATTRIBUTE;
-
-							return EGL_FALSE;
-						}
-
 						config.level = value;
 					}
 					break;
@@ -875,7 +851,7 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 					break;
 					case EGL_TRANSPARENT_TYPE:
 					{
-						if (value != EGL_DONT_CARE && value != EGL_NONE && value != EGL_TRANSPARENT_TYPE)
+						if (value != EGL_DONT_CARE && value != EGL_NONE && value != EGL_TRANSPARENT_RGB)
 						{
 							g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -1173,8 +1149,9 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 			if (configIndex)
 				qsort(configsOnStack, configIndex, sizeof(*configs), &_ChooseConfig_sort_predicate);
 
-			*num_config = (std::min)(configIndex, config_size);
-			memcpy(configs, configsOnStack, *num_config*sizeof(EGLConfig));
+			*num_config = configIndex;
+			if (configs)
+				memcpy(configs, configsOnStack, (std::min)(configIndex, config_size)*sizeof(EGLConfig));
 
 			return EGL_TRUE;
 		}
@@ -1222,12 +1199,14 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 
 	if (g_localStorage.api == EGL_OPENGL_API)
 	{
-		if (requested_version[0] > g_GL_max_supported_version[0] || requested_version[1] > g_GL_max_supported_version[1])
+		if (requested_version[0] > g_GL_max_supported_version[0] ||
+			(requested_version[0] == g_GL_max_supported_version[0] && requested_version[1] > g_GL_max_supported_version[1]))
 			return EGL_NO_CONTEXT;
 	}
 	else if (g_localStorage.api == EGL_OPENGL_ES_API)
 	{
-		if (requested_version[0] > g_ES_max_supported_version[0] || requested_version[1] > g_ES_max_supported_version[1])
+		if (requested_version[0] > g_ES_max_supported_version[0] ||
+			(requested_version[0] == g_ES_max_supported_version[0] && requested_version[1] > g_ES_max_supported_version[1]))
 			return EGL_NO_CONTEXT;
 	}
 	else
@@ -1260,13 +1239,15 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 				{
 					EGLint target_attrib_list[CONTEXT_ATTRIB_LIST_SIZE];
 
-					if (g_localStorage.api == EGL_OPENGL_ES_API && (walkerConfig->conformant & EGL_OPENGL_ES3_BIT) == 0)
+					const EGLint esBit = (requested_version[0] == 1) ? EGL_OPENGL_ES_BIT :
+						(requested_version[0] == 2) ? EGL_OPENGL_ES2_BIT : EGL_OPENGL_ES3_BIT;
+					if (g_localStorage.api == EGL_OPENGL_ES_API && (walkerConfig->conformant & esBit) == 0)
 					{
-						return EGL_FALSE;
+						return EGL_NO_CONTEXT;
 					}
 					if (!__processAttribList(g_localStorage.api, target_attrib_list, attrib_list, &g_localStorage.error))
 					{
-						return EGL_FALSE;
+						return EGL_NO_CONTEXT;
 					}
 
 					EGLContextImpl* sharedCtx = 0;
@@ -1315,7 +1296,7 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 					{
 						g_localStorage.error = EGL_BAD_ALLOC;
 
-						return EGL_FALSE;
+						return EGL_NO_CONTEXT;
 					}
 
 					// Move the atttibutes for later creation.
@@ -1324,6 +1305,7 @@ EGLContext _eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_
 					newCtx->initialized = EGL_TRUE;
 					newCtx->destroy = EGL_FALSE;
 					newCtx->configId = walkerConfig->configId;
+					newCtx->clientAPI = g_localStorage.api;
 					newCtx->sharedCtx = sharedCtx;
 					newCtx->rootCtxList = 0;
 
@@ -1625,10 +1607,12 @@ EGLBoolean _eglDestroyContext(EGLDisplay dpy, EGLContext ctx)
 	}
 	
 	if (success)
+	{
 		_eglInternalCleanup();
+		return EGL_TRUE;
+	}
 
 	g_localStorage.error = EGL_BAD_DISPLAY;
-
 	return EGL_FALSE;
 }
 
@@ -1689,11 +1673,13 @@ EGLBoolean _eglDestroySurface(EGLDisplay dpy, EGLSurface surface)
 	}
 
 	if (success)
+	{
 		_eglInternalCleanup();
+		return EGL_TRUE;
+	}
 
 	g_localStorage.error = EGL_BAD_DISPLAY;
-
-	return success;
+	return EGL_FALSE;
 }
 
 EGLBoolean _eglGetConfigAttrib(EGLDisplay dpy, EGLConfig config, EGLint attribute, EGLint *value)
@@ -2016,20 +2002,6 @@ EGLBoolean _eglGetConfigAttrib(EGLDisplay dpy, EGLConfig config, EGLint attribut
 
 EGLBoolean _eglGetConfigs(EGLDisplay dpy, EGLConfig *configs, EGLint config_size, EGLint *num_config)
 {
-	if (!configs)
-	{
-		g_localStorage.error = EGL_BAD_PARAMETER;
-
-		return EGL_FALSE;
-	}
-
-	if (config_size == 0)
-	{
-		g_localStorage.error = EGL_BAD_PARAMETER;
-
-		return EGL_FALSE;
-	}
-
 	if (!num_config)
 	{
 		g_localStorage.error = EGL_BAD_PARAMETER;
@@ -2057,9 +2029,10 @@ EGLBoolean _eglGetConfigs(EGLDisplay dpy, EGLConfig *configs, EGLint config_size
 
 			EGLint configIndex = 0;
 
-			while (walkerConfig && configIndex < config_size)
+			while (walkerConfig)
 			{
-				configs[configIndex] = walkerConfig;
+				if (configs && configIndex < config_size)
+					configs[configIndex] = walkerConfig;
 
 				walkerConfig = walkerConfig->next;
 
@@ -2293,7 +2266,7 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 				NativeSurfaceContainer* nativeSurfaceContainer = 0;
 				NativeContextContainer* nativeContextContainer = 0;
 
-				EGLBoolean result;
+				EGLBoolean result = EGL_TRUE;
 
 				if (draw != EGL_NO_SURFACE)
 				{
@@ -2516,7 +2489,8 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 	if (success)
 		_eglInternalCleanup();
 
-	g_localStorage.error = EGL_BAD_DISPLAY;
+	if (!success)
+		g_localStorage.error = EGL_BAD_DISPLAY;
 
 	return success;
 }
@@ -2566,7 +2540,7 @@ EGLBoolean _eglQueryContext (EGLDisplay dpy, EGLContext ctx, EGLint attribute, E
 						{
 							if (value)
 							{
-								*value = EGL_OPENGL_API;
+								*value = walkerCtx->clientAPI;
 							}
 
 							return EGL_TRUE;
@@ -2574,9 +2548,10 @@ EGLBoolean _eglQueryContext (EGLDisplay dpy, EGLContext ctx, EGLint attribute, E
 						break;
 						case EGL_CONTEXT_CLIENT_VERSION:
 						{
-							// Regarding the specification, it only makes sense for OpenGL ES.
+							if (value)
+								*value = walkerCtx->attribList[1];
 
-							return EGL_FALSE;
+							return EGL_TRUE;
 						}
 						break;
 						case EGL_RENDER_BUFFER:
@@ -2982,7 +2957,7 @@ EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
 			{
 				g_localStorage.error = EGL_NOT_INITIALIZED;
 
-				return 0;
+				return EGL_FALSE;
 			}
 
 			EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
@@ -3032,9 +3007,7 @@ EGLBoolean _eglTerminate(EGLDisplay dpy)
 
 				if (!walkerDpy->initialized || walkerDpy->destroy)
 				{
-					g_localStorage.error = EGL_BAD_DISPLAY;
-
-					return EGL_FALSE;
+					return EGL_TRUE;
 				}
 
 				walkerDpy->initialized = EGL_FALSE;
@@ -3048,10 +3021,12 @@ EGLBoolean _eglTerminate(EGLDisplay dpy)
 	}
 
 	if (success)
+	{
 		_eglInternalCleanup();
+		return EGL_TRUE;
+	}
 
 	g_localStorage.error = EGL_BAD_DISPLAY;
-
 	return EGL_FALSE;
 }
 
@@ -3404,7 +3379,7 @@ EGLSurface _eglCreatePlatformPixmapSurface(EGLDisplay dpy, EGLConfig config, voi
 {
 	(void)dpy; (void)config; (void)native_pixmap; (void)attrib_list;
 	// Pixmap surfaces are not yet implemented.
-	g_localStorage.error = EGL_BAD_MATCH;
+	g_localStorage.error = EGL_BAD_NATIVE_PIXMAP;
 	return EGL_NO_SURFACE;
 }
 
