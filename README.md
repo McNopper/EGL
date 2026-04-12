@@ -29,6 +29,9 @@ Example (out-of-source, Release build):
    cmake -DCMAKE_BUILD_TYPE=Release ..
    cmake --build . --config Release
 
+The build also compiles the bundled examples (bin/green_window). These require no additional
+dependencies beyond the EGL library itself.
+
 If you get build errors:
 
 - Please make sure that you have installed all needed headers and libraries.
@@ -38,6 +41,8 @@ Yours Norbert Nopper
 
 
 Changelog:
+
+12.04.2026 - Added green window example (examples/green_window). Fixed EGL_STENCIL_SIZE config matching to use minimum-value semantics per spec (was exact match, causing eglChooseConfig to return no configs on D24S8 hardware). Removed GLEW dependency entirely; the library now has zero external dependencies.
 
 12.04.2026 - Implemented full EGL 1.5 API: window/pbuffer/pixmap surfaces, sync objects (GL_ARB_sync), image objects, eglCopyBuffers, eglBindTexImage/eglReleaseTexImage, eglGetPlatformDisplay, platform window/pixmap surfaces, and all remaining surface/config queries.
 
