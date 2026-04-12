@@ -36,19 +36,11 @@ If you get build errors:
 
 SDKs and Libraries:
 
-- GLEW 1.12.0 http://glew.sourceforge.net/ (optional, only needed when EGL_NO_GLEW=OFF)
+- GLEW http://glew.sourceforge.net/ (optional, only needed when EGL_NO_GLEW=OFF)
 
 
 Yours Norbert Nopper
 
-
-TODOs:
-
-- Check, if needed GL/WGL/GLX version is available. Otherwise this EGL lib will crash or just not work!
-
-- Check / implement correct error codes throughout.
-
-- Further testing across different hardware and driver configurations.
 
 Changelog:
 
