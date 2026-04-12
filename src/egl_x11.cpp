@@ -36,10 +36,14 @@ typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display*, GLXFBConfig,
                                                        const int*);
 typedef void (*__PFN_glXSwapIntervalEXT)(Display*, GLXDrawable, int);
 typedef void(*__PFN_glFinish)();
+typedef void (*__PFN_glXBindTexImageEXT)(Display*, GLXDrawable, int, const int*);
+typedef void (*__PFN_glXReleaseTexImageEXT)(Display*, GLXDrawable, int);
 
 __PFN_glXCreateContextAttribsARB glXCreateContextAttribsARB_PTR = NULL;
 __PFN_glXSwapIntervalEXT glXSwapIntervalEXT_PTR = NULL;
 __PFN_glFinish glFinish_PTR = NULL;
+__PFN_glXBindTexImageEXT glXBindTexImageEXT_PTR = NULL;
+__PFN_glXReleaseTexImageEXT glXReleaseTexImageEXT_PTR = NULL;
 
 #define glXSwapIntervalEXT(...) glXSwapIntervalEXT_PTR(__VA_ARGS__)
 #define glXCreateContextAttribsARB(...) \
@@ -140,6 +144,8 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	LOAD_GLX_FUNC_PTR(glXQueryExtensionsString);
 	LOAD_GLX_FUNC_PTR(glXGetFBConfigs);
 	LOAD_GLX_FUNC_PTR(glXMakeContextCurrent);
+	glXBindTexImageEXT_PTR = (__PFN_glXBindTexImageEXT)__getProcAddress("glXBindTexImageEXT");
+	glXReleaseTexImageEXT_PTR = (__PFN_glXReleaseTexImageEXT)__getProcAddress("glXReleaseTexImageEXT");
 
 	nativeLocalStorageContainer->display = XOpenDisplay_PTR(NULL);
 
@@ -973,7 +979,6 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		}
 
 		//
-		//TODO check for `GLX_EXT_create_context_es_profile` extension
 		newConfig->conformant = (EGL_OPENGL_BIT | ES_mask);
 		newConfig->renderableType = (EGL_OPENGL_BIT | ES_mask);
 		newConfig->surfaceType = 0;
@@ -1222,7 +1227,39 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		newConfig->matchNativePixmap = EGL_NONE;
 		newConfig->nativeRenderable = EGL_DONT_CARE; // ???
 
-		// FIXME: Query and save more values.
+		// Query configCaveat from GLX_CONFIG_CAVEAT.
+		attribute = GLX_CONFIG_CAVEAT;
+		if (!glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+		{
+			if (value == GLX_SLOW_CONFIG)
+				newConfig->configCaveat = EGL_SLOW_CONFIG;
+			else if (value == GLX_NON_CONFORMANT_CONFIG)
+				newConfig->configCaveat = EGL_NON_CONFORMANT_CONFIG;
+			else
+				newConfig->configCaveat = EGL_NONE;
+		}
+		else
+		{
+			newConfig->configCaveat = EGL_NONE;
+		}
+
+		// Query level.
+		attribute = GLX_LEVEL;
+		if (!glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+			newConfig->level = value;
+		else
+			newConfig->level = 0;
+
+		// Query nativeVisualType.
+		attribute = GLX_X_VISUAL_TYPE;
+		if (!glXGetFBConfigAttrib_PTR(walkerDpy->display_id, fbConfigs[currentPixelFormat], attribute, &value))
+			newConfig->nativeVisualType = value;
+		else
+			newConfig->nativeVisualType = EGL_NONE;
+
+		// GLX has no direct equivalent for swap interval range; use desktop defaults.
+		newConfig->minSwapInterval = 0;
+		newConfig->maxSwapInterval = 1;
 	}
 
 	XFree_PTR(fbConfigs);
@@ -1293,6 +1330,33 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 	logglxcall("glXSwapIntervalEXT");
 	glXSwapIntervalEXT_PTR(walkerDpy->display_id, walkerDpy->currentDraw->win, interval);
 
+	return EGL_TRUE;
+}
+
+EGLBoolean __bindTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint buffer)
+{
+	if (!walkerDpy || !walkerSurface)
+		return EGL_FALSE;
+	if (!glXBindTexImageEXT_PTR)
+		return EGL_FALSE;
+
+	// GLX_EXT_texture_from_pixmap buffer values.
+	// EGL_BACK_BUFFER maps to GLX_BACK_LEFT_EXT (0x20E0).
+	// EGL_FRONT_BUFFER (single-buffered) maps to GLX_FRONT_LEFT_EXT (0x20DE).
+	int glxBuffer = (buffer == EGL_BACK_BUFFER) ? 0x20E0 : 0x20DE;
+	glXBindTexImageEXT_PTR(walkerDpy->display_id, walkerSurface->pbuf, glxBuffer, NULL);
+	return EGL_TRUE;
+}
+
+EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint buffer)
+{
+	if (!walkerDpy || !walkerSurface)
+		return EGL_FALSE;
+	if (!glXReleaseTexImageEXT_PTR)
+		return EGL_FALSE;
+
+	int glxBuffer = (buffer == EGL_BACK_BUFFER) ? 0x20E0 : 0x20DE;
+	glXReleaseTexImageEXT_PTR(walkerDpy->display_id, walkerSurface->pbuf, glxBuffer);
 	return EGL_TRUE;
 }
 

@@ -17,6 +17,16 @@
 
 #include <KHR/khrplatform.h>
 
+/* Macros used in EGL function prototype declarations.
+ *
+ * EGL functions should be prototyped as:
+ *
+ * EGLAPI return-type EGLAPIENTRY eglFunction(arguments);
+ * typedef return-type (EXPAPIENTRYP PFNEGLFUNCTIONPROC) (arguments);
+ *
+ * KHRONOS_APICALL and KHRONOS_APIENTRY are defined in KHR/khrplatform.h
+ */
+
 #ifndef EGLAPI
 #define EGLAPI KHRONOS_APICALL
 #endif
@@ -25,6 +35,18 @@
 #define EGLAPIENTRY  KHRONOS_APIENTRY
 #endif
 #define EGLAPIENTRYP EGLAPIENTRY*
+
+/* The types NativeDisplayType, NativeWindowType, and NativePixmapType
+ * are aliases of window-system-dependent types, such as X Display * or
+ * Windows Device Context. They must be defined in platform-specific
+ * code below. The EGL-prefixed versions of Native*Type are the same
+ * types, renamed in EGL 1.3 so all types in the API start with "EGL".
+ *
+ * Khronos STRONGLY RECOMMENDS that you use the default definitions
+ * provided below, since these changes affect both binary and source
+ * portability of applications using EGL running on different EGL
+ * implementations.
+ */
 
 #if defined(EGL_NO_PLATFORM_SPECIFIC_TYPES)
 
@@ -45,8 +67,8 @@ typedef HWND    EGLNativeWindowType;
 #elif defined(__QNX__)
 
 typedef khronos_uintptr_t      EGLNativeDisplayType;
-typedef struct _screen_pixmap* EGLNativePixmapType;
-typedef struct _screen_window* EGLNativeWindowType;
+typedef struct _screen_pixmap* EGLNativePixmapType;  /* screen_pixmap_t */
+typedef struct _screen_window* EGLNativeWindowType;  /* screen_window_t */
 
 #elif defined(__EMSCRIPTEN__)
 
@@ -89,6 +111,7 @@ typedef intptr_t EGLNativeWindowType;
 
 #elif defined(USE_X11)
 
+/* X11 (tentative)  */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
@@ -126,12 +149,23 @@ typedef khronos_uintptr_t  EGLNativeWindowType;
 #error "Platform not recognized"
 #endif
 
+/* EGL 1.2 types, renamed for consistency in EGL 1.3 */
 typedef EGLNativeDisplayType NativeDisplayType;
 typedef EGLNativePixmapType  NativePixmapType;
 typedef EGLNativeWindowType  NativeWindowType;
 
+
+/* Define EGLint. This must be a signed integral type large enough to contain
+ * all legal attribute names and values passed into and out of EGL, whether
+ * their type is boolean, bitmask, enumerant (symbolic constant), integer,
+ * handle, or other.  While in general a 32-bit integer will suffice, if
+ * handles are 64 bit types, then EGLint should be defined as a signed 64-bit
+ * integer type.
+ */
 typedef khronos_int32_t EGLint;
 
+
+/* C++ / C typecast macros for special EGL handle values */
 #if defined(__cplusplus)
 #define EGL_CAST(type, value) (static_cast<type>(value))
 #else

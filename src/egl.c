@@ -84,6 +84,10 @@ extern EGLBoolean _eglGetPlatformDependentHandles (void* out, EGLDisplay dpy, EG
 
 extern EGLBoolean _eglSwapInterval (EGLDisplay dpy, EGLint interval);
 
+extern EGLBoolean _eglBindTexImage (EGLDisplay dpy, EGLSurface surface, EGLint buffer);
+
+extern EGLBoolean _eglReleaseTexImage (EGLDisplay dpy, EGLSurface surface, EGLint buffer);
+
 //
 // EGL_VERSION_1_2
 //
@@ -113,6 +117,12 @@ EGLContext _eglGetCurrentContext (void);
 //
 // EGL_VERSION_1_5
 //
+
+extern EGLDisplay _eglGetPlatformDisplay (EGLenum platform, void *native_display, const EGLAttrib *attrib_list);
+
+extern EGLSurface _eglCreatePlatformWindowSurface (EGLDisplay dpy, EGLConfig config, void *native_window, const EGLAttrib *attrib_list);
+
+extern EGLSurface _eglCreatePlatformPixmapSurface (EGLDisplay dpy, EGLConfig config, void *native_pixmap, const EGLAttrib *attrib_list);
 
 //
 // Wrapper.
@@ -262,16 +272,12 @@ EGLAPI EGLBoolean EGLAPIENTRY eglWaitNative (EGLint engine)
 
 EGLAPI EGLBoolean EGLAPIENTRY eglBindTexImage (EGLDisplay dpy, EGLSurface surface, EGLint buffer)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglBindTexImage (dpy, surface, buffer);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglReleaseTexImage (EGLDisplay dpy, EGLSurface surface, EGLint buffer)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglReleaseTexImage (dpy, surface, buffer);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglSurfaceAttrib (EGLDisplay dpy, EGLSurface surface, EGLint attribute, EGLint value)
@@ -374,23 +380,17 @@ EGLAPI EGLBoolean EGLAPIENTRY eglDestroyImage (EGLDisplay dpy, EGLImage image)
 
 EGLAPI EGLDisplay EGLAPIENTRY eglGetPlatformDisplay (EGLenum platform, void *native_display, const EGLAttrib *attrib_list)
 {
-	// TODO Implement.
-
-	return EGL_NO_DISPLAY;
+	return _eglGetPlatformDisplay (platform, native_display, attrib_list);
 }
 
 EGLAPI EGLSurface EGLAPIENTRY eglCreatePlatformWindowSurface (EGLDisplay dpy, EGLConfig config, void *native_window, const EGLAttrib *attrib_list)
 {
-	// TODO Implement.
-
-	return EGL_NO_SURFACE;
+	return _eglCreatePlatformWindowSurface (dpy, config, native_window, attrib_list);
 }
 
 EGLAPI EGLSurface EGLAPIENTRY eglCreatePlatformPixmapSurface (EGLDisplay dpy, EGLConfig config, void *native_pixmap, const EGLAttrib *attrib_list)
 {
-	// TODO Implement.
-
-	return EGL_NO_SURFACE;
+	return _eglCreatePlatformPixmapSurface (dpy, config, native_pixmap, attrib_list);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglWaitSync (EGLDisplay dpy, EGLSync sync, EGLint flags)

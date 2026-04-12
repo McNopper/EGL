@@ -27,6 +27,7 @@
 #include <atomic>
 #include <thread>
 #include "egl_internal.h"
+#include <EGL/eglext.h>
 
 #define EGL_NO_SURFACE_IMPL static_cast<EGLSurfaceImpl*>(EGL_NO_SURFACE)
 #define EGL_NO_CONTEXT_IMPL static_cast<EGLContextImpl*>(EGL_NO_CONTEXT)
@@ -3031,6 +3032,107 @@ EGLBoolean _eglSwapInterval(EGLDisplay dpy, EGLint interval)
 	return EGL_FALSE;
 }
 
+EGLBoolean _eglBindTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			guard_t _{ walkerDpy->mutex };
+
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_BAD_DISPLAY;
+				return EGL_FALSE;
+			}
+
+			EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
+			while (walkerSurface)
+			{
+				if ((EGLSurface)walkerSurface == surface)
+				{
+					if (!walkerSurface->drawToPBuffer)
+					{
+						g_localStorage.error = EGL_BAD_SURFACE;
+						return EGL_FALSE;
+					}
+					if (walkerSurface->textureFormat == EGL_NO_TEXTURE || walkerSurface->textureTarget == EGL_NO_TEXTURE)
+					{
+						g_localStorage.error = EGL_BAD_MATCH;
+						return EGL_FALSE;
+					}
+					if (buffer != EGL_BACK_BUFFER)
+					{
+						g_localStorage.error = EGL_BAD_PARAMETER;
+						return EGL_FALSE;
+					}
+					return __bindTexImage(walkerDpy, walkerSurface, buffer);
+				}
+				walkerSurface = walkerSurface->next;
+			}
+
+			g_localStorage.error = EGL_BAD_SURFACE;
+			return EGL_FALSE;
+		}
+
+		walkerDpy = walkerDpy->next;
+	}
+
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_FALSE;
+}
+
+EGLBoolean _eglReleaseTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			guard_t _{ walkerDpy->mutex };
+
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_BAD_DISPLAY;
+				return EGL_FALSE;
+			}
+
+			EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
+			while (walkerSurface)
+			{
+				if ((EGLSurface)walkerSurface == surface)
+				{
+					if (!walkerSurface->drawToPBuffer)
+					{
+						g_localStorage.error = EGL_BAD_SURFACE;
+						return EGL_FALSE;
+					}
+					if (buffer != EGL_BACK_BUFFER)
+					{
+						g_localStorage.error = EGL_BAD_PARAMETER;
+						return EGL_FALSE;
+					}
+					return __releaseTexImage(walkerDpy, walkerSurface, buffer);
+				}
+				walkerSurface = walkerSurface->next;
+			}
+
+			g_localStorage.error = EGL_BAD_SURFACE;
+			return EGL_FALSE;
+		}
+
+		walkerDpy = walkerDpy->next;
+	}
+
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_FALSE;
+}
+
 //
 // EGL_VERSION_1_2
 //
@@ -3136,6 +3238,57 @@ EGLContext _eglGetCurrentContext(void)
 //
 // EGL_VERSION_1_5
 //
+
+EGLDisplay _eglGetPlatformDisplay(EGLenum platform, void *native_display, const EGLAttrib *attrib_list)
+{
+	(void)attrib_list;
+
+#if defined(_WIN32) || defined(_WIN64)
+	// WGL has no standardized EGL platform identifier.
+	// Accept EGL_DEFAULT_DISPLAY with a NULL native_display.
+	if (platform == EGL_PLATFORM_DEVICE_EXT && native_display == NULL)
+		return _eglGetDisplay(EGL_DEFAULT_DISPLAY);
+
+	g_localStorage.error = EGL_BAD_PARAMETER;
+	return EGL_NO_DISPLAY;
+#elif defined(__unix__)
+	if (platform == EGL_PLATFORM_X11_EXT || platform == EGL_PLATFORM_X11_KHR)
+		return _eglGetDisplay((EGLNativeDisplayType)native_display);
+
+	g_localStorage.error = EGL_BAD_PARAMETER;
+	return EGL_NO_DISPLAY;
+#else
+	(void)platform; (void)native_display;
+	g_localStorage.error = EGL_BAD_PARAMETER;
+	return EGL_NO_DISPLAY;
+#endif
+}
+
+EGLSurface _eglCreatePlatformWindowSurface(EGLDisplay dpy, EGLConfig config, void *native_window, const EGLAttrib *attrib_list)
+{
+	// Convert EGLAttrib* (intptr_t) to EGLint* via a temporary buffer.
+	EGLint converted[64];
+	EGLint count = 0;
+	if (attrib_list)
+	{
+		for (const EGLAttrib* p = attrib_list; *p != EGL_NONE && count + 2 < 63; p += 2, count += 2)
+		{
+			converted[count]     = (EGLint)p[0];
+			converted[count + 1] = (EGLint)p[1];
+		}
+	}
+	converted[count] = EGL_NONE;
+
+	return _eglCreateWindowSurface(dpy, config, (EGLNativeWindowType)native_window, converted);
+}
+
+EGLSurface _eglCreatePlatformPixmapSurface(EGLDisplay dpy, EGLConfig config, void *native_pixmap, const EGLAttrib *attrib_list)
+{
+	(void)dpy; (void)config; (void)native_pixmap; (void)attrib_list;
+	// Pixmap surfaces are not yet implemented.
+	g_localStorage.error = EGL_BAD_MATCH;
+	return EGL_NO_SURFACE;
+}
 
 //
 // non-standard stuff

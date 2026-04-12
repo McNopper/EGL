@@ -55,6 +55,8 @@ PFNWGLCREATEPBUFFERARBPROC wglCreatePbufferARB = NULL;
 PFNWGLGETPBUFFERDCARBPROC wglGetPbufferDCARB = NULL;
 PFNWGLRELEASEPBUFFERDCARBPROC wglReleasePbufferDCARB = NULL;
 PFNWGLDESTROYPBUFFERARBPROC wglDestroyPbufferARB = NULL;
+PFNWGLBINDTEXIMAGEARBPROC wglBindTexImageARB_PTR = NULL;
+PFNWGLRELEASETEXIMAGEARBPROC wglReleaseTexImageARB_PTR = NULL;
 #endif
 
 
@@ -214,6 +216,8 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	wglGetPbufferDCARB = (PFNWGLGETPBUFFERDCARBPROC)__getProcAddress("wglGetPbufferDCARB");
 	wglReleasePbufferDCARB = (PFNWGLRELEASEPBUFFERDCARBPROC)__getProcAddress("wglReleasePbufferDCARB");
 	wglDestroyPbufferARB = (PFNWGLDESTROYPBUFFERARBPROC)__getProcAddress("wglDestroyPbufferARB");
+	wglBindTexImageARB_PTR = (PFNWGLBINDTEXIMAGEARBPROC)__getProcAddress("wglBindTexImageARB");
+	wglReleaseTexImageARB_PTR = (PFNWGLRELEASETEXIMAGEARBPROC)__getProcAddress("wglReleaseTexImageARB");
 
 	wglMakeCurrent_PTR(NULL, NULL);
 #endif
@@ -1162,7 +1166,29 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 		newConfig->matchNativePixmap = EGL_NONE;
 		newConfig->nativeRenderable = EGL_DONT_CARE; // ???
 
-		// FIXME: Query and save more values.
+		// Query configCaveat from acceleration type.
+		int accelValue = 0;
+		attribute = WGL_ACCELERATION_ARB;
+		if (wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &accelValue))
+		{
+			if (accelValue == WGL_NO_ACCELERATION_ARB)
+				newConfig->configCaveat = EGL_SLOW_CONFIG;
+			else if (accelValue == WGL_GENERIC_ACCELERATION_ARB)
+				newConfig->configCaveat = EGL_NON_CONFORMANT_CONFIG;
+			else
+				newConfig->configCaveat = EGL_NONE;
+		}
+		else
+		{
+			newConfig->configCaveat = EGL_NONE;
+		}
+
+		// WGL has no concept of overlay/underlay levels.
+		newConfig->level = 0;
+
+		// Reasonable desktop defaults for swap interval range.
+		newConfig->minSwapInterval = 0;
+		newConfig->maxSwapInterval = 1;
 	}
 
 	return EGL_TRUE;
@@ -1213,6 +1239,28 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 	}
 
 	return (EGLBoolean)wglSwapIntervalEXT(interval);
+}
+
+EGLBoolean __bindTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint buffer)
+{
+	if (!walkerDpy || !walkerSurface)
+		return EGL_FALSE;
+	if (!wglBindTexImageARB_PTR)
+		return EGL_FALSE;
+
+	int wglBuffer = (buffer == EGL_BACK_BUFFER) ? WGL_BACK_LEFT_ARB : WGL_FRONT_LEFT_ARB;
+	return (EGLBoolean)wglBindTexImageARB_PTR(walkerSurface->pbuf, wglBuffer);
+}
+
+EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint buffer)
+{
+	if (!walkerDpy || !walkerSurface)
+		return EGL_FALSE;
+	if (!wglReleaseTexImageARB_PTR)
+		return EGL_FALSE;
+
+	int wglBuffer = (buffer == EGL_BACK_BUFFER) ? WGL_BACK_LEFT_ARB : WGL_FRONT_LEFT_ARB;
+	return (EGLBoolean)wglReleaseTexImageARB_PTR(walkerSurface->pbuf, wglBuffer);
 }
 
 EGLBoolean __getPlatformDependentHandles(void* _out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)

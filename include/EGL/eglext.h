@@ -1,3 +1,4 @@
+#ifndef __eglext_h_
 #define __eglext_h_ 1
 
 #ifdef __cplusplus
