@@ -6,8 +6,9 @@ This library implements EGL 1.5 for Windows and X11 by wrapping WGL and GLX. Onl
 The purpose of this library and wrapping the existing APIs is to have the same source code on embedded and desktop systems
 when developing OpenGL applications.
 
-The project is in early stage and not well tested, but an initialization as seen on
-https://www.khronos.org/registry/egl/sdk/docs/man/html/eglIntro.xhtml under Windows and X11 does already work.
+The full EGL 1.5 API surface is implemented, including window surfaces, pbuffer surfaces, pixmap surfaces,
+rendering contexts, sync objects, and image objects. The standard initialization sequence described at
+https://www.khronos.org/registry/egl/sdk/docs/man/html/eglIntro.xhtml works on both Windows and X11.
 
 How to build EGL:
 
@@ -43,17 +44,15 @@ Yours Norbert Nopper
 
 TODOs:
 
-- Check, if needed GL/WGL version is available. Otherwise this EGL lib will crash or just not work!
+- Check, if needed GL/WGL/GLX version is available. Otherwise this EGL lib will crash or just not work!
 
-- Implement TODOs as marked in the source code.
+- Check / implement correct error codes throughout.
 
-- Implement FIXMEs as marked in the source code.
-
-- Check / implement correct error codes.
-
-- Cleanup source code.
+- Further testing across different hardware and driver configurations.
 
 Changelog:
+
+12.04.2026 - Implemented full EGL 1.5 API: window/pbuffer/pixmap surfaces, sync objects (GL_ARB_sync), image objects, eglCopyBuffers, eglBindTexImage/eglReleaseTexImage, eglGetPlatformDisplay, platform window/pixmap surfaces, and all remaining surface/config queries.
 
 12.04.2026 - Switched build system to CMake (3.10+). Updated Khronos headers to latest (egl.h 2026-03-19, eglext.h 20260319). Library output renamed to libEGL per Khronos convention.
 

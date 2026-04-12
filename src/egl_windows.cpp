@@ -32,6 +32,11 @@ HMODULE opengl32dll = NULL;
 #if defined(EGL_NO_GLEW)
 
 typedef void(*__PFN_glFinish)();
+typedef void* (*__PFN_glFenceSync)(GLenum condition, GLbitfield flags);
+typedef void  (*__PFN_glDeleteSync)(void* sync);
+typedef GLenum(*__PFN_glClientWaitSync)(void* sync, GLbitfield flags, unsigned long long timeout);
+typedef void  (*__PFN_glWaitSync)(void* sync, GLbitfield flags, unsigned long long timeout);
+typedef void  (*__PFN_glGetSynciv)(void* sync, GLenum pname, GLsizei count, GLsizei* length, GLint* values);
 
 typedef HGLRC(__stdcall *__PFN_wglCreateContext)(HDC);
 typedef BOOL(__stdcall *__PFN_wglDeleteContext)(HGLRC);
@@ -39,6 +44,11 @@ typedef BOOL(__stdcall *__PFN_wglMakeCurrent)(HDC,HGLRC);
 typedef PROC(__stdcall *__PFN_wglGetProcAddress)(LPCSTR);
 
 __PFN_glFinish glFinish_PTR = NULL;
+__PFN_glFenceSync glFenceSync_PTR = NULL;
+__PFN_glDeleteSync glDeleteSync_PTR = NULL;
+__PFN_glClientWaitSync glClientWaitSync_PTR = NULL;
+__PFN_glWaitSync glWaitSync_PTR = NULL;
+__PFN_glGetSynciv glGetSynciv_PTR = NULL;
 
 __PFN_wglCreateContext wglCreateContext_PTR = NULL;
 __PFN_wglDeleteContext wglDeleteContext_PTR = NULL;
@@ -211,6 +221,11 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
       (PFNWGLGETEXTENSIONSSTRINGARBPROC)
       __getProcAddress("wglGetExtensionsStringARB");
 	glFinish_PTR = (__PFN_glFinish)__getProcAddress("glFinish");
+	glFenceSync_PTR = (__PFN_glFenceSync)__getProcAddress("glFenceSync");
+	glDeleteSync_PTR = (__PFN_glDeleteSync)__getProcAddress("glDeleteSync");
+	glClientWaitSync_PTR = (__PFN_glClientWaitSync)__getProcAddress("glClientWaitSync");
+	glWaitSync_PTR = (__PFN_glWaitSync)__getProcAddress("glWaitSync");
+	glGetSynciv_PTR = (__PFN_glGetSynciv)__getProcAddress("glGetSynciv");
 
 	wglCreatePbufferARB = (PFNWGLCREATEPBUFFERARBPROC)__getProcAddress("wglCreatePbufferARB");
 	wglGetPbufferDCARB = (PFNWGLGETPBUFFERDCARBPROC)__getProcAddress("wglGetPbufferDCARB");
@@ -863,6 +878,126 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 		wglReleasePbufferDCARB(surface->pbuf, surface->nativeSurfaceContainer.hdc);
 		wglDestroyPbufferARB(surface->pbuf);
 	}
+	else if (surface->drawToPixmap)
+	{
+		DeleteDC(nativeSurfaceContainer->hdc);
+	}
+
+	return EGL_TRUE;
+}
+
+EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType pixmap,
+	const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+{
+	(void)attrib_list;
+	if (!newSurface || !walkerDpy || !walkerConfig || !error)
+		return EGL_FALSE;
+
+	if (!pixmap)
+	{
+		*error = EGL_BAD_NATIVE_PIXMAP;
+		return EGL_FALSE;
+	}
+
+	BITMAP bm;
+	memset(&bm, 0, sizeof(bm));
+	if (!GetObject(pixmap, sizeof(bm), &bm))
+	{
+		*error = EGL_BAD_NATIVE_PIXMAP;
+		return EGL_FALSE;
+	}
+
+	HDC screenDC = GetDC(NULL);
+	HDC memDC = CreateCompatibleDC(screenDC);
+	ReleaseDC(NULL, screenDC);
+	if (!memDC)
+	{
+		*error = EGL_BAD_ALLOC;
+		return EGL_FALSE;
+	}
+
+	SelectObject(memDC, pixmap);
+
+	PIXELFORMATDESCRIPTOR pfd;
+	memset(&pfd, 0, sizeof(pfd));
+	pfd.nSize = sizeof(pfd);
+	DescribePixelFormat(walkerDpy->display_id, walkerConfig->configId, sizeof(pfd), &pfd);
+
+	if (!SetPixelFormat(memDC, walkerConfig->configId, &pfd))
+	{
+		DeleteDC(memDC);
+		*error = EGL_BAD_MATCH;
+		return EGL_FALSE;
+	}
+
+	newSurface->drawToWindow = EGL_FALSE;
+	newSurface->drawToPixmap = EGL_TRUE;
+	newSurface->drawToPBuffer = EGL_FALSE;
+	newSurface->doubleBuffer = EGL_FALSE;
+	newSurface->configId = walkerConfig->configId;
+	newSurface->width = bm.bmWidth;
+	newSurface->height = bm.bmHeight;
+	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+	newSurface->mipmapLevel = 0;
+	newSurface->mipmapTexture = EGL_FALSE;
+	newSurface->largestPbuffer = EGL_FALSE;
+	newSurface->textureFormat = EGL_NO_TEXTURE;
+	newSurface->textureTarget = EGL_NO_TEXTURE;
+
+	newSurface->initialized = EGL_TRUE;
+	newSurface->destroy = EGL_FALSE;
+	newSurface->pixmap = pixmap;
+	newSurface->nativeSurfaceContainer.hdc = memDC;
+
+	return EGL_TRUE;
+}
+
+EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* surface, EGLNativePixmapType target)
+{
+	(void)walkerDpy; (void)surface;
+
+	if (!target)
+		return EGL_FALSE;
+
+	BITMAP bm;
+	memset(&bm, 0, sizeof(bm));
+	if (!GetObject(target, sizeof(bm), &bm))
+		return EGL_FALSE;
+
+	GLint viewport[4];
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	GLint width  = viewport[2];
+	GLint height = viewport[3];
+
+	if (width <= 0 || height <= 0)
+		return EGL_FALSE;
+
+	GLsizei stride = (width * 4 + 3) & ~3;
+	GLubyte* pixels = (GLubyte*)malloc((size_t)stride * height);
+	if (!pixels)
+		return EGL_FALSE;
+
+	// GL_BGRA = 0x80E1; bottom-up origin matches positive-height DIB
+	glReadPixels(0, 0, width, height, 0x80E1, GL_UNSIGNED_BYTE, pixels);
+
+	BITMAPINFO bi;
+	memset(&bi, 0, sizeof(bi));
+	bi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth       = width;
+	bi.bmiHeader.biHeight      = height;  // positive = bottom-up, matches GL origin
+	bi.bmiHeader.biPlanes      = 1;
+	bi.bmiHeader.biBitCount    = 32;
+	bi.bmiHeader.biCompression = BI_RGB;
+
+	HDC screenDC = GetDC(NULL);
+	HDC memDC    = CreateCompatibleDC(screenDC);
+	ReleaseDC(NULL, screenDC);
+	HGDIOBJ oldBmp = SelectObject(memDC, target);
+	SetDIBits(memDC, target, 0, (UINT)height, pixels, &bi, DIB_RGB_COLORS);
+	SelectObject(memDC, oldBmp);
+	DeleteDC(memDC);
+	free(pixels);
 
 	return EGL_TRUE;
 }

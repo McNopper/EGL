@@ -29,6 +29,31 @@
 #include "egl_internal.h"
 #include <EGL/eglext.h>
 
+// GL_ARB_sync constants and function pointer externs (defined in platform .cpp files).
+#define GL_SYNC_GPU_COMMANDS_COMPLETE     0x9117
+#define GL_SYNC_STATUS_GL                 0x9114
+#define GL_SYNC_CONDITION_GL              0x9113
+#define GL_SIGNALED_GL                    0x9119
+#define GL_UNSIGNALED_GL                  0x9118
+#define GL_ALREADY_SIGNALED_GL            0x911A
+#define GL_TIMEOUT_EXPIRED_GL             0x911B
+#define GL_CONDITION_SATISFIED_GL         0x911C
+#define GL_WAIT_FAILED_GL                 0x911D
+#define GL_SYNC_FLUSH_COMMANDS_BIT_GL     0x00000001
+#define GL_TIMEOUT_IGNORED_GL             0xFFFFFFFFFFFFFFFFull
+
+typedef void* (*__PFN_glFenceSync)(GLenum condition, GLbitfield flags);
+typedef void  (*__PFN_glDeleteSync)(void* sync);
+typedef GLenum(*__PFN_glClientWaitSync)(void* sync, GLbitfield flags, unsigned long long timeout);
+typedef void  (*__PFN_glWaitSync)(void* sync, GLbitfield flags, unsigned long long timeout);
+typedef void  (*__PFN_glGetSynciv)(void* sync, GLenum pname, GLsizei count, GLsizei* length, GLint* values);
+
+extern __PFN_glFenceSync glFenceSync_PTR;
+extern __PFN_glDeleteSync glDeleteSync_PTR;
+extern __PFN_glClientWaitSync glClientWaitSync_PTR;
+extern __PFN_glWaitSync glWaitSync_PTR;
+extern __PFN_glGetSynciv glGetSynciv_PTR;
+
 #define EGL_NO_SURFACE_IMPL static_cast<EGLSurfaceImpl*>(EGL_NO_SURFACE)
 #define EGL_NO_CONTEXT_IMPL static_cast<EGLContextImpl*>(EGL_NO_CONTEXT)
 
@@ -1455,6 +1480,99 @@ EGLSurface _eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWi
 	return EGL_NO_SURFACE;
 }
 
+EGLSurface _eglCreatePixmapSurface(EGLDisplay dpy, EGLConfig config, EGLNativePixmapType pixmap, const EGLint *attrib_list)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			guard_t _{ walkerDpy->mutex };
+
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_NO_SURFACE;
+			}
+
+			EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
+			while (walkerConfig)
+			{
+				if ((EGLConfig)walkerConfig == config)
+				{
+					if (!walkerConfig->drawToPixmap)
+					{
+						g_localStorage.error = EGL_BAD_MATCH;
+						return EGL_NO_SURFACE;
+					}
+
+					EGLSurfaceImpl* newSurface = (EGLSurfaceImpl*)malloc(sizeof(EGLSurfaceImpl));
+					if (!newSurface)
+					{
+						g_localStorage.error = EGL_BAD_ALLOC;
+						return EGL_NO_SURFACE;
+					}
+
+					if (!__createPixmapSurface(newSurface, pixmap, attrib_list, walkerDpy, walkerConfig, &g_localStorage.error))
+					{
+						free(newSurface);
+						return EGL_NO_SURFACE;
+					}
+
+					newSurface->next = walkerDpy->rootSurface;
+					walkerDpy->rootSurface = newSurface;
+					return (EGLSurface)newSurface;
+				}
+				walkerConfig = walkerConfig->next;
+			}
+
+			g_localStorage.error = EGL_BAD_CONFIG;
+			return EGL_NO_SURFACE;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_NO_SURFACE;
+}
+
+EGLBoolean _eglCopyBuffers(EGLDisplay dpy, EGLSurface surface, EGLNativePixmapType target)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_FALSE;
+			}
+
+			EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
+			while (walkerSurface)
+			{
+				if ((EGLSurface)walkerSurface == surface)
+				{
+					return __copyBuffers(walkerDpy, walkerSurface, target);
+				}
+				walkerSurface = walkerSurface->next;
+			}
+
+			g_localStorage.error = EGL_BAD_SURFACE;
+			return EGL_FALSE;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_FALSE;
+}
+
 EGLBoolean _eglDestroyContext(EGLDisplay dpy, EGLContext ctx)
 {
 	EGLBoolean success = EGL_FALSE;
@@ -2062,6 +2180,8 @@ EGLDisplay _eglGetDisplay(EGLNativeDisplayType display_id)
 	newDpy->rootSurface = 0;
 	newDpy->rootCtx = 0;
 	newDpy->rootConfig = 0;
+	newDpy->rootSync = nullptr;
+	newDpy->rootImage = nullptr;
 	newDpy->currentDraw = EGL_NO_SURFACE_IMPL;
 	newDpy->currentRead = EGL_NO_SURFACE_IMPL;
 	newDpy->currentCtx = EGL_NO_CONTEXT_IMPL;
@@ -3288,6 +3408,336 @@ EGLSurface _eglCreatePlatformPixmapSurface(EGLDisplay dpy, EGLConfig config, voi
 	// Pixmap surfaces are not yet implemented.
 	g_localStorage.error = EGL_BAD_MATCH;
 	return EGL_NO_SURFACE;
+}
+
+EGLSync _eglCreateSync(EGLDisplay dpy, EGLenum type, const EGLAttrib *attrib_list)
+{
+	(void)attrib_list;
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_NO_SYNC;
+			}
+			if (type != EGL_SYNC_FENCE)
+			{
+				g_localStorage.error = EGL_BAD_ATTRIBUTE;
+				return EGL_NO_SYNC;
+			}
+			if (!glFenceSync_PTR)
+			{
+				g_localStorage.error = EGL_BAD_MATCH;
+				return EGL_NO_SYNC;
+			}
+			void* glSync = glFenceSync_PTR(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+			if (!glSync)
+			{
+				g_localStorage.error = EGL_BAD_ALLOC;
+				return EGL_NO_SYNC;
+			}
+			EGLSyncImpl* newSync = new EGLSyncImpl();
+			if (!newSync)
+			{
+				glDeleteSync_PTR(glSync);
+				g_localStorage.error = EGL_BAD_ALLOC;
+				return EGL_NO_SYNC;
+			}
+			newSync->type   = EGL_SYNC_FENCE;
+			newSync->glSync = glSync;
+			std::lock_guard<std::mutex> lk(walkerDpy->mutex);
+			newSync->next       = walkerDpy->rootSync;
+			walkerDpy->rootSync = newSync;
+			return (EGLSync)newSync;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_NO_SYNC;
+}
+
+EGLBoolean _eglDestroySync(EGLDisplay dpy, EGLSync sync)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_FALSE;
+			}
+			std::lock_guard<std::mutex> lk(walkerDpy->mutex);
+			EGLSyncImpl* prev = nullptr;
+			EGLSyncImpl* walker = walkerDpy->rootSync;
+			while (walker)
+			{
+				if ((EGLSync)walker == sync)
+				{
+					if (prev)
+						prev->next = walker->next;
+					else
+						walkerDpy->rootSync = walker->next;
+					if (glDeleteSync_PTR)
+						glDeleteSync_PTR(walker->glSync);
+					delete walker;
+					return EGL_TRUE;
+				}
+				prev   = walker;
+				walker = walker->next;
+			}
+			g_localStorage.error = EGL_BAD_PARAMETER;
+			return EGL_FALSE;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_FALSE;
+}
+
+EGLint _eglClientWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime timeout)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_FALSE;
+			}
+			EGLSyncImpl* walkerSync = walkerDpy->rootSync;
+			while (walkerSync)
+			{
+				if ((EGLSync)walkerSync == sync)
+				{
+					if (!glClientWaitSync_PTR)
+					{
+						g_localStorage.error = EGL_BAD_MATCH;
+						return EGL_FALSE;
+					}
+					GLbitfield glFlags = (flags & EGL_SYNC_FLUSH_COMMANDS_BIT) ? GL_SYNC_FLUSH_COMMANDS_BIT_GL : 0;
+					unsigned long long glTimeout = (timeout == EGL_FOREVER) ? GL_TIMEOUT_IGNORED_GL : (unsigned long long)timeout;
+					GLenum result = glClientWaitSync_PTR(walkerSync->glSync, glFlags, glTimeout);
+					switch (result)
+					{
+					case GL_ALREADY_SIGNALED_GL:
+					case GL_CONDITION_SATISFIED_GL:
+						return EGL_CONDITION_SATISFIED;
+					case GL_TIMEOUT_EXPIRED_GL:
+						return EGL_TIMEOUT_EXPIRED;
+					default:
+						g_localStorage.error = EGL_BAD_PARAMETER;
+						return EGL_FALSE;
+					}
+				}
+				walkerSync = walkerSync->next;
+			}
+			g_localStorage.error = EGL_BAD_PARAMETER;
+			return EGL_FALSE;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_FALSE;
+}
+
+EGLBoolean _eglGetSyncAttrib(EGLDisplay dpy, EGLSync sync, EGLint attribute, EGLAttrib *value)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_FALSE;
+			}
+			EGLSyncImpl* walkerSync = walkerDpy->rootSync;
+			while (walkerSync)
+			{
+				if ((EGLSync)walkerSync == sync)
+				{
+					switch (attribute)
+					{
+					case EGL_SYNC_TYPE:
+						*value = (EGLAttrib)walkerSync->type;
+						return EGL_TRUE;
+					case EGL_SYNC_CONDITION:
+						*value = (EGLAttrib)EGL_SYNC_PRIOR_COMMANDS_COMPLETE;
+						return EGL_TRUE;
+					case EGL_SYNC_STATUS:
+					{
+						if (!glGetSynciv_PTR)
+						{
+							g_localStorage.error = EGL_BAD_MATCH;
+							return EGL_FALSE;
+						}
+						GLint status = 0;
+						GLsizei len  = 0;
+						glGetSynciv_PTR(walkerSync->glSync, GL_SYNC_STATUS_GL, 1, &len, &status);
+						*value = (status == GL_SIGNALED_GL) ? EGL_SIGNALED : EGL_UNSIGNALED;
+						return EGL_TRUE;
+					}
+					default:
+						g_localStorage.error = EGL_BAD_ATTRIBUTE;
+						return EGL_FALSE;
+					}
+				}
+				walkerSync = walkerSync->next;
+			}
+			g_localStorage.error = EGL_BAD_PARAMETER;
+			return EGL_FALSE;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_FALSE;
+}
+
+EGLBoolean _eglWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags)
+{
+	(void)flags;
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_FALSE;
+			}
+			EGLSyncImpl* walkerSync = walkerDpy->rootSync;
+			while (walkerSync)
+			{
+				if ((EGLSync)walkerSync == sync)
+				{
+					if (!glWaitSync_PTR)
+					{
+						g_localStorage.error = EGL_BAD_MATCH;
+						return EGL_FALSE;
+					}
+					glWaitSync_PTR(walkerSync->glSync, 0, GL_TIMEOUT_IGNORED_GL);
+					return EGL_TRUE;
+				}
+				walkerSync = walkerSync->next;
+			}
+			g_localStorage.error = EGL_BAD_PARAMETER;
+			return EGL_FALSE;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_FALSE;
+}
+
+EGLImage _eglCreateImage(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLAttrib *attrib_list)
+{
+	(void)ctx; (void)attrib_list;
+	switch (target)
+	{
+	case EGL_GL_TEXTURE_2D:
+	case EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_X:
+	case EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
+	case EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
+	case EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
+	case EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
+	case EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
+	case EGL_GL_TEXTURE_3D:
+	case 0x30C3: // EGL_GL_TEXTURE_2D_ARRAY (EGL 1.5)
+	case EGL_GL_RENDERBUFFER:
+		break;
+	default:
+		g_localStorage.error = EGL_BAD_PARAMETER;
+		return EGL_NO_IMAGE;
+	}
+
+	if (!buffer)
+	{
+		g_localStorage.error = EGL_BAD_PARAMETER;
+		return EGL_NO_IMAGE;
+	}
+
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_NO_IMAGE;
+			}
+
+			EGLImageImpl* newImage = new EGLImageImpl();
+			if (!newImage)
+			{
+				g_localStorage.error = EGL_BAD_ALLOC;
+				return EGL_NO_IMAGE;
+			}
+			newImage->target = target;
+			newImage->buffer = buffer;
+			std::lock_guard<std::mutex> lk(walkerDpy->mutex);
+			newImage->next      = walkerDpy->rootImage;
+			walkerDpy->rootImage = newImage;
+			return (EGLImage)newImage;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_NO_IMAGE;
+}
+
+EGLBoolean _eglDestroyImage(EGLDisplay dpy, EGLImage image)
+{
+	auto _rl = g_globalStorage.placeRootDpy_readlock();
+	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+	while (walkerDpy)
+	{
+		if ((EGLDisplay)walkerDpy == dpy)
+		{
+			if (!walkerDpy->initialized || walkerDpy->destroy)
+			{
+				g_localStorage.error = EGL_NOT_INITIALIZED;
+				return EGL_FALSE;
+			}
+			std::lock_guard<std::mutex> lk(walkerDpy->mutex);
+			EGLImageImpl* prev = nullptr;
+			EGLImageImpl* walker = walkerDpy->rootImage;
+			while (walker)
+			{
+				if ((EGLImage)walker == image)
+				{
+					if (prev)
+						prev->next = walker->next;
+					else
+						walkerDpy->rootImage = walker->next;
+					delete walker;
+					return EGL_TRUE;
+				}
+				prev   = walker;
+				walker = walker->next;
+			}
+			g_localStorage.error = EGL_BAD_PARAMETER;
+			return EGL_FALSE;
+		}
+		walkerDpy = walkerDpy->next;
+	}
+	g_localStorage.error = EGL_BAD_DISPLAY;
+	return EGL_FALSE;
 }
 
 //

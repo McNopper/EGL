@@ -42,6 +42,10 @@ extern EGLSurface _eglCreateWindowSurface (EGLDisplay dpy, EGLConfig config, EGL
 
 extern EGLSurface _eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, const EGLint* attrib_list);
 
+extern EGLSurface _eglCreatePixmapSurface (EGLDisplay dpy, EGLConfig config, EGLNativePixmapType pixmap, const EGLint *attrib_list);
+
+extern EGLBoolean _eglCopyBuffers (EGLDisplay dpy, EGLSurface surface, EGLNativePixmapType target);
+
 extern EGLBoolean _eglDestroyContext (EGLDisplay dpy, EGLContext ctx);
 
 extern EGLBoolean _eglDestroySurface (EGLDisplay dpy, EGLSurface surface);
@@ -124,6 +128,20 @@ extern EGLSurface _eglCreatePlatformWindowSurface (EGLDisplay dpy, EGLConfig con
 
 extern EGLSurface _eglCreatePlatformPixmapSurface (EGLDisplay dpy, EGLConfig config, void *native_pixmap, const EGLAttrib *attrib_list);
 
+extern EGLSync _eglCreateSync (EGLDisplay dpy, EGLenum type, const EGLAttrib *attrib_list);
+
+extern EGLBoolean _eglDestroySync (EGLDisplay dpy, EGLSync sync);
+
+extern EGLint _eglClientWaitSync (EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime timeout);
+
+extern EGLBoolean _eglGetSyncAttrib (EGLDisplay dpy, EGLSync sync, EGLint attribute, EGLAttrib *value);
+
+extern EGLBoolean _eglWaitSync (EGLDisplay dpy, EGLSync sync, EGLint flags);
+
+extern EGLImage _eglCreateImage (EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLAttrib *attrib_list);
+
+extern EGLBoolean _eglDestroyImage (EGLDisplay dpy, EGLImage image);
+
 //
 // Wrapper.
 //
@@ -139,9 +157,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig (EGLDisplay dpy, const EGLint *att
 
 EGLAPI EGLBoolean EGLAPIENTRY eglCopyBuffers (EGLDisplay dpy, EGLSurface surface, EGLNativePixmapType target)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglCopyBuffers(dpy, surface, target);
 }
 
 EGLAPI EGLContext EGLAPIENTRY eglCreateContext (EGLDisplay dpy, EGLConfig config, EGLContext share_context, const EGLint *attrib_list)
@@ -156,9 +172,7 @@ EGLAPI EGLSurface EGLAPIENTRY eglCreatePbufferSurface (EGLDisplay dpy, EGLConfig
 
 EGLAPI EGLSurface EGLAPIENTRY eglCreatePixmapSurface (EGLDisplay dpy, EGLConfig config, EGLNativePixmapType pixmap, const EGLint *attrib_list)
 {
-	// TODO Implement.
-
-	return EGL_NO_SURFACE;
+	return _eglCreatePixmapSurface(dpy, config, pixmap, attrib_list);
 }
 
 EGLAPI EGLSurface EGLAPIENTRY eglCreateWindowSurface (EGLDisplay dpy, EGLConfig config, EGLNativeWindowType win, const EGLint *attrib_list)
@@ -338,44 +352,32 @@ EGLAPI EGLContext EGLAPIENTRY eglGetCurrentContext (void)
 
 EGLAPI EGLSync EGLAPIENTRY eglCreateSync (EGLDisplay dpy, EGLenum type, const EGLAttrib *attrib_list)
 {
-	// TODO Implement.
-
-	return EGL_NO_SYNC;
+	return _eglCreateSync(dpy, type, attrib_list);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglDestroySync (EGLDisplay dpy, EGLSync sync)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglDestroySync(dpy, sync);
 }
 
 EGLAPI EGLint EGLAPIENTRY eglClientWaitSync (EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime timeout)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglClientWaitSync(dpy, sync, flags, timeout);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglGetSyncAttrib (EGLDisplay dpy, EGLSync sync, EGLint attribute, EGLAttrib *value)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglGetSyncAttrib(dpy, sync, attribute, value);
 }
 
 EGLAPI EGLImage EGLAPIENTRY eglCreateImage (EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLAttrib *attrib_list)
 {
-	// TODO Implement.
-
-	return EGL_NO_IMAGE;
+	return _eglCreateImage(dpy, ctx, target, buffer, attrib_list);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglDestroyImage (EGLDisplay dpy, EGLImage image)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglDestroyImage(dpy, image);
 }
 
 EGLAPI EGLDisplay EGLAPIENTRY eglGetPlatformDisplay (EGLenum platform, void *native_display, const EGLAttrib *attrib_list)
@@ -395,9 +397,7 @@ EGLAPI EGLSurface EGLAPIENTRY eglCreatePlatformPixmapSurface (EGLDisplay dpy, EG
 
 EGLAPI EGLBoolean EGLAPIENTRY eglWaitSync (EGLDisplay dpy, EGLSync sync, EGLint flags)
 {
-	// TODO Implement.
-
-	return EGL_FALSE;
+	return _eglWaitSync(dpy, sync, flags);
 }
 
 /*

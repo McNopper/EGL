@@ -36,12 +36,22 @@ typedef GLXContext (*__PFN_glXCreateContextAttribsARB)(Display*, GLXFBConfig,
                                                        const int*);
 typedef void (*__PFN_glXSwapIntervalEXT)(Display*, GLXDrawable, int);
 typedef void(*__PFN_glFinish)();
+typedef void* (*__PFN_glFenceSync)(GLenum condition, GLbitfield flags);
+typedef void  (*__PFN_glDeleteSync)(void* sync);
+typedef GLenum(*__PFN_glClientWaitSync)(void* sync, GLbitfield flags, unsigned long long timeout);
+typedef void  (*__PFN_glWaitSync)(void* sync, GLbitfield flags, unsigned long long timeout);
+typedef void  (*__PFN_glGetSynciv)(void* sync, GLenum pname, GLsizei count, GLsizei* length, GLint* values);
 typedef void (*__PFN_glXBindTexImageEXT)(Display*, GLXDrawable, int, const int*);
 typedef void (*__PFN_glXReleaseTexImageEXT)(Display*, GLXDrawable, int);
 
 __PFN_glXCreateContextAttribsARB glXCreateContextAttribsARB_PTR = NULL;
 __PFN_glXSwapIntervalEXT glXSwapIntervalEXT_PTR = NULL;
 __PFN_glFinish glFinish_PTR = NULL;
+__PFN_glFenceSync glFenceSync_PTR = NULL;
+__PFN_glDeleteSync glDeleteSync_PTR = NULL;
+__PFN_glClientWaitSync glClientWaitSync_PTR = NULL;
+__PFN_glWaitSync glWaitSync_PTR = NULL;
+__PFN_glGetSynciv glGetSynciv_PTR = NULL;
 __PFN_glXBindTexImageEXT glXBindTexImageEXT_PTR = NULL;
 __PFN_glXReleaseTexImageEXT glXReleaseTexImageEXT_PTR = NULL;
 
@@ -59,6 +69,13 @@ decltype(XDestroyWindow)* XDestroyWindow_PTR = NULL;
 decltype(XFree)* XFree_PTR = NULL;
 decltype(XGetErrorText)* XGetErrorText_PTR = NULL;
 decltype(XSetErrorHandler)* XSetErrorHandler_PTR = NULL;
+decltype(XGetGeometry)* XGetGeometry_PTR = NULL;
+decltype(XCreateImage)* XCreateImage_PTR = NULL;
+decltype(XPutImage)* XPutImage_PTR = NULL;
+decltype(XCreateGC)* XCreateGC_PTR = NULL;
+decltype(XFreeGC)* XFreeGC_PTR = NULL;
+decltype(XDefaultVisual)* XDefaultVisual_PTR = NULL;
+decltype(XDefaultDepth)* XDefaultDepth_PTR = NULL;
 //glX
 decltype(glXGetProcAddress)* glXGetProcAddress_PTR = NULL;
 Bool(*glXQueryVersion_PTR)(Display*,int*,int*) = NULL;
@@ -75,6 +92,8 @@ void(*glXDestroyPbuffer_PTR)(Display*,GLXPbuffer) = NULL;
 const char*(*glXQueryExtensionsString_PTR)(Display*,int) = NULL;
 GLXFBConfig*(*glXGetFBConfigs_PTR)(Display*,int,int*) = NULL;
 Bool(*glXMakeContextCurrent_PTR)(Display*,GLXDrawable,GLXDrawable,GLXContext) = NULL;
+GLXPixmap(*glXCreatePixmap_PTR)(Display*,GLXFBConfig,Pixmap,const int*) = NULL;
+void(*glXDestroyPixmap_PTR)(Display*,GLXPixmap) = NULL;
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
 {
@@ -125,6 +144,13 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	LOAD_X11_FUNC_PTR(XFree);
 	LOAD_X11_FUNC_PTR(XGetErrorText);
 	LOAD_X11_FUNC_PTR(XSetErrorHandler);
+	LOAD_X11_FUNC_PTR(XGetGeometry);
+	LOAD_X11_FUNC_PTR(XCreateImage);
+	LOAD_X11_FUNC_PTR(XPutImage);
+	LOAD_X11_FUNC_PTR(XCreateGC);
+	LOAD_X11_FUNC_PTR(XFreeGC);
+	LOAD_X11_FUNC_PTR(XDefaultVisual);
+	LOAD_X11_FUNC_PTR(XDefaultDepth);
 	//LOAD_GLX_FUNC_PTR(glXGetProcAddress);
 	glXGetProcAddress_PTR = (decltype(glXGetProcAddress_PTR)) dlsym(libgl, "glXGetProcAddress");
 	if (!glXGetProcAddress_PTR)
@@ -144,6 +170,8 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 	LOAD_GLX_FUNC_PTR(glXQueryExtensionsString);
 	LOAD_GLX_FUNC_PTR(glXGetFBConfigs);
 	LOAD_GLX_FUNC_PTR(glXMakeContextCurrent);
+	LOAD_GLX_FUNC_PTR(glXCreatePixmap);
+	LOAD_GLX_FUNC_PTR(glXDestroyPixmap);
 	glXBindTexImageEXT_PTR = (__PFN_glXBindTexImageEXT)__getProcAddress("glXBindTexImageEXT");
 	glXReleaseTexImageEXT_PTR = (__PFN_glXReleaseTexImageEXT)__getProcAddress("glXReleaseTexImageEXT");
 
@@ -259,6 +287,11 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
   glXSwapIntervalEXT_PTR =
     (__PFN_glXSwapIntervalEXT)__getProcAddress("glXSwapIntervalEXT");
   glFinish_PTR = (__PFN_glFinish)__getProcAddress("glFinish");
+  glFenceSync_PTR = (__PFN_glFenceSync)__getProcAddress("glFenceSync");
+  glDeleteSync_PTR = (__PFN_glDeleteSync)__getProcAddress("glDeleteSync");
+  glClientWaitSync_PTR = (__PFN_glClientWaitSync)__getProcAddress("glClientWaitSync");
+  glWaitSync_PTR = (__PFN_glWaitSync)__getProcAddress("glWaitSync");
+  glGetSynciv_PTR = (__PFN_glGetSynciv)__getProcAddress("glGetSynciv");
 #endif
 
   int count;
@@ -833,7 +866,154 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 		logglxcall("glXDestroyPbuffer");
 		glXDestroyPbuffer_PTR(dpy, surface->pbuf);
 	}
+	else if (surface->drawToPixmap)
+	{
+		if (glXDestroyPixmap_PTR)
+			glXDestroyPixmap_PTR(dpy, surface->nativeSurfaceContainer.drawable);
+	}
 	// else Nothing to release.
+
+	return EGL_TRUE;
+}
+
+EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType pixmap,
+	const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+{
+	(void)attrib_list;
+	if (!newSurface || !walkerDpy || !walkerConfig || !error)
+		return EGL_FALSE;
+
+	if (!pixmap)
+	{
+		*error = EGL_BAD_NATIVE_PIXMAP;
+		return EGL_FALSE;
+	}
+
+	if (!glXCreatePixmap_PTR)
+	{
+		*error = EGL_BAD_MATCH;
+		return EGL_FALSE;
+	}
+
+	EGLNativeDisplayType display = walkerDpy->display_id;
+
+	int glxattribs[] = {
+		GLX_BUFFER_SIZE, walkerConfig->bufferSize,
+		GLX_RED_SIZE,    walkerConfig->redSize,
+		GLX_GREEN_SIZE,  walkerConfig->greenSize,
+		GLX_BLUE_SIZE,   walkerConfig->blueSize,
+		GLX_ALPHA_SIZE,  walkerConfig->alphaSize,
+		GLX_DEPTH_SIZE,  walkerConfig->depthSize,
+		GLX_STENCIL_SIZE,walkerConfig->stencilSize,
+		GLX_RENDER_TYPE, GLX_RGBA_BIT,
+		GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT,
+		None
+	};
+
+	EGLint numConfigs = 0;
+	GLXFBConfig* configs = glXChooseFBConfig_PTR(display, DefaultScreen(display), glxattribs, &numConfigs);
+	if (!configs || numConfigs == 0)
+	{
+		*error = EGL_BAD_MATCH;
+		return EGL_FALSE;
+	}
+	GLXFBConfig fbconfig = configs[0];
+	XFree_PTR(configs);
+
+	const int pixmap_attribs[] = { None };
+	logglxcall("glXCreatePixmap");
+	GLXPixmap glxpixmap = glXCreatePixmap_PTR(display, fbconfig, pixmap, pixmap_attribs);
+	if (!glxpixmap)
+	{
+		*error = EGL_BAD_NATIVE_PIXMAP;
+		return EGL_FALSE;
+	}
+
+	// Query pixmap geometry for width/height.
+	Window root;
+	int x, y;
+	unsigned int w = 0, h = 0, border, depth;
+	if (XGetGeometry_PTR)
+		XGetGeometry_PTR(display, pixmap, &root, &x, &y, &w, &h, &border, &depth);
+
+	newSurface->drawToWindow = EGL_FALSE;
+	newSurface->drawToPixmap = EGL_TRUE;
+	newSurface->drawToPBuffer = EGL_FALSE;
+	newSurface->doubleBuffer = EGL_FALSE;
+	newSurface->configId = walkerConfig->configId;
+	newSurface->width  = (EGLint)w;
+	newSurface->height = (EGLint)h;
+	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+	newSurface->mipmapLevel = 0;
+	newSurface->mipmapTexture = EGL_FALSE;
+	newSurface->largestPbuffer = EGL_FALSE;
+	newSurface->textureFormat = EGL_NO_TEXTURE;
+	newSurface->textureTarget = EGL_NO_TEXTURE;
+
+	newSurface->initialized = EGL_TRUE;
+	newSurface->destroy = EGL_FALSE;
+	newSurface->pixmap = pixmap;
+	newSurface->nativeSurfaceContainer.drawable = glxpixmap;
+	newSurface->nativeSurfaceContainer.config = fbconfig;
+
+	return EGL_TRUE;
+}
+
+EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* surface, EGLNativePixmapType target)
+{
+	(void)surface;
+
+	if (!target || !walkerDpy)
+		return EGL_FALSE;
+
+	Display* display = walkerDpy->display_id;
+
+	GLint viewport[4];
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	GLint width  = viewport[2];
+	GLint height = viewport[3];
+
+	if (width <= 0 || height <= 0)
+		return EGL_FALSE;
+
+	size_t rowBytes = (size_t)width * 4;
+	GLubyte* pixels = (GLubyte*)malloc(rowBytes * (size_t)height);
+	if (!pixels)
+		return EGL_FALSE;
+
+	// GL_BGRA = 0x80E1; read bottom-up
+	glReadPixels(0, 0, width, height, 0x80E1, GL_UNSIGNED_BYTE, pixels);
+
+	// Flip rows: GL origin is bottom-left, X origin is top-left.
+	GLubyte* flipped = (GLubyte*)malloc(rowBytes * (size_t)height);
+	if (!flipped) { free(pixels); return EGL_FALSE; }
+	for (GLint row = 0; row < height; row++)
+		memcpy(flipped + (size_t)row * rowBytes, pixels + (size_t)(height - 1 - row) * rowBytes, rowBytes);
+	free(pixels);
+
+	if (!XDefaultVisual_PTR || !XDefaultDepth_PTR || !XCreateImage_PTR || !XPutImage_PTR || !XCreateGC_PTR || !XFreeGC_PTR)
+	{
+		free(flipped);
+		return EGL_FALSE;
+	}
+
+	int screen  = DefaultScreen(display);
+	Visual* vis = XDefaultVisual_PTR(display, screen);
+	int depth   = XDefaultDepth_PTR(display, screen);
+
+	XImage* ximage = XCreateImage_PTR(display, vis, (unsigned int)depth, ZPixmap, 0,
+		(char*)flipped, (unsigned int)width, (unsigned int)height, 32, (int)rowBytes);
+	if (!ximage) { free(flipped); return EGL_FALSE; }
+
+	GC gc = XCreateGC_PTR(display, target, 0, NULL);
+	XPutImage_PTR(display, target, gc, ximage, 0, 0, 0, 0, (unsigned int)width, (unsigned int)height);
+	XFreeGC_PTR(display, gc);
+
+	// Prevent XDestroyImage from freeing our data; free both manually.
+	ximage->data = NULL;
+	XFree_PTR(ximage);
+	free(flipped);
 
 	return EGL_TRUE;
 }

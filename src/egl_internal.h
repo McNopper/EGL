@@ -280,6 +280,7 @@ typedef struct _EGLSurfaceImpl
 	union {
 		EGLNativeWindowType win;
 		NativePbufferType pbuf;
+		EGLNativePixmapType pixmap;
 	};
 
 	NativeSurfaceContainer nativeSurfaceContainer;
@@ -317,6 +318,28 @@ typedef struct _EGLContextImpl
 
 } EGLContextImpl;
 
+typedef struct _EGLImageImpl
+{
+
+	EGLenum target;
+
+	EGLClientBuffer buffer;
+
+	struct _EGLImageImpl* next;
+
+} EGLImageImpl;
+
+typedef struct _EGLSyncImpl
+{
+
+	EGLenum type;
+
+	void* glSync;
+
+	struct _EGLSyncImpl* next;
+
+} EGLSyncImpl;
+
 typedef struct _EGLDisplayImpl
 {
 	std::mutex mutex;
@@ -329,6 +352,8 @@ typedef struct _EGLDisplayImpl
 	EGLSurfaceImpl* rootSurface;
 	EGLContextImpl* rootCtx;
 	EGLConfigImpl* rootConfig;
+	EGLSyncImpl* rootSync;
+	EGLImageImpl* rootImage;
 
 	EGLSurfaceImpl* currentDraw;
 	EGLSurfaceImpl* currentRead;
@@ -370,7 +395,11 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 
 EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 
+EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType pixmap, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
+
 EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface);
+
+EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* surface, EGLNativePixmapType target);
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname);
 
