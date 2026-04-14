@@ -510,7 +510,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
 			WGL_SAMPLE_BUFFERS_ARB, 0,
 			WGL_SAMPLES_ARB, 0,
 			WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
-			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_TRUE,
+			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_FALSE,  // default: linear per spec
 			//WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
 			0
 	};
@@ -548,10 +548,13 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
 			}
 			else if (value == EGL_GL_COLORSPACE_SRGB)
 			{
-				iattribs[29] = GL_TRUE;
+				// Only request sRGB pixel format if the driver supports it;
+				// otherwise silently fall back to linear per spec.
+				iattribs[29] = walkerDpy->srgbFramebufferSupported ? GL_TRUE : GL_FALSE;
 			}
 			else
 			{
+				*error = EGL_BAD_ATTRIBUTE;
 				return EGL_FALSE;
 			}
 			break;
@@ -628,7 +631,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
 	newSurface->largestPbuffer = (EGLBoolean)pbuf_attribs[1];
 	newSurface->textureFormat = textureFormat;
 	newSurface->textureTarget = textureTarget;
-
+	newSurface->glColorspace = (iattribs[29] == GL_TRUE) ? EGL_GL_COLORSPACE_SRGB : EGL_GL_COLORSPACE_LINEAR;
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
 	newSurface->pbuf = pbuf;
@@ -669,7 +672,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 			WGL_SAMPLE_BUFFERS_ARB, 0,
 			WGL_SAMPLES_ARB, 0,
 			WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
-			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_TRUE,
+			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_FALSE,  // default: linear per spec
 			//WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
 			0
 	};
@@ -692,7 +695,9 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 					}
 					else if (value == EGL_GL_COLORSPACE_SRGB)
 					{
-						template_attrib_list[29] = GL_TRUE;
+						// Only request sRGB pixel format if the driver supports it;
+						// otherwise silently fall back to linear per spec.
+						template_attrib_list[29] = walkerDpy->srgbFramebufferSupported ? GL_TRUE : GL_FALSE;
 					}
 					else
 					{
@@ -831,6 +836,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 	newSurface->largestPbuffer = EGL_FALSE;
 	newSurface->textureFormat = EGL_NO_TEXTURE;
 	newSurface->textureTarget = EGL_NO_TEXTURE;
+	newSurface->glColorspace = (template_attrib_list[29] == GL_TRUE) ? EGL_GL_COLORSPACE_SRGB : EGL_GL_COLORSPACE_LINEAR;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
@@ -866,7 +872,6 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType pixmap,
 	const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
-	(void)attrib_list;
 	if (!newSurface || !walkerDpy || !walkerConfig || !error)
 		return EGL_FALSE;
 
@@ -874,6 +879,37 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
 	{
 		*error = EGL_BAD_NATIVE_PIXMAP;
 		return EGL_FALSE;
+	}
+
+	EGLint glColorspace = EGL_GL_COLORSPACE_LINEAR;
+	if (attrib_list)
+	{
+		EGLint i = 0;
+		while (attrib_list[i] != EGL_NONE)
+		{
+			EGLint attrib = attrib_list[i];
+			EGLint value  = attrib_list[i + 1];
+			switch (attrib)
+			{
+				case EGL_GL_COLORSPACE:
+					if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB)
+						glColorspace = value;
+					else
+					{
+						*error = EGL_BAD_ATTRIBUTE;
+						return EGL_FALSE;
+					}
+					break;
+				case EGL_VG_ALPHA_FORMAT:
+				case EGL_VG_COLORSPACE:
+					*error = EGL_BAD_MATCH;
+					return EGL_FALSE;
+				default:
+					*error = EGL_BAD_ATTRIBUTE;
+					return EGL_FALSE;
+			}
+			i += 2;
+		}
 	}
 
 	BITMAP bm;
@@ -921,6 +957,7 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
 	newSurface->largestPbuffer = EGL_FALSE;
 	newSurface->textureFormat = EGL_NO_TEXTURE;
 	newSurface->textureTarget = EGL_NO_TEXTURE;
+	newSurface->glColorspace = glColorspace;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
@@ -1013,6 +1050,10 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 	const int render_texture_supported = strstr(extensions_str, "WGL_ARB_render_texture") != NULL;
 	const int ES_supported = strstr(extensions_str, "WGL_EXT_create_context_es_profile") != NULL;
 	const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+
+	walkerDpy->srgbFramebufferSupported =
+		(strstr(extensions_str, "WGL_ARB_framebuffer_sRGB") != NULL ||
+		 strstr(extensions_str, "WGL_EXT_framebuffer_sRGB") != NULL) ? EGL_TRUE : EGL_FALSE;
 
 	EGLConfigImpl* lastConfig = 0;
 	for (EGLint currentPixelFormat = 1; currentPixelFormat <= numberPixelFormats; currentPixelFormat++)

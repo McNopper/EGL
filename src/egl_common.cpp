@@ -2669,7 +2669,7 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
 				break;
 				case EGL_EXTENSIONS:
 				{
-					return "";
+					return "EGL_KHR_gl_colorspace";
 				}
 				break;
 			}
@@ -2803,6 +2803,12 @@ EGLBoolean _eglQuerySurface (EGLDisplay dpy, EGLSurface surface, EGLint attribut
 						case EGL_VG_COLORSPACE:
 						{
 							if (value) *value = EGL_VG_COLORSPACE_sRGB;
+							return EGL_TRUE;
+						}
+						break;
+						case EGL_GL_COLORSPACE:
+						{
+							if (value) *value = walkerSurface->glColorspace;
 							return EGL_TRUE;
 						}
 						break;

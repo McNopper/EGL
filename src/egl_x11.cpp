@@ -587,7 +587,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	int* width = glxattribs + 1;
 	int* height = glxattribs + 3;
 	int* largest_pbuffer = glxattribs + 5;
-	EGLBoolean colorspace_srgb = 1;
+	EGLBoolean colorspace_srgb = 0;  // default: linear per spec
 	EGLBoolean mipmapTexture = EGL_FALSE;
 	EGLint textureFormat = EGL_NO_TEXTURE;
 	EGLint textureTarget = EGL_NO_TEXTURE;
@@ -607,7 +607,18 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 		case EGL_LARGEST_PBUFFER:
 			*largest_pbuffer = value; break;
 		case EGL_GL_COLORSPACE:
-			colorspace_srgb = (value == EGL_GL_COLORSPACE_SRGB); break;
+			if (value == EGL_GL_COLORSPACE_LINEAR)
+				colorspace_srgb = 0;
+			else if (value == EGL_GL_COLORSPACE_SRGB)
+				// Only request sRGB if the driver supports it; otherwise silently
+				// fall back to linear per spec.
+				colorspace_srgb = walkerDpy->srgbFramebufferSupported ? 1 : 0;
+			else
+			{
+				*error = EGL_BAD_ATTRIBUTE;
+				return EGL_FALSE;
+			}
+			break;
 		case EGL_MIPMAP_TEXTURE:
 			mipmapTexture = (EGLBoolean)value; break;
 		case EGL_TEXTURE_FORMAT:
@@ -673,6 +684,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 	newSurface->largestPbuffer = (EGLBoolean)*largest_pbuffer;
 	newSurface->textureFormat = textureFormat;
 	newSurface->textureTarget = textureTarget;
+	newSurface->glColorspace = colorspace_srgb ? EGL_GL_COLORSPACE_SRGB : EGL_GL_COLORSPACE_LINEAR;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
@@ -711,7 +723,9 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 					}
 					else if (value == EGL_GL_COLORSPACE_SRGB)
 					{
-						colorspace_srgb = 1;
+						// Only request sRGB if the driver supports it; otherwise
+						// silently fall back to linear per spec.
+						colorspace_srgb = walkerDpy->srgbFramebufferSupported ? 1 : 0;
 					}
 					else
 					{
@@ -824,6 +838,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 	newSurface->largestPbuffer = EGL_FALSE;
 	newSurface->textureFormat = EGL_NO_TEXTURE;
 	newSurface->textureTarget = EGL_NO_TEXTURE;
+	newSurface->glColorspace = colorspace_srgb ? EGL_GL_COLORSPACE_SRGB : EGL_GL_COLORSPACE_LINEAR;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
@@ -867,6 +882,37 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
 	{
 		*error = EGL_BAD_NATIVE_PIXMAP;
 		return EGL_FALSE;
+	}
+
+	EGLint glColorspace = EGL_GL_COLORSPACE_LINEAR;
+	if (attrib_list)
+	{
+		EGLint i = 0;
+		while (attrib_list[i] != EGL_NONE)
+		{
+			EGLint attrib = attrib_list[i];
+			EGLint value  = attrib_list[i + 1];
+			switch (attrib)
+			{
+				case EGL_GL_COLORSPACE:
+					if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB)
+						glColorspace = value;
+					else
+					{
+						*error = EGL_BAD_ATTRIBUTE;
+						return EGL_FALSE;
+					}
+					break;
+				case EGL_VG_ALPHA_FORMAT:
+				case EGL_VG_COLORSPACE:
+					*error = EGL_BAD_MATCH;
+					return EGL_FALSE;
+				default:
+					*error = EGL_BAD_ATTRIBUTE;
+					return EGL_FALSE;
+			}
+			i += 2;
+		}
 	}
 
 	if (!glXCreatePixmap_PTR)
@@ -930,6 +976,7 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
 	newSurface->largestPbuffer = EGL_FALSE;
 	newSurface->textureFormat = EGL_NO_TEXTURE;
 	newSurface->textureTarget = EGL_NO_TEXTURE;
+	newSurface->glColorspace = glColorspace;
 
 	newSurface->initialized = EGL_TRUE;
 	newSurface->destroy = EGL_FALSE;
@@ -1009,6 +1056,10 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 	const char* extensions_str = glXQueryExtensionsString_PTR(walkerDpy->display_id, DefaultScreen(walkerDpy->display_id));
 	int ES_supported = strstr(extensions_str, "GLX_EXT_create_context_es_profile") != NULL;
 	const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+
+	walkerDpy->srgbFramebufferSupported =
+		(strstr(extensions_str, "GLX_ARB_framebuffer_sRGB") != NULL ||
+		 strstr(extensions_str, "GLX_EXT_framebuffer_sRGB") != NULL) ? EGL_TRUE : EGL_FALSE;
 
 	// Create configuration list.
 

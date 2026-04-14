@@ -266,6 +266,9 @@ typedef struct _EGLSurfaceImpl
 	EGLint textureFormat;
 	EGLint textureTarget;
 
+	// EGL_KHR_gl_colorspace: EGL_GL_COLORSPACE_SRGB or EGL_GL_COLORSPACE_LINEAR (default)
+	EGLint glColorspace;
+
 	union {
 		EGLNativeWindowType win;
 		NativePbufferType pbuf;
@@ -344,6 +347,8 @@ typedef struct _EGLDisplayImpl
 	EGLConfigImpl* rootConfig;
 	EGLSyncImpl* rootSync;
 	EGLImageImpl* rootImage;
+
+	EGLBoolean srgbFramebufferSupported;
 
 	EGLSurfaceImpl* currentDraw;
 	EGLSurfaceImpl* currentRead;
