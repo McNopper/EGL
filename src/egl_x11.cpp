@@ -874,7 +874,6 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
 EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType pixmap,
 	const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
-	(void)attrib_list;
 	if (!newSurface || !walkerDpy || !walkerConfig || !error)
 		return EGL_FALSE;
 
