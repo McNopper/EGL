@@ -11,26 +11,21 @@ The Khronos headers bundled with the library are the official, unmodified ones f
 
 ## Platform and Backend Support
 
-| Operating System | Backend | Status | Notes |
-|---|---|---|---|
-| Windows | WGL (OpenGL) | **Implemented** | Default sRGB and linear colorspaces |
-| Windows | Vulkan (HDR) | **Implemented** | HDR colorspace extensions via Vulkan swapchain |
-| macOS / iOS | CGL / EAGL / Metal | Prepared | Stub ready in `egl_internal.h` |
-| Android | ANativeWindow | Prepared | Stub ready in `egl_internal.h` |
-| Linux / Unix — X11 | GLX | Prepared | Stub ready; default when no sub-platform flag set |
-| Linux — Wayland | EGL native | Prepared | Build with `-DWL_EGL_PLATFORM=1` |
-| Linux — DRM/KMS | GBM | Prepared | Build with `-DGBM_PLATFORM=1` |
-| Linux — ChromeOS | Ozone | Prepared | Build with `-DOZONE_PLATFORM=1` |
-| QNX | Screen API | Prepared | Stub ready in `egl_internal.h` |
-| HarmonyOS (OHOS) | Native | Prepared | Stub ready in `egl_internal.h` |
-| Haiku | Native | Prepared | Stub ready in `egl_internal.h` |
-| Fuchsia | Native | Prepared | Stub ready in `egl_internal.h` |
-| WebAssembly | Emscripten / WebGL | Prepared | Stub ready in `egl_internal.h` |
-| Symbian (legacy) | Native | Not planned | Stub ready in `egl_internal.h` |
-
-Adding a new backend requires implementing 17 backend functions declared in `src/egl_internal.h`
-(prefixed `__`) and adding a source file entry to `CMakeLists.txt`.
-
+| Operating System | Supported APIs | Platform API | Backend API | Status Quo |
+|---|---|---|---|---|
+| Windows | OpenGL | WGL, DXGI | Vulkan | **Implemented** |
+| macOS / iOS | - | CGL, EAGL, CAMetalLayer | - | Prepared |
+| Android | - | ANativeWindow | - | Prepared |
+| Linux — X11 | - | GLX | - | Prepared |
+| Linux — Wayland | - | wl_egl_window | - | Prepared |
+| Linux — DRM/KMS | - | GBM, libdrm | - | Prepared |
+| Linux — ChromeOS | - | Ozone | - | Prepared |
+| QNX | - | Screen API | - | Prepared |
+| HarmonyOS (OHOS) | - | OHNativeWindow | - | Prepared |
+| Haiku | - | BGLView | - | Prepared |
+| Fuchsia | - | Scenic / Flatland | - | Prepared |
+| WebAssembly | - | Emscripten | - | Prepared |
+| Symbian (legacy) | - | Native | - | Prepared |
 
 ## EGL 1.5 API Coverage
 
@@ -52,10 +47,9 @@ The full EGL 1.5 API surface is implemented in the platform-agnostic core:
 - Utilities: `eglGetError`, `eglGetProcAddress`, `eglQueryString`
 
 
-## HDR Support (Windows)
+## HDR Support
 
-The Windows backend supports HDR output via a Vulkan presentation layer. The following colorspace
-extensions are probed at `eglInitialize` time and advertised only if the driver and display support them:
+The following colorspace extensions are probed at `eglInitialize` time and advertised only if the driver and display support them:
 
 | Extension | Colorspace | Format |
 |---|---|---|
@@ -66,7 +60,6 @@ extensions are probed at `eglInitialize` time and advertised only if the driver 
 | `EGL_EXT_gl_colorspace_bt2020_hlg` | BT.2020 HLG | A2B10G10R10_UNORM |
 
 If a requested colorspace is not supported, `eglCreateWindowSurface` returns `EGL_BAD_MATCH`.
-There is no silent fallback.
 
 
 ## Building
@@ -93,7 +86,7 @@ Outputs: `lib/libEGL.lib` and the example executables under `bin/`.
 
 If CMake cannot find the Vulkan SDK, ensure `VULKAN_SDK` is set in your environment.
 
-### Other platforms (planned)
+### Other platforms (prepared)
 
 Cross-compile with the target toolchain. CMake selects the correct platform branch automatically
 based on `CMAKE_SYSTEM_NAME`. For Linux sub-platforms pass the appropriate define:
@@ -153,25 +146,7 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
-19.04.2026 - Rewrote README to reflect the general multi-platform EGL architecture. Added platform/backend
-             support table. All Khronos headers verified as latest (e80a2e0050, 2026-03-19). Added platform
-             stubs for QNX, Emscripten, Wayland, GBM, Ozone, Android, Haiku, Fuchsia, HarmonyOS, Symbian
-             to egl_internal.h. CMakeLists.txt updated with platform-conditional branches for all supported OSes.
-
-18.04.2026 - Added HDR support via Vulkan presentation backend. Five EGL colorspace extensions supported
-             (scrgb_linear, scrgb, bt2020_pq, bt2020_linear, bt2020_hlg). Colorspace availability probed
-             at eglInitialize time using test swapchains. No fallback — eglCreateWindowSurface returns
-             EGL_BAD_MATCH for unsupported colorspaces.
-
-18.04.2026 - Refactored monolithic egl_common.cpp (~3900 lines) into eight focused modules:
-             egl_globals, egl_config, egl_display, egl_context, egl_surface, egl_sync, egl_image, egl_api.
-             Extracted Vulkan HDR backend into egl_windows_vk.cpp.
-
-14.04.2026 - Added EGL_KHR_gl_colorspace extension support.
-
-12.04.2026 - Fixed 19 EGL 1.5 spec compliance issues. Added green_window example. Removed GLEW dependency.
-             Implemented full EGL 1.5 API. Switched build system to CMake 3.10+. Updated Khronos headers
-             to latest (egl.h 2026-03-19, eglext.h 20260319).
+19.04.2026 - Major refactoring using AI v1.0.0.
 
 29.01.2015 - Updated to GLEW 1.12.0. v0.3.3.
 
