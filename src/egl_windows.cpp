@@ -472,9 +472,12 @@ static void __vkLoadGLInterop()
     g_glInteropLoaded = (g_pfnCreateMemObjs   != nullptr &&
                          g_pfnImportMemWin32  != nullptr &&
                          g_pfnTexStorageMem2D != nullptr &&
+                         g_pfnDeleteMemObjs   != nullptr &&
                          g_pfnGenSemaphores   != nullptr &&
                          g_pfnImportSemWin32  != nullptr &&
                          g_pfnSignalSemaphore != nullptr &&
+                         g_pfnWaitSemaphore   != nullptr &&
+                         g_pfnDeleteSemaphores!= nullptr &&
                          g_pfnGenFBOs         != nullptr &&
                          g_pfnBindFBO         != nullptr &&
                          g_pfnFBOTex2D        != nullptr &&
