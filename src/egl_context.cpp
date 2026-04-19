@@ -324,6 +324,8 @@ EGLBoolean _eglQueryContext (EGLDisplay dpy, EGLContext ctx, EGLint attribute, E
                 {
                     if (!walkerCtx->initialized || walkerCtx->destroy)
                     {
+                        g_localStorage.error = EGL_BAD_CONTEXT;
+
                         return EGL_FALSE;
                     }
 

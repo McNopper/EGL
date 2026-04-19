@@ -578,7 +578,7 @@ EGLBoolean _eglBindTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer)
 
             if (!walkerDpy->initialized || walkerDpy->destroy)
             {
-                g_localStorage.error = EGL_BAD_DISPLAY;
+                g_localStorage.error = EGL_NOT_INITIALIZED;
                 return EGL_FALSE;
             }
 
@@ -631,7 +631,7 @@ EGLBoolean _eglReleaseTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer
 
             if (!walkerDpy->initialized || walkerDpy->destroy)
             {
-                g_localStorage.error = EGL_BAD_DISPLAY;
+                g_localStorage.error = EGL_NOT_INITIALIZED;
                 return EGL_FALSE;
             }
 

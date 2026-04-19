@@ -135,7 +135,7 @@ EGLint _eglClientWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime ti
                         return EGL_TIMEOUT_EXPIRED;
                     default:
                         g_localStorage.error = EGL_BAD_PARAMETER;
-                        return EGL_FALSE;
+                        return EGL_WAIT_FAILED;
                     }
                 }
                 walkerSync = walkerSync->next;
@@ -214,6 +214,12 @@ EGLBoolean _eglWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags)
     if (flags != 0)
     {
         g_localStorage.error = EGL_BAD_PARAMETER;
+        return EGL_FALSE;
+    }
+    // EGL 1.5 §3.8.4: EGL_BAD_MATCH if no current context.
+    if (g_localStorage.currentCtx == EGL_NO_CONTEXT_IMPL)
+    {
+        g_localStorage.error = EGL_BAD_MATCH;
         return EGL_FALSE;
     }
     auto _rl = g_globalStorage.placeRootDpy_readlock();
