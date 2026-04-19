@@ -5,14 +5,23 @@ project(EGL C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT WIN32)
-  message(FATAL_ERROR "This EGL implementation only supports Windows.")
+if(WIN32)
+    find_package(Vulkan REQUIRED)
+    set(EGL_PLATFORM_SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows_vk.cpp)
+elseif(APPLE)
+    message(STATUS "EGL: Apple (macOS/iOS) backend not yet implemented")
+    set(EGL_PLATFORM_SOURCES "")
+elseif(ANDROID)
+    message(STATUS "EGL: Android backend not yet implemented")
+    set(EGL_PLATFORM_SOURCES "")
+elseif(UNIX)
+    message(STATUS "EGL: X11/Linux backend not yet implemented")
+    set(EGL_PLATFORM_SOURCES "")
+else()
+    message(FATAL_ERROR "EGL: Unsupported platform")
 endif()
-
-find_package(Vulkan REQUIRED)
-set(EGL_PLATFORM_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows_vk.cpp)
 
 set(EGL_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/egl.c
@@ -40,8 +49,10 @@ set_target_properties(EGL PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib
     PREFIX                           "lib")
 
-target_link_libraries(EGL PUBLIC Vulkan::Vulkan)
-target_include_directories(EGL PRIVATE ${Vulkan_INCLUDE_DIRS})
+if(WIN32)
+    target_link_libraries(EGL PUBLIC Vulkan::Vulkan)
+    target_include_directories(EGL PRIVATE ${Vulkan_INCLUDE_DIRS})
+endif()
 
 target_include_directories(EGL PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/include)

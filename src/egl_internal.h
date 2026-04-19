@@ -134,8 +134,46 @@ typedef struct _NativeLocalStorageContainer {
 
 typedef GLXPbuffer NativePbufferType;
 
+#elif defined(__APPLE__)
+
+// macOS / iOS — future egl_apple.cpp backend (CGL / EAGL / Metal)
+#define CONTEXT_ATTRIB_LIST_SIZE 13
+
+typedef struct _NativeSurfaceContainer {
+	void* view;        // NSView* (macOS) or UIView* (iOS), passed as void* to avoid ObjC headers
+} NativeSurfaceContainer;
+
+typedef struct _NativeContextContainer {
+	void* ctx;         // NSOpenGLContext* (macOS) or EAGLContext* (iOS)
+} NativeContextContainer;
+
+typedef struct _NativeLocalStorageContainer {
+	void* display;     // CGDirectDisplayID or equivalent
+} NativeLocalStorageContainer;
+
+typedef void* NativePbufferType;
+
+#elif defined(OHOS) || defined(__OHOS__)
+
+// HarmonyOS (OpenHarmony) — future egl_harmonyos.cpp backend
+#define CONTEXT_ATTRIB_LIST_SIZE 13
+
+typedef struct _NativeSurfaceContainer {
+	void* window;      // OHNativeWindow*
+} NativeSurfaceContainer;
+
+typedef struct _NativeContextContainer {
+	void* ctx;
+} NativeContextContainer;
+
+typedef struct _NativeLocalStorageContainer {
+	void* display;
+} NativeLocalStorageContainer;
+
+typedef void* NativePbufferType;
+
 #else
-#error "Platform not recognized"
+#error "Platform not recognized. Supported: _WIN32, __ANDROID__, WL_EGL_PLATFORM, __unix__, __APPLE__, OHOS"
 #endif
 
 #include <EGL/egl.h>
