@@ -159,6 +159,7 @@ struct _NativeHDRSurfaceContainer {
     uint32_t         width;
     uint32_t         height;
     VkDeviceSize     renderMemorySize;  // cached from vkGetImageMemoryRequirements, used by GL import
+    HWND             hwnd;              // owning Win32 window, used for swapchain recreation on resize
 
     // GL-side objects are created lazily on first present (GL context must be current)
     bool             glInteropReady;
@@ -215,6 +216,8 @@ static uint32_t _vkColorspaceToBit(VkColorSpaceKHR vkCS)
 
 // Forward declaration (destroy is called inside create's error path)
 static void __vkDestroyHDRSurface(NativeHDRSurfaceContainer* hdr);
+// Forward declaration (called from __vkPresent on OUT_OF_DATE / SUBOPTIMAL)
+static EGLBoolean __vkRecreateSwapchain(NativeHDRSurfaceContainer* hdr, bool drainGLSemaphore);
 
 // ---- __vkInit: create VkInstance + VkDevice (called once from __internalInit) ----
 static EGLBoolean __vkInit()
@@ -537,6 +540,254 @@ static void __vkDestroyHDRSurface(NativeHDRSurfaceContainer* hdr)
     memset(hdr, 0, sizeof(*hdr));
 }
 
+// ---- __vkRecreateSwapchain: rebuild swapchain + render image on resize ----
+// drainGLSemaphore: true when called after GL has signaled glDoneSemaphore but
+// before Vulkan consumed it (i.e. vkAcquireNextImageKHR returned OUT_OF_DATE).
+static EGLBoolean __vkRecreateSwapchain(NativeHDRSurfaceContainer* hdr, bool drainGLSemaphore)
+{
+    if (!hdr || g_vkDevice == VK_NULL_HANDLE || !hdr->hwnd)
+        return EGL_FALSE;
+
+    // Drain the GL-signaled semaphore before touching Vulkan objects; then wait
+    // for all per-image fences to ensure no command buffer is still in flight.
+    if (drainGLSemaphore && hdr->glDoneSemaphore != VK_NULL_HANDLE)
+    {
+        VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkSubmitInfo si = {};
+        si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        si.waitSemaphoreCount = 1;
+        si.pWaitSemaphores    = &hdr->glDoneSemaphore;
+        si.pWaitDstStageMask  = &stage;
+        vkQueueSubmit(g_vkQueue, 1, &si, VK_NULL_HANDLE);
+        vkQueueWaitIdle(g_vkQueue); // also implicitly covers all in-flight fences
+    }
+    else if (hdr->fences && hdr->imageCount > 0)
+    {
+        vkWaitForFences(g_vkDevice, hdr->imageCount, hdr->fences, VK_TRUE, UINT64_MAX);
+    }
+
+    // Destroy GL-side objects tied to the old render image dimensions.
+    // Keep glDoneSemaphore (VkSemaphore) and glDoneSemObj — we'll re-export and re-import.
+    if (hdr->blitFbo && g_pfnDeleteFBOs)           { g_pfnDeleteFBOs(1, &hdr->blitFbo); hdr->blitFbo = 0; }
+    if (hdr->glTexture)                             { glDeleteTextures(1, &hdr->glTexture); hdr->glTexture = 0; }
+    if (hdr->glMemoryObject && g_pfnDeleteMemObjs)  { g_pfnDeleteMemObjs(1, &hdr->glMemoryObject); hdr->glMemoryObject = 0; }
+    if (hdr->glDoneSemObj && g_pfnDeleteSemaphores) { g_pfnDeleteSemaphores(1, &hdr->glDoneSemObj); hdr->glDoneSemObj = 0; }
+
+    // Close any unconsumed pending Win32 handles from the old allocation.
+    if (hdr->pendingMemHandle) { CloseHandle(hdr->pendingMemHandle); hdr->pendingMemHandle = nullptr; }
+    if (hdr->pendingSemHandle) { CloseHandle(hdr->pendingSemHandle); hdr->pendingSemHandle = nullptr; }
+
+    // Destroy old render image and memory (size is changing).
+    if (hdr->renderMemory) { vkFreeMemory(g_vkDevice, hdr->renderMemory, nullptr); hdr->renderMemory = VK_NULL_HANDLE; }
+    if (hdr->renderImage)  { vkDestroyImage(g_vkDevice, hdr->renderImage, nullptr); hdr->renderImage = VK_NULL_HANDLE; }
+    free(hdr->swapchainImages); hdr->swapchainImages = nullptr;
+
+    // Query new client area.
+    RECT cr = {};
+    GetClientRect(hdr->hwnd, &cr);
+    uint32_t newW = (uint32_t)(cr.right  - cr.left);
+    uint32_t newH = (uint32_t)(cr.bottom - cr.top);
+    if (newW == 0 || newH == 0)
+    {
+        // Minimized: retire the stale swapchain; present will be skipped until restored.
+        if (hdr->vkSwapchain) { vkDestroySwapchainKHR(g_vkDevice, hdr->vkSwapchain, nullptr); hdr->vkSwapchain = VK_NULL_HANDLE; }
+        hdr->glInteropReady = false;
+        return EGL_TRUE;
+    }
+    hdr->width  = newW;
+    hdr->height = newH;
+
+    // Recreate swapchain, passing the old one for efficient resource recycling.
+    VkSwapchainKHR oldSwap = hdr->vkSwapchain;
+    {
+        VkSurfaceCapabilitiesKHR caps = {};
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_vkPhysDevice, hdr->vkSurface, &caps);
+        uint32_t imgCount = caps.minImageCount + 1;
+        if (caps.maxImageCount > 0 && imgCount > caps.maxImageCount) imgCount = caps.maxImageCount;
+        VkExtent2D extent = {newW, newH};
+        if (caps.currentExtent.width != UINT32_MAX) extent = caps.currentExtent;
+
+        VkSwapchainCreateInfoKHR swCI = {};
+        swCI.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        swCI.surface          = hdr->vkSurface;
+        swCI.minImageCount    = imgCount;
+        swCI.imageFormat      = hdr->vkFormat;
+        swCI.imageColorSpace  = hdr->vkColorSpace;
+        swCI.imageExtent      = extent;
+        swCI.imageArrayLayers = 1;
+        swCI.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        swCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        swCI.preTransform     = caps.currentTransform;
+        swCI.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        swCI.presentMode      = VK_PRESENT_MODE_FIFO_KHR;
+        swCI.clipped          = VK_TRUE;
+        swCI.oldSwapchain     = oldSwap;
+        if (vkCreateSwapchainKHR(g_vkDevice, &swCI, nullptr, &hdr->vkSwapchain) != VK_SUCCESS)
+        {
+            hdr->vkSwapchain = VK_NULL_HANDLE;
+            if (oldSwap) vkDestroySwapchainKHR(g_vkDevice, oldSwap, nullptr);
+            return EGL_FALSE;
+        }
+    }
+    if (oldSwap) vkDestroySwapchainKHR(g_vkDevice, oldSwap, nullptr);
+
+    // Retrieve new swapchain images; reallocate command buffers + fences if count changed.
+    uint32_t newImgCount = 0;
+    vkGetSwapchainImagesKHR(g_vkDevice, hdr->vkSwapchain, &newImgCount, nullptr);
+    hdr->swapchainImages = (VkImage*)malloc(newImgCount * sizeof(VkImage));
+    if (!hdr->swapchainImages) return EGL_FALSE;
+    vkGetSwapchainImagesKHR(g_vkDevice, hdr->vkSwapchain, &newImgCount, hdr->swapchainImages);
+
+    if (newImgCount != hdr->imageCount)
+    {
+        if (hdr->cmdBuffers && hdr->cmdPool)
+            vkFreeCommandBuffers(g_vkDevice, hdr->cmdPool, hdr->imageCount, hdr->cmdBuffers);
+        free(hdr->cmdBuffers);
+        if (hdr->fences)
+        {
+            for (uint32_t i = 0; i < hdr->imageCount; i++)
+                if (hdr->fences[i]) vkDestroyFence(g_vkDevice, hdr->fences[i], nullptr);
+        }
+        free(hdr->fences);
+
+        hdr->cmdBuffers = (VkCommandBuffer*)malloc(newImgCount * sizeof(VkCommandBuffer));
+        hdr->fences     = (VkFence*)malloc(newImgCount * sizeof(VkFence));
+        if (!hdr->cmdBuffers || !hdr->fences) return EGL_FALSE;
+
+        VkCommandBufferAllocateInfo cbAI = {};
+        cbAI.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cbAI.commandPool        = hdr->cmdPool;
+        cbAI.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cbAI.commandBufferCount = newImgCount;
+        if (vkAllocateCommandBuffers(g_vkDevice, &cbAI, hdr->cmdBuffers) != VK_SUCCESS)
+            return EGL_FALSE;
+
+        VkFenceCreateInfo fCI = {};
+        fCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fCI.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+        for (uint32_t i = 0; i < newImgCount; i++)
+            if (vkCreateFence(g_vkDevice, &fCI, nullptr, &hdr->fences[i]) != VK_SUCCESS)
+                return EGL_FALSE;
+    }
+    hdr->imageCount = newImgCount;
+
+    // Recreate render image at new dimensions.
+    {
+        VkExternalMemoryImageCreateInfo emici = {};
+        emici.sType       = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+        emici.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+
+        VkImageCreateInfo imgCI = {};
+        imgCI.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imgCI.pNext         = &emici;
+        imgCI.imageType     = VK_IMAGE_TYPE_2D;
+        imgCI.format        = hdr->vkFormat;
+        imgCI.extent        = {newW, newH, 1};
+        imgCI.mipLevels     = 1;
+        imgCI.arrayLayers   = 1;
+        imgCI.samples       = VK_SAMPLE_COUNT_1_BIT;
+        imgCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        imgCI.usage         = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        imgCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        imgCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        if (vkCreateImage(g_vkDevice, &imgCI, nullptr, &hdr->renderImage) != VK_SUCCESS)
+            return EGL_FALSE;
+
+        VkMemoryRequirements memReqs = {};
+        vkGetImageMemoryRequirements(g_vkDevice, hdr->renderImage, &memReqs);
+        hdr->renderMemorySize = memReqs.size;
+
+        VkExportMemoryAllocateInfo emai = {};
+        emai.sType       = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+        emai.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+
+        VkPhysicalDeviceMemoryProperties memProps = {};
+        vkGetPhysicalDeviceMemoryProperties(g_vkPhysDevice, &memProps);
+        uint32_t memTypeIdx = UINT32_MAX;
+        for (uint32_t i = 0; i < memProps.memoryTypeCount; i++)
+            if ((memReqs.memoryTypeBits & (1u << i)) &&
+                (memProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
+            { memTypeIdx = i; break; }
+        if (memTypeIdx == UINT32_MAX) return EGL_FALSE;
+
+        VkMemoryAllocateInfo mai = {};
+        mai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        mai.pNext           = &emai;
+        mai.allocationSize  = memReqs.size;
+        mai.memoryTypeIndex = memTypeIdx;
+        if (vkAllocateMemory(g_vkDevice, &mai, nullptr, &hdr->renderMemory) != VK_SUCCESS)
+            return EGL_FALSE;
+
+        vkBindImageMemory(g_vkDevice, hdr->renderImage, hdr->renderMemory, 0);
+    }
+
+    // Transition renderImage UNDEFINED → GENERAL.
+    {
+        VkCommandBuffer initCmd = VK_NULL_HANDLE;
+        VkCommandBufferAllocateInfo cbAI = {};
+        cbAI.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cbAI.commandPool        = hdr->cmdPool;
+        cbAI.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cbAI.commandBufferCount = 1;
+        if (vkAllocateCommandBuffers(g_vkDevice, &cbAI, &initCmd) != VK_SUCCESS)
+            return EGL_FALSE;
+
+        VkCommandBufferBeginInfo bi = {};
+        bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(initCmd, &bi);
+
+        VkImageMemoryBarrier barrier = {};
+        barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image               = hdr->renderImage;
+        barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdPipelineBarrier(initCmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+        vkEndCommandBuffer(initCmd);
+
+        VkSubmitInfo si = {};
+        si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        si.commandBufferCount = 1;
+        si.pCommandBuffers    = &initCmd;
+        vkQueueSubmit(g_vkQueue, 1, &si, VK_NULL_HANDLE);
+        vkQueueWaitIdle(g_vkQueue);
+        vkFreeCommandBuffers(g_vkDevice, hdr->cmdPool, 1, &initCmd);
+    }
+
+    // Export new Win32 memory handle for deferred GL import.
+    if (!g_pfnGetMemWin32) return EGL_FALSE;
+    {
+        VkMemoryGetWin32HandleInfoKHR hInfo = {};
+        hInfo.sType      = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
+        hInfo.memory     = hdr->renderMemory;
+        hInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+        if (g_pfnGetMemWin32(g_vkDevice, &hInfo, &hdr->pendingMemHandle) != VK_SUCCESS)
+            return EGL_FALSE;
+    }
+
+    // Re-export semaphore Win32 handle from the existing glDoneSemaphore.
+    // The previous handle was consumed by GL import; vkGetSemaphoreWin32HandleKHR
+    // returns a fresh HANDLE to the same underlying NT semaphore object.
+    if (!g_pfnGetSemWin32) return EGL_FALSE;
+    {
+        VkSemaphoreGetWin32HandleInfoKHR shInfo = {};
+        shInfo.sType      = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR;
+        shInfo.semaphore  = hdr->glDoneSemaphore;
+        shInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+        if (g_pfnGetSemWin32(g_vkDevice, &shInfo, &hdr->pendingSemHandle) != VK_SUCCESS || !hdr->pendingSemHandle)
+            return EGL_FALSE;
+    }
+
+    // Reset GL interop flag: __vkInitGLSide will recreate GL objects on next present.
+    hdr->glInteropReady = false;
+    return EGL_TRUE;
+}
+
 // ---- __vkCreateHDRSurface: create swapchain + GL/Vulkan interop objects ----
 static EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr, HWND win, EGLint eglCS, uint32_t w, uint32_t h)
 {
@@ -546,6 +797,7 @@ static EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr, HWND win,
     memset(hdr, 0, sizeof(*hdr));
     hdr->width  = w;
     hdr->height = h;
+    hdr->hwnd   = win;
 
     if (!_eglHDRColorspaceToVk(eglCS, &hdr->vkFormat, &hdr->vkColorSpace))
         return EGL_FALSE;
@@ -836,6 +1088,10 @@ static EGLBoolean __vkPresent(NativeHDRSurfaceContainer* hdr)
     if (!hdr || g_vkDevice == VK_NULL_HANDLE)
         return EGL_FALSE;
 
+    // No swapchain: window was minimized during a previous recreation.
+    if (!hdr->vkSwapchain)
+        return EGL_TRUE;
+
     // Lazily initialise GL interop objects on first call (requires a current GL context)
     if (!hdr->glInteropReady && !__vkInitGLSide(hdr))
         return EGL_FALSE;
@@ -858,11 +1114,15 @@ static EGLBoolean __vkPresent(NativeHDRSurfaceContainer* hdr)
     uint32_t imageIndex = 0;
     VkResult res = vkAcquireNextImageKHR(g_vkDevice, hdr->vkSwapchain, UINT64_MAX,
                                           hdr->acquireSemaphore, VK_NULL_HANDLE, &imageIndex);
-    if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
-        return EGL_TRUE; // skip frame; caller should recreate surface on next resize
-
-    if (res != VK_SUCCESS)
+    if (res == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        // glDoneSemaphore was signaled by GL (step 2) but never consumed — drain it.
+        __vkRecreateSwapchain(hdr, hdr->glInteropReady);
+        return EGL_TRUE;
+    }
+    if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
         return EGL_FALSE;
+    bool needsRecreate = (res == VK_SUBOPTIMAL_KHR);
 
     // Step 4: Record + submit blit command buffer
     vkWaitForFences(g_vkDevice, 1, &hdr->fences[imageIndex], VK_TRUE, UINT64_MAX);
@@ -952,8 +1212,16 @@ static EGLBoolean __vkPresent(NativeHDRSurfaceContainer* hdr)
     presentInfo.pSwapchains        = &hdr->vkSwapchain;
     presentInfo.pImageIndices      = &imageIndex;
     res = vkQueuePresentKHR(g_vkQueue, &presentInfo);
+    if (res == VK_SUBOPTIMAL_KHR) needsRecreate = true;
+    if (res == VK_ERROR_OUT_OF_DATE_KHR) needsRecreate = true;
 
-    return (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR) ? EGL_TRUE : EGL_FALSE;
+    // Recreate after a successful present so the next frame starts at the right size.
+    // Semaphores were consumed by the submit/present — no drain needed.
+    if (needsRecreate)
+        __vkRecreateSwapchain(hdr, false);
+
+    return (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR || res == VK_ERROR_OUT_OF_DATE_KHR)
+           ? EGL_TRUE : EGL_FALSE;
 }
 
 static LRESULT CALLBACK __DummyWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
