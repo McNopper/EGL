@@ -1,1 +1,7 @@
-add_subdirectory(green_window)
+add_subdirectory(linear)
+add_subdirectory(srgb)
+add_subdirectory(scrgb_linear)
+add_subdirectory(scrgb)
+add_subdirectory(bt2020_pq)
+add_subdirectory(bt2020_linear)
+add_subdirectory(bt2020_hlg)

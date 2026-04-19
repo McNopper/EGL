@@ -5,24 +5,13 @@ project(EGL C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if (UNIX AND NOT APPLE)
-# Defines stub functions using typedefs for Wayland display server protocol
-  option(EGL_UNIX_USE_WAYLAND "Define functions for Wayland platform" OFF)
+if(NOT WIN32)
+  message(FATAL_ERROR "This EGL implementation only supports Windows.")
 endif()
 
-if(WIN32)
-  set(EGL_PLATFORM_SOURCES
-      ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp)
-else()
-  if(UNIX AND NOT APPLE)
-    if (ANDROID OR EGL_UNIX_USE_WAYLAND)
-      set(EGL_PLATFORM_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/egl_wayland_stub.cpp)
-    else()
-      set(EGL_PLATFORM_SOURCES
-          ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11.cpp)
-    endif()
-  endif()
-endif()
+find_package(Vulkan REQUIRED)
+set(EGL_PLATFORM_SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp)
 
 set(EGL_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/egl.c
@@ -44,12 +33,11 @@ set_target_properties(EGL PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib
     PREFIX                           "lib")
 
+target_link_libraries(EGL PUBLIC Vulkan::Vulkan)
+target_include_directories(EGL PRIVATE ${Vulkan_INCLUDE_DIRS})
+
 target_include_directories(EGL PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/include)
 target_compile_definitions(EGL PUBLIC KHRONOS_STATIC) # PUBLIC - make it go down to every target linking EGL
 add_definitions(-DEGLAPI=)
-if(UNIX AND NOT APPLE AND EGL_UNIX_USE_WAYLAND)
-  add_definitions(-DWL_EGL_PLATFORM)
-endif()
-
 add_subdirectory(examples)

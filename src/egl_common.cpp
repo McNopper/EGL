@@ -2669,7 +2669,28 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
 				break;
 				case EGL_EXTENSIONS:
 				{
-					return "EGL_KHR_gl_colorspace";
+					static thread_local char extBuf[512];
+					extBuf[0] = '\0';
+					uint32_t hdr = walkerDpy->supportedHDRColorspaces;
+					auto appendExt = [&](const char* s) {
+						if (extBuf[0]) strncat(extBuf, " ", sizeof(extBuf) - strlen(extBuf) - 1);
+						strncat(extBuf, s, sizeof(extBuf) - strlen(extBuf) - 1);
+					};
+					appendExt("EGL_KHR_gl_colorspace");
+					if (hdr & EGL_HDR_CS_SCRGB_LINEAR_BIT)  appendExt("EGL_EXT_gl_colorspace_scrgb_linear");
+					if (hdr & EGL_HDR_CS_SCRGB_BIT)         appendExt("EGL_EXT_gl_colorspace_scrgb");
+					if (hdr & (EGL_HDR_CS_BT2020_PQ_BIT | EGL_HDR_CS_BT2020_LINEAR_BIT | EGL_HDR_CS_BT2020_HLG_BIT))
+					{
+						appendExt("EGL_EXT_gl_colorspace_bt2020_pq");
+						appendExt("EGL_EXT_gl_colorspace_bt2020_linear");
+						appendExt("EGL_EXT_gl_colorspace_bt2020_hlg");
+					}
+					if (hdr)
+					{
+						appendExt("EGL_EXT_surface_SMPTE2086_metadata");
+						appendExt("EGL_EXT_surface_CTA861_3_metadata");
+					}
+					return extBuf;
 				}
 				break;
 			}
@@ -2812,6 +2833,30 @@ EGLBoolean _eglQuerySurface (EGLDisplay dpy, EGLSurface surface, EGLint attribut
 							return EGL_TRUE;
 						}
 						break;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_RX_EXT:
+							if (value) *value = walkerSurface->smpte2086DisplayPrimaryRx; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_RY_EXT:
+							if (value) *value = walkerSurface->smpte2086DisplayPrimaryRy; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_GX_EXT:
+							if (value) *value = walkerSurface->smpte2086DisplayPrimaryGx; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_GY_EXT:
+							if (value) *value = walkerSurface->smpte2086DisplayPrimaryGy; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_BX_EXT:
+							if (value) *value = walkerSurface->smpte2086DisplayPrimaryBx; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_BY_EXT:
+							if (value) *value = walkerSurface->smpte2086DisplayPrimaryBy; return EGL_TRUE;
+						case EGL_SMPTE2086_WHITE_POINT_X_EXT:
+							if (value) *value = walkerSurface->smpte2086WhitePointX; return EGL_TRUE;
+						case EGL_SMPTE2086_WHITE_POINT_Y_EXT:
+							if (value) *value = walkerSurface->smpte2086WhitePointY; return EGL_TRUE;
+						case EGL_SMPTE2086_MAX_LUMINANCE_EXT:
+							if (value) *value = walkerSurface->smpte2086MaxLuminance; return EGL_TRUE;
+						case EGL_SMPTE2086_MIN_LUMINANCE_EXT:
+							if (value) *value = walkerSurface->smpte2086MinLuminance; return EGL_TRUE;
+						case EGL_CTA861_3_MAX_CONTENT_LIGHT_LEVEL_EXT:
+							if (value) *value = walkerSurface->cta861MaxContentLightLevel; return EGL_TRUE;
+						case EGL_CTA861_3_MAX_FRAME_AVERAGE_LEVEL_EXT:
+							if (value) *value = walkerSurface->cta861MaxFrameAverageLightLevel; return EGL_TRUE;
 					}
 
 					g_localStorage.error = EGL_BAD_ATTRIBUTE;
@@ -2896,6 +2941,30 @@ EGLBoolean _eglSurfaceAttrib(EGLDisplay dpy, EGLSurface surface, EGLint attribut
 							return EGL_TRUE;
 						}
 						break;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_RX_EXT:
+							walkerSurface->smpte2086DisplayPrimaryRx = value; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_RY_EXT:
+							walkerSurface->smpte2086DisplayPrimaryRy = value; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_GX_EXT:
+							walkerSurface->smpte2086DisplayPrimaryGx = value; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_GY_EXT:
+							walkerSurface->smpte2086DisplayPrimaryGy = value; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_BX_EXT:
+							walkerSurface->smpte2086DisplayPrimaryBx = value; return EGL_TRUE;
+						case EGL_SMPTE2086_DISPLAY_PRIMARY_BY_EXT:
+							walkerSurface->smpte2086DisplayPrimaryBy = value; return EGL_TRUE;
+						case EGL_SMPTE2086_WHITE_POINT_X_EXT:
+							walkerSurface->smpte2086WhitePointX = value; return EGL_TRUE;
+						case EGL_SMPTE2086_WHITE_POINT_Y_EXT:
+							walkerSurface->smpte2086WhitePointY = value; return EGL_TRUE;
+						case EGL_SMPTE2086_MAX_LUMINANCE_EXT:
+							walkerSurface->smpte2086MaxLuminance = value; return EGL_TRUE;
+						case EGL_SMPTE2086_MIN_LUMINANCE_EXT:
+							walkerSurface->smpte2086MinLuminance = value; return EGL_TRUE;
+						case EGL_CTA861_3_MAX_CONTENT_LIGHT_LEVEL_EXT:
+							walkerSurface->cta861MaxContentLightLevel = value; return EGL_TRUE;
+						case EGL_CTA861_3_MAX_FRAME_AVERAGE_LEVEL_EXT:
+							walkerSurface->cta861MaxFrameAverageLightLevel = value; return EGL_TRUE;
 					}
 
 					g_localStorage.error = EGL_BAD_ATTRIBUTE;

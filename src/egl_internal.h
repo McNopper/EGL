@@ -33,6 +33,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <mutex>
 
 #if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__) /* Win32 and WinCE */
@@ -43,11 +44,22 @@
 #include <GL/gl.h>
 #include "wglext.h"
 
+// HDR colorspace support bitmask flags
+#define EGL_HDR_CS_SCRGB_LINEAR_BIT   (1u << 0)
+#define EGL_HDR_CS_SCRGB_BIT          (1u << 1)
+#define EGL_HDR_CS_BT2020_PQ_BIT      (1u << 2)
+#define EGL_HDR_CS_BT2020_LINEAR_BIT  (1u << 3)
+#define EGL_HDR_CS_BT2020_HLG_BIT     (1u << 4)
+
+// Forward declaration; full definition is in egl_windows.cpp
+typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
+
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
 
 	HDC hdc;
+	NativeHDRSurfaceContainer* hdr;  // NULL for sRGB/linear; non-NULL for HDR Vulkan surfaces
 
 } NativeSurfaceContainer;
 
@@ -266,8 +278,24 @@ typedef struct _EGLSurfaceImpl
 	EGLint textureFormat;
 	EGLint textureTarget;
 
-	// EGL_KHR_gl_colorspace: EGL_GL_COLORSPACE_SRGB or EGL_GL_COLORSPACE_LINEAR (default)
+	// EGL_KHR_gl_colorspace / EGL_EXT_gl_colorspace_*: EGL_GL_COLORSPACE_SRGB, EGL_GL_COLORSPACE_LINEAR, or an HDR colorspace (EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT, etc.)
 	EGLint glColorspace;
+
+	// EGL_EXT_surface_SMPTE2086_metadata (values per EGL spec: primaries * 50000, luminance * 10000)
+	EGLint smpte2086DisplayPrimaryRx;
+	EGLint smpte2086DisplayPrimaryRy;
+	EGLint smpte2086DisplayPrimaryGx;
+	EGLint smpte2086DisplayPrimaryGy;
+	EGLint smpte2086DisplayPrimaryBx;
+	EGLint smpte2086DisplayPrimaryBy;
+	EGLint smpte2086WhitePointX;
+	EGLint smpte2086WhitePointY;
+	EGLint smpte2086MaxLuminance;
+	EGLint smpte2086MinLuminance;
+
+	// EGL_EXT_surface_CTA861_3_metadata
+	EGLint cta861MaxContentLightLevel;
+	EGLint cta861MaxFrameAverageLightLevel;
 
 	union {
 		EGLNativeWindowType win;
@@ -349,6 +377,8 @@ typedef struct _EGLDisplayImpl
 	EGLImageImpl* rootImage;
 
 	EGLBoolean srgbFramebufferSupported;
+
+	uint32_t supportedHDRColorspaces;  // bitmask of EGL_HDR_CS_*_BIT flags
 
 	EGLSurfaceImpl* currentDraw;
 	EGLSurfaceImpl* currentRead;

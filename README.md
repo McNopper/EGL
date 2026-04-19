@@ -1,18 +1,31 @@
-EGL 1.5 desktop implementation:
--------------------------------
+EGL 1.5 desktop implementation (Windows):
+------------------------------------------
 
 Since EGL version 1.5 (https://www.khronos.org/registry/egl/), it is possible to create an OpenGL context with EGL.
-This library implements EGL 1.5 for Windows and X11 by wrapping WGL and GLX. Only OpenGL is supported.
-The purpose of this library and wrapping the existing APIs is to have the same source code on embedded and desktop systems
-when developing OpenGL applications.
+This library implements EGL 1.5 for Windows by wrapping WGL. Only OpenGL is supported.
+The purpose of this library is to have a single EGL-based surface creation and context management path
+when developing OpenGL applications on Windows.
 
 The full EGL 1.5 API surface is implemented, including window surfaces, pbuffer surfaces, pixmap surfaces,
 rendering contexts, sync objects, and image objects. The standard initialization sequence described at
-https://www.khronos.org/registry/egl/sdk/docs/man/html/eglIntro.xhtml works on both Windows and X11.
+https://www.khronos.org/registry/egl/sdk/docs/man/html/eglIntro.xhtml works on Windows.
+
+HDR support:
+The library supports HDR output via a Vulkan presentation backend (requires Vulkan SDK). The following
+EGL colorspace extensions are supported where the GPU driver and display allow it:
+
+   EGL_EXT_gl_colorspace_scrgb_linear   scRGB linear (fp16, R16G16B16A16_SFLOAT)
+   EGL_EXT_gl_colorspace_scrgb          scRGB gamma (fp16, R16G16B16A16_SFLOAT)
+   EGL_EXT_gl_colorspace_bt2020_pq      BT.2020 PQ / HDR10 (10-bit, A2B10G10R10_UNORM)
+   EGL_EXT_gl_colorspace_bt2020_linear  BT.2020 linear (fp16, R16G16B16A16_SFLOAT)
+   EGL_EXT_gl_colorspace_bt2020_hlg     BT.2020 HLG (10-bit, A2B10G10R10_UNORM)
+
+Supported colorspaces are probed at eglInitialize time and advertised via eglQueryString(EGL_EXTENSIONS).
+If a colorspace is not supported, eglCreateWindowSurface returns EGL_BAD_MATCH — there is no fallback.
 
 How to build EGL:
 
-1. Install CMake (3.10 or newer) and a C/C++ compiler (GCC, MinGW, MSVC, or Clang).
+1. Install CMake (3.10 or newer), MSVC (Visual Studio 2019+), and the Vulkan SDK.
 2. Create a build directory and run CMake:
 
    mkdir build
@@ -20,27 +33,36 @@ How to build EGL:
    cmake ..
    cmake --build .
 
-CMake options:
-
-   EGL_UNIX_USE_WAYLAND  Define functions for Wayland platform (Linux only, default: OFF)
-
 Example (out-of-source, Release build):
 
    cmake -DCMAKE_BUILD_TYPE=Release ..
    cmake --build . --config Release
 
-The build also compiles the bundled examples (bin/green_window). These require no additional
-dependencies beyond the EGL library itself.
+The build also compiles the bundled examples in bin/:
+
+   linear          SDR linear colorspace
+   srgb            SDR sRGB colorspace
+   scrgb_linear    HDR scRGB linear
+   scrgb           HDR scRGB gamma
+   bt2020_pq       HDR BT.2020 PQ (HDR10)
+   bt2020_linear   HDR BT.2020 linear
+   bt2020_hlg      HDR BT.2020 HLG
+
+Each example checks whether its colorspace is supported and exits with a console message if not.
+No additional dependencies are required beyond the EGL library and Vulkan SDK.
 
 If you get build errors:
 
-- Please make sure that you have installed all needed headers and libraries.
+- Please make sure the Vulkan SDK is installed and VULKAN_SDK is set in your environment.
+- MSVC is required; GCC/MinGW/Clang are not supported on Windows for this build.
 
 
 Yours Norbert Nopper
 
 
 Changelog:
+
+18.04.2026 - Added HDR support via Vulkan presentation backend. Five EGL colorspace extensions supported (scrgb_linear, scrgb, bt2020_pq, bt2020_linear, bt2020_hlg). Colorspace availability probed at eglInitialize time using test swapchains; only advertised if the driver can actually create the swapchain. No fallback — eglCreateWindowSurface returns EGL_BAD_MATCH for unsupported colorspaces. Dropped Linux/X11 support; library is now Windows-only.
 
 14.04.2026 - Added EGL_KHR_gl_colorspace extension support: eglQueryString(EGL_EXTENSIONS) now returns "EGL_KHR_gl_colorspace", EGL_GL_COLORSPACE_KHR is stored per surface and returned by eglQuerySurface, and pixmap surface creation now validates and stores the colorspace attribute on both Windows and X11.
 
