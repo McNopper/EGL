@@ -28,6 +28,12 @@ EGLSync _eglCreateSync(EGLDisplay dpy, EGLenum type, const EGLAttrib *attrib_lis
                 g_localStorage.error = EGL_BAD_ATTRIBUTE;
                 return EGL_NO_SYNC;
             }
+            // EGL 1.5 §3.8.1: EGL_BAD_MATCH if no current context.
+            if (g_localStorage.currentCtx == EGL_NO_CONTEXT_IMPL)
+            {
+                g_localStorage.error = EGL_BAD_MATCH;
+                return EGL_NO_SYNC;
+            }
             if (!glFenceSync_PTR)
             {
                 g_localStorage.error = EGL_BAD_MATCH;
@@ -111,7 +117,7 @@ EGLint _eglClientWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime ti
             if (!walkerDpy->initialized)
             {
                 g_localStorage.error = EGL_NOT_INITIALIZED;
-                return EGL_FALSE;
+                return EGL_WAIT_FAILED;
             }
             EGLSyncImpl* walkerSync = walkerDpy->rootSync;
             while (walkerSync)
@@ -121,7 +127,7 @@ EGLint _eglClientWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime ti
                     if (!glClientWaitSync_PTR)
                     {
                         g_localStorage.error = EGL_BAD_MATCH;
-                        return EGL_FALSE;
+                        return EGL_WAIT_FAILED;
                     }
                     GLbitfield glFlags = (flags & EGL_SYNC_FLUSH_COMMANDS_BIT) ? GL_SYNC_FLUSH_COMMANDS_BIT_GL : 0;
                     unsigned long long glTimeout = (timeout == EGL_FOREVER) ? GL_TIMEOUT_IGNORED_GL : (unsigned long long)timeout;
@@ -141,12 +147,12 @@ EGLint _eglClientWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime ti
                 walkerSync = walkerSync->next;
             }
             g_localStorage.error = EGL_BAD_PARAMETER;
-            return EGL_FALSE;
+            return EGL_WAIT_FAILED;
         }
         walkerDpy = walkerDpy->next;
     }
     g_localStorage.error = EGL_BAD_DISPLAY;
-    return EGL_FALSE;
+    return EGL_WAIT_FAILED;
 }
 
 EGLBoolean _eglGetSyncAttrib(EGLDisplay dpy, EGLSync sync, EGLint attribute, EGLAttrib *value)

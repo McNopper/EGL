@@ -79,9 +79,8 @@ EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 
             if (walkerDpy->destroy)
             {
-                g_localStorage.error = EGL_NOT_INITIALIZED;
-
-                return EGL_FALSE;
+                // Allow re-initialization after eglTerminate (EGL 1.5 §3.2).
+                walkerDpy->destroy = EGL_FALSE;
             }
 
             {
