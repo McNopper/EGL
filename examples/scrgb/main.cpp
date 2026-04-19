@@ -6,8 +6,8 @@
  * swapchain (R16G16B16A16_SFLOAT / EXTENDED_SRGB_NONLINEAR) via GL-Vulkan interop.
  */
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include "../common.h"
+
 #include <GL/gl.h>
 
 #include <EGL/egl.h>
@@ -15,7 +15,6 @@
 
 #include <math.h>
 #include <stdio.h>
-#include <string.h>
 
 static const int WIDTH  = 800;
 static const int HEIGHT = 600;
@@ -44,28 +43,6 @@ static float scrgb_encode(float nits) {
     return 1.055f * powf(L, 1.0f / 2.4f) - 0.055f;
 }
 
-static bool g_running = true;
-
-static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
-{
-    switch (msg) {
-    case WM_CLOSE: case WM_DESTROY:
-        g_running = false; PostQuitMessage(0); return 0;
-    case WM_KEYDOWN:
-        if (wp == VK_ESCAPE) { g_running = false; PostQuitMessage(0); } return 0;
-    default:
-        return DefWindowProc(hwnd, msg, wp, lp);
-    }
-}
-
-static bool ext_supported(const char* exts, const char* ext)
-{
-    if (!exts) return false;
-    const char* p = strstr(exts, ext);
-    if (!p) return false;
-    char after = p[strlen(ext)];
-    return after == ' ' || after == '\0';
-}
 
 int main(void)
 {

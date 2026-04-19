@@ -3,8 +3,8 @@
  * (Windows only)
  */
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include "../common.h"
+
 #include <GL/gl.h>
 
 #include <EGL/egl.h>
@@ -31,19 +31,6 @@ static const EGLint k_surface_attribs[] = {
 
 static const EGLint k_context_attribs[] = { EGL_NONE };
 
-static bool g_running = true;
-
-static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
-{
-    switch (msg) {
-    case WM_CLOSE: case WM_DESTROY:
-        g_running = false; PostQuitMessage(0); return 0;
-    case WM_KEYDOWN:
-        if (wp == VK_ESCAPE) { g_running = false; PostQuitMessage(0); } return 0;
-    default:
-        return DefWindowProc(hwnd, msg, wp, lp);
-    }
-}
 
 int main(void)
 {

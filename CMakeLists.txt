@@ -19,7 +19,6 @@ set(EGL_SOURCES
     ${EGL_PLATFORM_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_internal.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/egl.h
-    ${CMAKE_CURRENT_LIST_DIR}/include/EGL/egl.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/eglext.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/eglplatform.h
     ${CMAKE_CURRENT_LIST_DIR}/include/KHR/khrplatform.h)
