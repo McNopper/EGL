@@ -279,6 +279,7 @@ EGLSurface _eglGetCurrentSurface(EGLint readdraw)
 				return (EGLSurface)walkerDpy->currentRead;
 			}
 
+			g_localStorage.error = EGL_BAD_PARAMETER;
 			return EGL_NO_SURFACE;
 		}
 
@@ -471,7 +472,7 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 						{
 							if (!walkerSurface->initialized || walkerSurface->destroy)
 							{
-								g_localStorage.error = EGL_BAD_NATIVE_WINDOW;
+								g_localStorage.error = EGL_BAD_SURFACE;
 
 								return EGL_FALSE;
 							}
@@ -502,7 +503,7 @@ EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGL
 						{
 							if (!walkerSurface->initialized || walkerSurface->destroy)
 							{
-								g_localStorage.error = EGL_BAD_NATIVE_WINDOW;
+								g_localStorage.error = EGL_BAD_SURFACE;
 
 								return EGL_FALSE;
 							}

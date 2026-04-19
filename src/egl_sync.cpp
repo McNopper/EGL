@@ -5,7 +5,13 @@ extern "C"
 
 EGLSync _eglCreateSync(EGLDisplay dpy, EGLenum type, const EGLAttrib *attrib_list)
 {
-	(void)attrib_list;
+	// Per EGL 1.5 §3.8.1: for EGL_SYNC_FENCE no attributes are defined;
+	// a non-empty attrib_list must generate EGL_BAD_ATTRIBUTE.
+	if (attrib_list && attrib_list[0] != EGL_NONE)
+	{
+		g_localStorage.error = EGL_BAD_ATTRIBUTE;
+		return EGL_NO_SYNC;
+	}
 	auto _rl = g_globalStorage.placeRootDpy_readlock();
 	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 	while (walkerDpy)
@@ -145,6 +151,11 @@ EGLint _eglClientWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime ti
 
 EGLBoolean _eglGetSyncAttrib(EGLDisplay dpy, EGLSync sync, EGLint attribute, EGLAttrib *value)
 {
+	if (!value)
+	{
+		g_localStorage.error = EGL_BAD_PARAMETER;
+		return EGL_FALSE;
+	}
 	auto _rl = g_globalStorage.placeRootDpy_readlock();
 	EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 	while (walkerDpy)

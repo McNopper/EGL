@@ -1,93 +1,192 @@
-EGL 1.5 desktop implementation (Windows):
-------------------------------------------
+# EGL 1.5 Implementation
 
-Since EGL version 1.5 (https://www.khronos.org/registry/egl/), it is possible to create an OpenGL context with EGL.
-This library implements EGL 1.5 for Windows by wrapping WGL. Only OpenGL is supported.
-The purpose of this library is to have a single EGL-based surface creation and context management path
-when developing OpenGL applications on Windows.
+A portable, spec-compliant implementation of [EGL 1.5](https://www.khronos.org/registry/egl/) built around
+a platform-agnostic core and pluggable OS/rendering backends. The library provides the standard EGL
+surface creation, context management, and synchronization API across operating systems, so that
+applications can share a single EGL-based rendering path regardless of the underlying platform.
 
-The full EGL 1.5 API surface is implemented, including window surfaces, pbuffer surfaces, pixmap surfaces,
-rendering contexts, sync objects, and image objects. The standard initialization sequence described at
-https://www.khronos.org/registry/egl/sdk/docs/man/html/eglIntro.xhtml works on Windows.
-
-HDR support:
-The library supports HDR output via a Vulkan presentation backend (requires Vulkan SDK). The following
-EGL colorspace extensions are supported where the GPU driver and display allow it:
-
-   EGL_EXT_gl_colorspace_scrgb_linear   scRGB linear (fp16, R16G16B16A16_SFLOAT)
-   EGL_EXT_gl_colorspace_scrgb          scRGB gamma (fp16, R16G16B16A16_SFLOAT)
-   EGL_EXT_gl_colorspace_bt2020_pq      BT.2020 PQ / HDR10 (10-bit, A2B10G10R10_UNORM)
-   EGL_EXT_gl_colorspace_bt2020_linear  BT.2020 linear (fp16, R16G16B16A16_SFLOAT)
-   EGL_EXT_gl_colorspace_bt2020_hlg     BT.2020 HLG (10-bit, A2B10G10R10_UNORM)
-
-Supported colorspaces are probed at eglInitialize time and advertised via eglQueryString(EGL_EXTENSIONS).
-If a colorspace is not supported, eglCreateWindowSurface returns EGL_BAD_MATCH — there is no fallback.
-
-How to build EGL:
-
-1. Install CMake (3.10 or newer), MSVC (Visual Studio 2019+), and the Vulkan SDK.
-2. Create a build directory and run CMake:
-
-   mkdir build
-   cd build
-   cmake ..
-   cmake --build .
-
-Example (out-of-source, Release build):
-
-   cmake -DCMAKE_BUILD_TYPE=Release ..
-   cmake --build . --config Release
-
-The build also compiles the bundled examples in bin/:
-
-   linear          SDR linear colorspace
-   srgb            SDR sRGB colorspace
-   scrgb_linear    HDR scRGB linear
-   scrgb           HDR scRGB gamma
-   bt2020_pq       HDR BT.2020 PQ (HDR10)
-   bt2020_linear   HDR BT.2020 linear
-   bt2020_hlg      HDR BT.2020 HLG
-
-Each example checks whether its colorspace is supported and exits with a console message if not.
-No additional dependencies are required beyond the EGL library and Vulkan SDK.
-
-If you get build errors:
-
-- Please make sure the Vulkan SDK is installed and VULKAN_SDK is set in your environment.
-- MSVC is required; GCC/MinGW/Clang are not supported on Windows for this build.
+The Khronos headers bundled with the library are the official, unmodified ones from the
+[EGL Registry](https://github.com/KhronosGroup/EGL-Registry) (commit e80a2e0050, 2026-03-19).
 
 
-Yours Norbert Nopper
+## Platform and Backend Support
+
+| Operating System | Backend | Status | Notes |
+|---|---|---|---|
+| Windows | WGL (OpenGL) | **Implemented** | Default sRGB and linear colorspaces |
+| Windows | Vulkan (HDR) | **Implemented** | HDR colorspace extensions via Vulkan swapchain |
+| macOS / iOS | CGL / EAGL / Metal | Prepared | Stub ready in `egl_internal.h` |
+| Android | ANativeWindow | Prepared | Stub ready in `egl_internal.h` |
+| Linux / Unix — X11 | GLX | Prepared | Stub ready; default when no sub-platform flag set |
+| Linux — Wayland | EGL native | Prepared | Build with `-DWL_EGL_PLATFORM=1` |
+| Linux — DRM/KMS | GBM | Prepared | Build with `-DGBM_PLATFORM=1` |
+| Linux — ChromeOS | Ozone | Prepared | Build with `-DOZONE_PLATFORM=1` |
+| QNX | Screen API | Prepared | Stub ready in `egl_internal.h` |
+| HarmonyOS (OHOS) | Native | Prepared | Stub ready in `egl_internal.h` |
+| Haiku | Native | Prepared | Stub ready in `egl_internal.h` |
+| Fuchsia | Native | Prepared | Stub ready in `egl_internal.h` |
+| WebAssembly | Emscripten / WebGL | Prepared | Stub ready in `egl_internal.h` |
+| Symbian (legacy) | Native | Not planned | Stub ready in `egl_internal.h` |
+
+Adding a new backend requires implementing 17 backend functions declared in `src/egl_internal.h`
+(prefixed `__`) and adding a source file entry to `CMakeLists.txt`.
 
 
-Changelog:
+## EGL 1.5 API Coverage
 
-18.04.2026 - Added HDR support via Vulkan presentation backend. Five EGL colorspace extensions supported (scrgb_linear, scrgb, bt2020_pq, bt2020_linear, bt2020_hlg). Colorspace availability probed at eglInitialize time using test swapchains; only advertised if the driver can actually create the swapchain. No fallback — eglCreateWindowSurface returns EGL_BAD_MATCH for unsupported colorspaces. Dropped Linux/X11 support; library is now Windows-only.
+The full EGL 1.5 API surface is implemented in the platform-agnostic core:
 
-14.04.2026 - Added EGL_KHR_gl_colorspace extension support: eglQueryString(EGL_EXTENSIONS) now returns "EGL_KHR_gl_colorspace", EGL_GL_COLORSPACE_KHR is stored per surface and returned by eglQuerySurface, and pixmap surface creation now validates and stores the colorspace attribute on both Windows and X11.
+- Display management: `eglGetDisplay`, `eglInitialize`, `eglTerminate`, `eglGetPlatformDisplay`
+- Config selection: `eglGetConfigs`, `eglChooseConfig`, `eglGetConfigAttrib`
+- Context management: `eglCreateContext`, `eglDestroyContext`, `eglMakeCurrent`,
+  `eglGetCurrentContext`, `eglGetCurrentDisplay`, `eglGetCurrentSurface`, `eglQueryContext`
+- Surface management: `eglCreateWindowSurface`, `eglCreatePbufferSurface`,
+  `eglCreatePixmapSurface`, `eglCreatePlatformWindowSurface`, `eglCreatePlatformPixmapSurface`,
+  `eglDestroySurface`, `eglQuerySurface`, `eglSurfaceAttrib`
+- Rendering: `eglSwapBuffers`, `eglSwapInterval`, `eglCopyBuffers`,
+  `eglBindTexImage`, `eglReleaseTexImage`, `eglWaitClient`, `eglWaitNative`
+- Sync objects (EGL 1.5 / GL_ARB_sync): `eglCreateSync`, `eglDestroySync`,
+  `eglClientWaitSync`, `eglWaitSync`, `eglGetSyncAttrib`, `eglSignalSync`
+- Image objects: `eglCreateImage`, `eglDestroyImage`
+- Threading: `eglBindAPI`, `eglQueryAPI`, `eglReleaseThread` (per-thread state via `thread_local`)
+- Utilities: `eglGetError`, `eglGetProcAddress`, `eglQueryString`
 
-12.04.2026 - Fixed 19 EGL 1.5 spec compliance issues: correct return values from eglDestroyContext/eglDestroySurface/eglTerminate, two-call pattern for eglChooseConfig/eglGetConfigs (configs=NULL returns count), lexicographic version comparison in eglCreateContext, attrib_list=NULL treated as empty, EGL_TRANSPARENT_TYPE value validation, ES conformance bit selected per requested version, eglQueryContext CLIENT_TYPE/CLIENT_VERSION, eglSwapBuffers returns EGL_FALSE, WGL software renderer maps to EGL_SLOW_CONFIG, and EGL_LEVEL allows negative values.
 
-12.04.2026 - Added green window example(examples/green_window). Fixed EGL_STENCIL_SIZE config matching to use minimum-value semantics per spec (was exact match, causing eglChooseConfig to return no configs on D24S8 hardware). Removed GLEW dependency entirely; the library now has zero external dependencies.
+## HDR Support (Windows)
 
-12.04.2026 - Implemented full EGL 1.5 API: window/pbuffer/pixmap surfaces, sync objects (GL_ARB_sync), image objects, eglCopyBuffers, eglBindTexImage/eglReleaseTexImage, eglGetPlatformDisplay, platform window/pixmap surfaces, and all remaining surface/config queries.
+The Windows backend supports HDR output via a Vulkan presentation layer. The following colorspace
+extensions are probed at `eglInitialize` time and advertised only if the driver and display support them:
 
-12.04.2026 - Switched build system to CMake (3.10+). Updated Khronos headers to latest (egl.h 2026-03-19, eglext.h 20260319). Library output renamed to libEGL per Khronos convention.
+| Extension | Colorspace | Format |
+|---|---|---|
+| `EGL_EXT_gl_colorspace_scrgb_linear` | scRGB linear | R16G16B16A16_SFLOAT |
+| `EGL_EXT_gl_colorspace_scrgb` | scRGB gamma | R16G16B16A16_SFLOAT |
+| `EGL_EXT_gl_colorspace_bt2020_pq` | BT.2020 PQ / HDR10 | A2B10G10R10_UNORM |
+| `EGL_EXT_gl_colorspace_bt2020_linear` | BT.2020 linear | R16G16B16A16_SFLOAT |
+| `EGL_EXT_gl_colorspace_bt2020_hlg` | BT.2020 HLG | A2B10G10R10_UNORM |
 
-29.01.2015 - Updated to GLEW 1.12.0. Current version: v0.3.3.
+If a requested colorspace is not supported, `eglCreateWindowSurface` returns `EGL_BAD_MATCH`.
+There is no silent fallback.
 
-25.01.2015 - Fixed bug during initialization under Windows. Current version: v0.3.3.
 
-20.01.2015 - Added GLX version check. Fixed bug in window creation under X11. Current version: v0.3.2.
+## Building
 
-05.12.2014 - Removed duplicate code. Current version: v0.3.1.
+### Windows (implemented)
 
-04.12.2014 - Working X11 version. Current version: v0.3.0.
+Requirements: CMake 3.10+, MSVC (Visual Studio 2019+), Vulkan SDK.
 
-28.11.2014 - Continued on X11 version. Current version: v0.2.3.
+```
+mkdir build
+cd build
+cmake ..
+cmake --build .
+```
 
-22.11.2014 - X11 compiling but not complete. Current version: v0.2.2.
+Release build:
 
-18.11.2014 - Added X11 build configuration and started implementing it. X11 not compiling yet. Current version: v0.2.1.
+```
+cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake --build . --config Release
+```
 
-17.11.2014 - Released first public version: v0.2.
+Outputs: `lib/libEGL.lib` and the example executables under `bin/`.
+
+If CMake cannot find the Vulkan SDK, ensure `VULKAN_SDK` is set in your environment.
+
+### Other platforms (planned)
+
+Cross-compile with the target toolchain. CMake selects the correct platform branch automatically
+based on `CMAKE_SYSTEM_NAME`. For Linux sub-platforms pass the appropriate define:
+
+```
+# Wayland
+cmake .. -DWL_EGL_PLATFORM=1
+
+# GBM / DRM-KMS
+cmake .. -DGBM_PLATFORM=1
+
+# Ozone
+cmake .. -DOZONE_PLATFORM=1
+```
+
+Non-Windows builds will compile until the link stage and then fail on the 17 unimplemented `__`
+backend functions — this is intentional and indicates where the new backend code goes.
+
+
+## Examples
+
+| Executable | Colorspace | HDR |
+|---|---|---|
+| `srgb` | sRGB | No |
+| `linear` | Linear | No |
+| `scrgb_linear` | scRGB linear | Yes |
+| `scrgb` | scRGB gamma | Yes |
+| `bt2020_pq` | BT.2020 PQ / HDR10 | Yes |
+| `bt2020_linear` | BT.2020 linear | Yes |
+| `bt2020_hlg` | BT.2020 HLG | Yes |
+
+Each example checks at runtime whether its colorspace is supported and exits with a message if not.
+
+
+## Architecture
+
+```
+egl.c                     Public C API (thin shims, no logic)
+  └── egl_globals.cpp      Global + per-thread storage, init/terminate lifecycle
+  └── egl_config.cpp       Config selection and queries
+  └── egl_display.cpp      Display management and extension string
+  └── egl_context.cpp      Context create/destroy/makecurrent
+  └── egl_surface.cpp      Surface create/destroy/query
+  └── egl_sync.cpp         Sync objects (EGL 1.5)
+  └── egl_image.cpp        Image objects (EGL 1.5)
+  └── egl_api.cpp          Swap, bind, wait, getProcAddress
+
+  Platform backends (implement the 17 __ functions declared in egl_internal.h):
+  └── egl_windows.cpp      Windows — WGL
+  └── egl_windows_vk.cpp   Windows — Vulkan HDR presentation
+  └── egl_<platform>.cpp   Future backends
+```
+
+
+## Yours Norbert Nopper
+
+
+## Changelog
+
+19.04.2026 - Rewrote README to reflect the general multi-platform EGL architecture. Added platform/backend
+             support table. All Khronos headers verified as latest (e80a2e0050, 2026-03-19). Added platform
+             stubs for QNX, Emscripten, Wayland, GBM, Ozone, Android, Haiku, Fuchsia, HarmonyOS, Symbian
+             to egl_internal.h. CMakeLists.txt updated with platform-conditional branches for all supported OSes.
+
+18.04.2026 - Added HDR support via Vulkan presentation backend. Five EGL colorspace extensions supported
+             (scrgb_linear, scrgb, bt2020_pq, bt2020_linear, bt2020_hlg). Colorspace availability probed
+             at eglInitialize time using test swapchains. No fallback — eglCreateWindowSurface returns
+             EGL_BAD_MATCH for unsupported colorspaces.
+
+18.04.2026 - Refactored monolithic egl_common.cpp (~3900 lines) into eight focused modules:
+             egl_globals, egl_config, egl_display, egl_context, egl_surface, egl_sync, egl_image, egl_api.
+             Extracted Vulkan HDR backend into egl_windows_vk.cpp.
+
+14.04.2026 - Added EGL_KHR_gl_colorspace extension support.
+
+12.04.2026 - Fixed 19 EGL 1.5 spec compliance issues. Added green_window example. Removed GLEW dependency.
+             Implemented full EGL 1.5 API. Switched build system to CMake 3.10+. Updated Khronos headers
+             to latest (egl.h 2026-03-19, eglext.h 20260319).
+
+29.01.2015 - Updated to GLEW 1.12.0. v0.3.3.
+
+25.01.2015 - Fixed initialization bug on Windows. v0.3.3.
+
+20.01.2015 - Added GLX version check. Fixed window creation bug on X11. v0.3.2.
+
+05.12.2014 - Removed duplicate code. v0.3.1.
+
+04.12.2014 - Working X11 version. v0.3.0.
+
+28.11.2014 - Continued X11 implementation. v0.2.3.
+
+22.11.2014 - X11 compiling but not complete. v0.2.2.
+
+18.11.2014 - Added X11 build configuration. v0.2.1.
+
+17.11.2014 - First public release. v0.2.

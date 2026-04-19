@@ -658,4 +658,117 @@ EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceIm
 
 EGLBoolean __getPlatformDependentHandles(void* out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer);
 
+// ── Platform inline helpers ──────────────────────────────────────────────────
+// These keep all platform #ifdef logic inside this header so that the
+// platform-agnostic core files (egl_display.cpp etc.) stay portable.
+//
+//  __getDefaultNativeDisplay  — maps EGL_DEFAULT_DISPLAY to the OS display
+//  __matchPlatformDisplay     — validates eglGetPlatformDisplay platform token
+
+#ifdef __cplusplus
+#include <EGL/eglext.h>
+
+#if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
+	{ return (EGLNativeDisplayType)c->hdc; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+{
+	if (platform == EGL_PLATFORM_DEVICE_EXT && !native_display)
+		{ *out = EGL_DEFAULT_DISPLAY; return EGL_TRUE; }
+	return EGL_FALSE;
+}
+
+#elif defined(__QNX__)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
+	{ return (EGLNativeDisplayType)c->display; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
+	{ return EGL_FALSE; }
+
+#elif defined(__EMSCRIPTEN__)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
+	{ return (EGLNativeDisplayType)0; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
+	{ return EGL_FALSE; }
+
+#elif defined(__WINSCW__) || defined(__SYMBIAN32__)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
+	{ return (EGLNativeDisplayType)0; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
+	{ return EGL_FALSE; }
+
+#elif defined(WL_EGL_PLATFORM)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
+	{ return (EGLNativeDisplayType)0; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+{
+	if (platform == EGL_PLATFORM_WAYLAND_EXT || platform == EGL_PLATFORM_WAYLAND_KHR)
+		{ *out = (EGLNativeDisplayType)native_display; return EGL_TRUE; }
+	return EGL_FALSE;
+}
+
+#elif defined(__GBM__)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
+	{ return (EGLNativeDisplayType)0; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+{
+	if (platform == EGL_PLATFORM_GBM_MESA || platform == EGL_PLATFORM_GBM_KHR)
+		{ *out = (EGLNativeDisplayType)native_display; return EGL_TRUE; }
+	return EGL_FALSE;
+}
+
+#elif defined(__ANDROID__) || defined(ANDROID)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
+	{ return (EGLNativeDisplayType)0; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+{
+	if (platform == EGL_PLATFORM_ANDROID_KHR)
+		{ *out = (EGLNativeDisplayType)native_display; return EGL_TRUE; }
+	return EGL_FALSE;
+}
+
+#elif defined(USE_OZONE)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
+	{ return (EGLNativeDisplayType)0; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
+	{ return EGL_FALSE; }
+
+#elif defined(USE_X11) || defined(__unix__)
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
+	{ return (EGLNativeDisplayType)c->display; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+{
+	if (platform == EGL_PLATFORM_X11_EXT || platform == EGL_PLATFORM_X11_KHR)
+		{ *out = (EGLNativeDisplayType)native_display; return EGL_TRUE; }
+	return EGL_FALSE;
+}
+
+#else
+
+static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
+	{ return (EGLNativeDisplayType)0; }
+
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
+	{ return EGL_FALSE; }
+
+#endif
+#endif // __cplusplus
+
 #endif /* EGL_INTERNAL_H_ */

@@ -46,13 +46,10 @@ EGLDisplay _eglGetDisplay(EGLNativeDisplayType display_id)
 
 	newDpy->initialized = EGL_FALSE;
 	newDpy->destroy = EGL_FALSE;
-#if defined(_WIN32) || defined(_WIN64)
-	newDpy->display_id = display_id ? display_id : g_globalStorage.dummy_read().hdc;
-#elif defined(__ANDROID__) || defined(ANDROID) || defined(WL_EGL_PLATFORM)
-	newDpy->display_id = 0;
-#else
-	newDpy->display_id = display_id ? display_id : g_globalStorage.dummy_read().display;
-#endif
+	{
+		auto dummy = g_globalStorage.dummy_read();
+		newDpy->display_id = display_id ? display_id : __getDefaultNativeDisplay(&dummy);
+	}
 	newDpy->rootSurface = 0;
 	newDpy->rootCtx = 0;
 	newDpy->rootConfig = 0;
@@ -211,7 +208,7 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
 				break;
 				case EGL_EXTENSIONS:
 				{
-					static thread_local char extBuf[512];
+					static thread_local char extBuf[2048];
 					extBuf[0] = '\0';
 					uint32_t hdr = walkerDpy->supportedHDRColorspaces;
 					auto appendExt = [&](const char* s) {
@@ -252,26 +249,13 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
 EGLDisplay _eglGetPlatformDisplay(EGLenum platform, void *native_display, const EGLAttrib *attrib_list)
 {
 	(void)attrib_list;
-
-#if defined(_WIN32) || defined(_WIN64)
-	// WGL has no standardized EGL platform identifier.
-	// Accept EGL_DEFAULT_DISPLAY with a NULL native_display.
-	if (platform == EGL_PLATFORM_DEVICE_EXT && native_display == NULL)
-		return _eglGetDisplay(EGL_DEFAULT_DISPLAY);
-
-	g_localStorage.error = EGL_BAD_PARAMETER;
-	return EGL_NO_DISPLAY;
-#elif defined(__unix__)
-	if (platform == EGL_PLATFORM_X11_EXT || platform == EGL_PLATFORM_X11_KHR)
-		return _eglGetDisplay((EGLNativeDisplayType)native_display);
-
-	g_localStorage.error = EGL_BAD_PARAMETER;
-	return EGL_NO_DISPLAY;
-#else
-	(void)platform; (void)native_display;
-	g_localStorage.error = EGL_BAD_PARAMETER;
-	return EGL_NO_DISPLAY;
-#endif
+	EGLNativeDisplayType nativeDisplay = EGL_DEFAULT_DISPLAY;
+	if (!__matchPlatformDisplay(platform, native_display, &nativeDisplay))
+	{
+		g_localStorage.error = EGL_BAD_PARAMETER;
+		return EGL_NO_DISPLAY;
+	}
+	return _eglGetDisplay(nativeDisplay);
 }
 
 EGLBoolean _eglReleaseThread(void)

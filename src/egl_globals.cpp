@@ -1,7 +1,7 @@
 #include "egl_common.h"
 
 thread_local LocalStorage g_localStorage =
-    { EGL_SUCCESS, EGL_NONE, EGL_NO_CONTEXT_IMPL };
+    { EGL_SUCCESS, EGL_OPENGL_ES_API, EGL_NO_CONTEXT_IMPL };
 
 GlobalStorage g_globalStorage;
 
