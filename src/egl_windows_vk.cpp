@@ -90,6 +90,15 @@ bool _eglHDRColorspaceToVk(EGLint eglCS, VkFormat* fmt, VkColorSpaceKHR* cs)
             *fmt = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
             *cs  = VK_COLOR_SPACE_HDR10_HLG_EXT;
             return true;
+        case EGL_GL_COLORSPACE_DISPLAY_P3_EXT:
+        case EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT:
+            *fmt = VK_FORMAT_R8G8B8A8_UNORM;
+            *cs  = VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT;
+            return true;
+        case EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT:
+            *fmt = VK_FORMAT_R16G16B16A16_SFLOAT;
+            *cs  = VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT;
+            return true;
         default:
             return false;
     }
@@ -103,7 +112,9 @@ static uint32_t _vkColorspaceToBit(VkColorSpaceKHR vkCS)
         case VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT: return EGL_HDR_CS_SCRGB_BIT;
         case VK_COLOR_SPACE_HDR10_ST2084_EXT:            return EGL_HDR_CS_BT2020_PQ_BIT;
         case VK_COLOR_SPACE_BT2020_LINEAR_EXT:           return EGL_HDR_CS_BT2020_LINEAR_BIT;
-        case VK_COLOR_SPACE_HDR10_HLG_EXT:               return EGL_HDR_CS_BT2020_HLG_BIT;
+        case VK_COLOR_SPACE_HDR10_HLG_EXT:              return EGL_HDR_CS_BT2020_HLG_BIT;
+        case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:   return EGL_HDR_CS_DISPLAY_P3_BIT;
+        case VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT:      return EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT;
         default: return 0;
     }
 }

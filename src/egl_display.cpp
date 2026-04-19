@@ -214,11 +214,15 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
                     appendExt("EGL_KHR_gl_colorspace");
                     appendExt("EGL_KHR_create_context");
                     appendExt("EGL_EXT_client_extensions");
-                    if (hdr & EGL_HDR_CS_SCRGB_LINEAR_BIT)  appendExt("EGL_EXT_gl_colorspace_scrgb_linear");
-                    if (hdr & EGL_HDR_CS_SCRGB_BIT)         appendExt("EGL_EXT_gl_colorspace_scrgb");
-                    if (hdr & EGL_HDR_CS_BT2020_PQ_BIT)     appendExt("EGL_EXT_gl_colorspace_bt2020_pq");
-                    if (hdr & EGL_HDR_CS_BT2020_LINEAR_BIT) appendExt("EGL_EXT_gl_colorspace_bt2020_linear");
-                    if (hdr & EGL_HDR_CS_BT2020_HLG_BIT)   appendExt("EGL_EXT_gl_colorspace_bt2020_hlg");
+                    if (hdr & EGL_HDR_CS_SCRGB_LINEAR_BIT)      appendExt("EGL_EXT_gl_colorspace_scrgb_linear");
+                    if (hdr & EGL_HDR_CS_SCRGB_BIT)             appendExt("EGL_EXT_gl_colorspace_scrgb");
+                    if (hdr & EGL_HDR_CS_BT2020_PQ_BIT)         appendExt("EGL_EXT_gl_colorspace_bt2020_pq");
+                    if (hdr & EGL_HDR_CS_BT2020_LINEAR_BIT)     appendExt("EGL_EXT_gl_colorspace_bt2020_linear");
+                    if (hdr & EGL_HDR_CS_BT2020_HLG_BIT)        appendExt("EGL_EXT_gl_colorspace_bt2020_hlg");
+                    if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)        appendExt("EGL_EXT_gl_colorspace_display_p3");
+                    if (hdr & EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT) appendExt("EGL_EXT_gl_colorspace_display_p3_linear");
+                    if (hdr & (EGL_HDR_CS_DISPLAY_P3_BIT | EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT))
+                                                                 appendExt("EGL_EXT_gl_colorspace_p3_passthrough");
                     if (hdr)
                     {
                         appendExt("EGL_EXT_surface_SMPTE2086_metadata");

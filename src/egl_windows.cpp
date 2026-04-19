@@ -557,7 +557,10 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attr
                      value == EGL_GL_COLORSPACE_SCRGB_EXT         ||
                      value == EGL_GL_COLORSPACE_BT2020_PQ_EXT     ||
                      value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
-                     value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
+                     value == EGL_GL_COLORSPACE_BT2020_HLG_EXT    ||
+                     value == EGL_GL_COLORSPACE_DISPLAY_P3_EXT    ||
+                     value == EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT ||
+                     value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT)
             {
                 // HDR colorspaces stored but no Vulkan surface for offscreen buffers
                 iattribs[29] = GL_FALSE;
@@ -718,7 +721,10 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
                              value == EGL_GL_COLORSPACE_SCRGB_EXT         ||
                              value == EGL_GL_COLORSPACE_BT2020_PQ_EXT     ||
                              value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
-                             value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
+                             value == EGL_GL_COLORSPACE_BT2020_HLG_EXT    ||
+                             value == EGL_GL_COLORSPACE_DISPLAY_P3_EXT    ||
+                             value == EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT ||
+                             value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT)
                     {
                         // HDR colorspaces use Vulkan for presentation; WGL framebuffer stays linear
                         template_attrib_list[29] = GL_FALSE;
@@ -948,7 +954,9 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
                     if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB ||
                         value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT || value == EGL_GL_COLORSPACE_SCRGB_EXT ||
                         value == EGL_GL_COLORSPACE_BT2020_PQ_EXT || value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
-                        value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
+                        value == EGL_GL_COLORSPACE_BT2020_HLG_EXT ||
+                        value == EGL_GL_COLORSPACE_DISPLAY_P3_EXT || value == EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT ||
+                        value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT)
                         glColorspace = value;
                     else
                     {

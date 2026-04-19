@@ -45,11 +45,13 @@
 #include "wglext.h"
 
 // HDR colorspace support bitmask flags
-#define EGL_HDR_CS_SCRGB_LINEAR_BIT   (1u << 0)
-#define EGL_HDR_CS_SCRGB_BIT          (1u << 1)
-#define EGL_HDR_CS_BT2020_PQ_BIT      (1u << 2)
-#define EGL_HDR_CS_BT2020_LINEAR_BIT  (1u << 3)
-#define EGL_HDR_CS_BT2020_HLG_BIT     (1u << 4)
+#define EGL_HDR_CS_SCRGB_LINEAR_BIT      (1u << 0)
+#define EGL_HDR_CS_SCRGB_BIT             (1u << 1)
+#define EGL_HDR_CS_BT2020_PQ_BIT         (1u << 2)
+#define EGL_HDR_CS_BT2020_LINEAR_BIT     (1u << 3)
+#define EGL_HDR_CS_BT2020_HLG_BIT        (1u << 4)
+#define EGL_HDR_CS_DISPLAY_P3_BIT        (1u << 5)
+#define EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT (1u << 6)
 
 // Forward declaration; full definition is in egl_windows_vk.h
 typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
