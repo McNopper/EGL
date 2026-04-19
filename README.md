@@ -58,6 +58,9 @@ The following colorspace extensions are probed at `eglInitialize` time and adver
 | `EGL_EXT_gl_colorspace_bt2020_pq` | BT.2020 PQ / HDR10 | A2B10G10R10_UNORM |
 | `EGL_EXT_gl_colorspace_bt2020_linear` | BT.2020 linear | R16G16B16A16_SFLOAT |
 | `EGL_EXT_gl_colorspace_bt2020_hlg` | BT.2020 HLG | A2B10G10R10_UNORM |
+| `EGL_EXT_gl_colorspace_display_p3` | Display P3 (sRGB EOTF) | R8G8B8A8_UNORM |
+| `EGL_EXT_gl_colorspace_display_p3_linear` | Display P3 linear | R16G16B16A16_SFLOAT |
+| `EGL_EXT_gl_colorspace_p3_passthrough` | Display P3 passthrough | R8G8B8A8_UNORM |
 
 
 ## Building
@@ -115,6 +118,9 @@ backend functions — this is intentional and indicates where the new backend co
 | `bt2020_pq` | BT.2020 PQ / HDR10 | Yes |
 | `bt2020_linear` | BT.2020 linear | Yes |
 | `bt2020_hlg` | BT.2020 HLG | Yes |
+| `display_p3` | Display P3 (sRGB EOTF) | No |
+| `display_p3_linear` | Display P3 linear | No |
+| `display_p3_passthrough` | Display P3 passthrough | No |
 
 Each example checks at runtime whether its colorspace is supported and exits with a message if not.
 
