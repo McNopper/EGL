@@ -158,6 +158,7 @@ struct _NativeHDRSurfaceContainer {
 
     uint32_t         width;
     uint32_t         height;
+    VkDeviceSize     renderMemorySize;  // cached from vkGetImageMemoryRequirements, used by GL import
 
     // GL-side objects are created lazily on first present (GL context must be current)
     bool             glInteropReady;
@@ -491,7 +492,11 @@ static void __vkDestroyHDRSurface(NativeHDRSurfaceContainer* hdr)
         return;
 
     if (g_vkDevice != VK_NULL_HANDLE)
-        vkDeviceWaitIdle(g_vkDevice);
+    {
+        // Wait only for this surface's own fences — avoids stalling the whole device
+        if (hdr->fences && hdr->imageCount > 0)
+            vkWaitForFences(g_vkDevice, hdr->imageCount, hdr->fences, VK_TRUE, UINT64_MAX);
+    }
 
     // GL cleanup (requires a GL context to be current; best-effort)
     if (hdr->pendingMemHandle) { CloseHandle(hdr->pendingMemHandle); hdr->pendingMemHandle = nullptr; }
@@ -662,6 +667,7 @@ static EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr, HWND win,
 
         VkMemoryRequirements memReqs = {};
         vkGetImageMemoryRequirements(g_vkDevice, hdr->renderImage, &memReqs);
+        hdr->renderMemorySize = memReqs.size;
 
         VkExportMemoryAllocateInfo emai = {};
         emai.sType       = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
@@ -722,18 +728,12 @@ static EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr, HWND win,
             0, 0, nullptr, 0, nullptr, 1, &barrier);
         vkEndCommandBuffer(initCmd);
 
-        VkFence initFence = VK_NULL_HANDLE;
-        VkFenceCreateInfo fci = {};
-        fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        vkCreateFence(g_vkDevice, &fci, nullptr, &initFence);
-
         VkSubmitInfo si = {};
         si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         si.commandBufferCount = 1;
         si.pCommandBuffers    = &initCmd;
-        vkQueueSubmit(g_vkQueue, 1, &si, initFence);
-        vkWaitForFences(g_vkDevice, 1, &initFence, VK_TRUE, UINT64_MAX);
-        vkDestroyFence(g_vkDevice, initFence, nullptr);
+        vkQueueSubmit(g_vkQueue, 1, &si, VK_NULL_HANDLE);
+        vkQueueWaitIdle(g_vkQueue);
         vkFreeCommandBuffers(g_vkDevice, hdr->cmdPool, 1, &initCmd);
     }
 
@@ -798,9 +798,7 @@ static bool __vkInitGLSide(NativeHDRSurfaceContainer* hdr)
 
     // Import Vulkan memory into a GL memory object
     g_pfnCreateMemObjs(1, &hdr->glMemoryObject);
-    VkMemoryRequirements memReqs = {};
-    vkGetImageMemoryRequirements(g_vkDevice, hdr->renderImage, &memReqs);
-    g_pfnImportMemWin32(hdr->glMemoryObject, memReqs.size,
+    g_pfnImportMemWin32(hdr->glMemoryObject, hdr->renderMemorySize,
                         GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, hdr->pendingMemHandle);
     hdr->pendingMemHandle = nullptr; // consumed by import
 
