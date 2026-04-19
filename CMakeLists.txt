@@ -11,11 +11,19 @@ endif()
 
 find_package(Vulkan REQUIRED)
 set(EGL_PLATFORM_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp)
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows_vk.cpp)
 
 set(EGL_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/egl.c
-    ${CMAKE_CURRENT_LIST_DIR}/src/egl_common.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_globals.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_config.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_display.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_context.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_surface.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_sync.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_image.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_api.cpp
     ${EGL_PLATFORM_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_internal.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/egl.h
