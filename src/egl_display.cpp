@@ -221,8 +221,7 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
                     if (hdr & EGL_HDR_CS_BT2020_HLG_BIT)        appendExt("EGL_EXT_gl_colorspace_bt2020_hlg");
                     if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)        appendExt("EGL_EXT_gl_colorspace_display_p3");
                     if (hdr & EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT) appendExt("EGL_EXT_gl_colorspace_display_p3_linear");
-                    if (hdr & (EGL_HDR_CS_DISPLAY_P3_BIT | EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT))
-                                                                 appendExt("EGL_EXT_gl_colorspace_p3_passthrough");
+                    if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)        appendExt("EGL_EXT_gl_colorspace_p3_passthrough");
                     if (hdr)
                     {
                         appendExt("EGL_EXT_surface_SMPTE2086_metadata");
