@@ -59,8 +59,6 @@ The following colorspace extensions are probed at `eglInitialize` time and adver
 | `EGL_EXT_gl_colorspace_bt2020_linear` | BT.2020 linear | R16G16B16A16_SFLOAT |
 | `EGL_EXT_gl_colorspace_bt2020_hlg` | BT.2020 HLG | A2B10G10R10_UNORM |
 
-If a requested colorspace is not supported, `eglCreateWindowSurface` returns `EGL_BAD_MATCH`.
-
 
 ## Building
 
@@ -134,7 +132,13 @@ egl.c                     Public C API (thin shims, no logic)
   └── egl_image.cpp        Image objects (EGL 1.5)
   └── egl_api.cpp          Swap, bind, wait, getProcAddress
 
-  Platform backends (implement the 17 __ functions declared in egl_internal.h):
+  Internal headers:
+  └── egl_internal.h       Backend interface declarations (implemented by platform backends)
+  └── egl_common.h         Shared internal types and helpers
+  └── egl_windows_vk.h     Windows Vulkan HDR — internal declarations for egl_windows_vk.cpp
+  └── wglext.h             WGL extension prototypes (Windows)
+
+  Platform backends (implement the functions declared in egl_internal.h):
   └── egl_windows.cpp      Windows — WGL
   └── egl_windows_vk.cpp   Windows — Vulkan HDR presentation
   └── egl_<platform>.cpp   Future backends
