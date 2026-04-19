@@ -178,6 +178,14 @@ EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
 
 EGLBoolean _eglSwapInterval(EGLDisplay dpy, EGLint interval)
 {
+    // EGL 1.5 §3.9.3: requires a current context on the calling thread.
+    if (g_localStorage.currentCtx == EGL_NO_CONTEXT_IMPL)
+    {
+        g_localStorage.error = EGL_BAD_CONTEXT;
+
+        return EGL_FALSE;
+    }
+
     auto _rl = g_globalStorage.placeRootDpy_readlock();
     EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
@@ -194,16 +202,17 @@ EGLBoolean _eglSwapInterval(EGLDisplay dpy, EGLint interval)
                 return EGL_FALSE;
             }
 
-            if (walkerDpy->currentDraw == EGL_NO_SURFACE || walkerDpy->currentRead == EGL_NO_SURFACE)
+            // Verify calling thread's context is current on this display.
+            if (walkerDpy->currentCtx != g_localStorage.currentCtx)
             {
                 g_localStorage.error = EGL_BAD_SURFACE;
 
                 return EGL_FALSE;
             }
 
-            if (walkerDpy->currentCtx == EGL_NO_CONTEXT)
+            if (walkerDpy->currentDraw == EGL_NO_SURFACE_IMPL || walkerDpy->currentRead == EGL_NO_SURFACE_IMPL)
             {
-                g_localStorage.error = EGL_BAD_CONTEXT;
+                g_localStorage.error = EGL_BAD_SURFACE;
 
                 return EGL_FALSE;
             }
