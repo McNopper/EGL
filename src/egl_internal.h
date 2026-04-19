@@ -1,4 +1,4 @@
-/**
+﻿/**
  * EGL windows desktop implementation.
  *
  * The MIT License (MIT)
@@ -57,19 +57,19 @@ typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	HDC hdc;
-	NativeHDRSurfaceContainer* hdr;  // NULL for sRGB/linear; non-NULL for HDR Vulkan surfaces
+    HDC hdc;
+    NativeHDRSurfaceContainer* hdr;  // NULL for sRGB/linear; non-NULL for HDR Vulkan surfaces
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	HGLRC ctx;
+    HGLRC ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	HWND hwnd;
-	HDC  hdc;
-	HGLRC ctx;
-	void* placeholder;
+    HWND hwnd;
+    HDC  hdc;
+    HGLRC ctx;
+    void* placeholder;
 } NativeLocalStorageContainer;
 
 typedef HPBUFFERARB NativePbufferType;
@@ -81,17 +81,17 @@ typedef HPBUFFERARB NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	screen_window_t window;   // screen_window_t
-	screen_context_t ctx;     // screen_context_t (needed for surface ops)
+    screen_window_t window;   // screen_window_t
+    screen_context_t ctx;     // screen_context_t (needed for surface ops)
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	screen_context_t ctx;     // screen_context_t
+    screen_context_t ctx;     // screen_context_t
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	screen_display_t display; // screen_display_t
-	screen_context_t ctx;
+    screen_display_t display; // screen_display_t
+    screen_context_t ctx;
 } NativeLocalStorageContainer;
 
 typedef screen_pixmap_t NativePbufferType;
@@ -103,16 +103,16 @@ typedef screen_pixmap_t NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	int             target;   // canvas target (0 = default canvas)
-	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx;
+    int             target;   // canvas target (0 = default canvas)
+    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx;
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx;
+    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	int display;              // unused; WebGL has no explicit display
+    int display;              // unused; WebGL has no explicit display
 } NativeLocalStorageContainer;
 
 typedef int NativePbufferType;
@@ -123,15 +123,15 @@ typedef int NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	void* window;             // RWindow handle
+    void* window;             // RWindow handle
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;
+    void* ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	void* display;            // RWsSession handle
+    void* display;            // RWsSession handle
 } NativeLocalStorageContainer;
 
 typedef void* NativePbufferType;
@@ -144,15 +144,15 @@ struct wl_egl_window;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	struct wl_egl_window* window;
+    struct wl_egl_window* window;
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;                // EGLContext from platform libEGL or Mesa
+    void* ctx;                // EGLContext from platform libEGL or Mesa
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	struct wl_display* display;
+    struct wl_display* display;
 } NativeLocalStorageContainer;
 
 typedef void* NativePbufferType;
@@ -166,17 +166,17 @@ struct gbm_bo;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	struct gbm_surface* surface;
-	unsigned int        fb;   // DRM framebuffer id
+    struct gbm_surface* surface;
+    unsigned int        fb;   // DRM framebuffer id
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;
+    void* ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	struct gbm_device* device;
-	int                drmFd; // DRM device file descriptor
+    struct gbm_device* device;
+    int                drmFd; // DRM device file descriptor
 } NativeLocalStorageContainer;
 
 typedef struct gbm_bo* NativePbufferType;
@@ -189,15 +189,15 @@ struct egl_native_pixmap_t;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	struct ANativeWindow* window;
+    struct ANativeWindow* window;
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;                // EGLContext (Android system EGL)
+    void* ctx;                // EGLContext (Android system EGL)
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	void* display;            // EGLDisplay (Android system EGL)
+    void* display;            // EGLDisplay (Android system EGL)
 } NativeLocalStorageContainer;
 
 typedef struct egl_native_pixmap_t* NativePbufferType;
@@ -209,15 +209,15 @@ typedef struct egl_native_pixmap_t* NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	intptr_t window;
+    intptr_t window;
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;
+    void* ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	intptr_t display;
+    intptr_t display;
 } NativeLocalStorageContainer;
 
 typedef intptr_t NativePbufferType;
@@ -230,18 +230,18 @@ typedef intptr_t NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 11
 
 typedef struct _NativeSurfaceContainer {
-	GLXDrawable drawable;
-	GLXFBConfig config;
+    GLXDrawable drawable;
+    GLXFBConfig config;
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	GLXContext ctx;
+    GLXContext ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	Display*   display;
-	Window     window;
-	GLXContext ctx;
+    Display*   display;
+    Window     window;
+    GLXContext ctx;
 } NativeLocalStorageContainer;
 
 typedef GLXPbuffer NativePbufferType;
@@ -254,18 +254,18 @@ typedef GLXPbuffer NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 11
 
 typedef struct _NativeSurfaceContainer {
-	GLXDrawable drawable;
-	GLXFBConfig config;
+    GLXDrawable drawable;
+    GLXFBConfig config;
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	GLXContext ctx;
+    GLXContext ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	Display*   display;
-	Window     window;
-	GLXContext ctx;
+    Display*   display;
+    Window     window;
+    GLXContext ctx;
 } NativeLocalStorageContainer;
 
 typedef GLXPbuffer NativePbufferType;
@@ -276,15 +276,15 @@ typedef GLXPbuffer NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	void* view;               // NSView* (macOS) or CAEAGLLayer* (iOS), opaque to avoid ObjC headers
+    void* view;               // NSView* (macOS) or CAEAGLLayer* (iOS), opaque to avoid ObjC headers
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;                // NSOpenGLContext* (macOS) or EAGLContext* (iOS)
+    void* ctx;                // NSOpenGLContext* (macOS) or EAGLContext* (iOS)
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	void* display;            // CGDirectDisplayID cast to void*
+    void* display;            // CGDirectDisplayID cast to void*
 } NativeLocalStorageContainer;
 
 typedef void* NativePbufferType;
@@ -296,15 +296,15 @@ typedef void* NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	khronos_uintptr_t window;
+    khronos_uintptr_t window;
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;
+    void* ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	void* display;
+    void* display;
 } NativeLocalStorageContainer;
 
 typedef khronos_uintptr_t NativePbufferType;
@@ -316,15 +316,15 @@ typedef khronos_uintptr_t NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	khronos_uintptr_t window;
+    khronos_uintptr_t window;
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;
+    void* ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	void* display;
+    void* display;
 } NativeLocalStorageContainer;
 
 typedef khronos_uintptr_t NativePbufferType;
@@ -335,15 +335,15 @@ typedef khronos_uintptr_t NativePbufferType;
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
 typedef struct _NativeSurfaceContainer {
-	void* window;             // OHNativeWindow*
+    void* window;             // OHNativeWindow*
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-	void* ctx;
+    void* ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-	void* display;
+    void* display;
 } NativeLocalStorageContainer;
 
 typedef void* NativePbufferType;
@@ -359,256 +359,256 @@ typedef void* NativePbufferType;
 typedef struct _EGLConfigImpl
 {
 
-	// Returns the number of bits in the alpha mask buffer.
-	EGLint alphaMaskSize;
+    // Returns the number of bits in the alpha mask buffer.
+    EGLint alphaMaskSize;
 
-	// Returns the number of bits of alpha stored in the color buffer.
-	EGLint alphaSize;
+    // Returns the number of bits of alpha stored in the color buffer.
+    EGLint alphaSize;
 
-	// Returns EGL_TRUE if color buffers can be bound to an RGB texture, EGL_FALSE otherwise.
-	EGLint bindToTextureRGB;
+    // Returns EGL_TRUE if color buffers can be bound to an RGB texture, EGL_FALSE otherwise.
+    EGLint bindToTextureRGB;
 
-	// Returns EGL_TRUE if color buffers can be bound to an RGBA texture, EGL_FALSE otherwise.
-	EGLint bindToTextureRGBA;
+    // Returns EGL_TRUE if color buffers can be bound to an RGBA texture, EGL_FALSE otherwise.
+    EGLint bindToTextureRGBA;
 
-	// Returns the number of bits of blue stored in the color buffer.
-	EGLint blueSize;
+    // Returns the number of bits of blue stored in the color buffer.
+    EGLint blueSize;
 
-	// Returns the depth of the color buffer. It is the sum of EGL_RED_SIZE, EGL_GREEN_SIZE, EGL_BLUE_SIZE, and EGL_ALPHA_SIZE.
-	EGLint bufferSize;
+    // Returns the depth of the color buffer. It is the sum of EGL_RED_SIZE, EGL_GREEN_SIZE, EGL_BLUE_SIZE, and EGL_ALPHA_SIZE.
+    EGLint bufferSize;
 
-	// Returns the color buffer type. Possible types are EGL_RGB_BUFFER and EGL_LUMINANCE_BUFFER.
-	EGLint colorBufferType;
+    // Returns the color buffer type. Possible types are EGL_RGB_BUFFER and EGL_LUMINANCE_BUFFER.
+    EGLint colorBufferType;
 
-	// Returns the caveats for the frame buffer configuration. Possible caveat values are EGL_NONE, EGL_SLOW_CONFIG, and EGL_NON_CONFORMANT.
-	EGLint configCaveat;
+    // Returns the caveats for the frame buffer configuration. Possible caveat values are EGL_NONE, EGL_SLOW_CONFIG, and EGL_NON_CONFORMANT.
+    EGLint configCaveat;
 
-	// Returns the ID of the frame buffer configuration.
-	EGLint configId;
+    // Returns the ID of the frame buffer configuration.
+    EGLint configId;
 
-	// Returns a bitmask indicating which client API contexts created with respect to this config are conformant.
-	EGLint conformant;
+    // Returns a bitmask indicating which client API contexts created with respect to this config are conformant.
+    EGLint conformant;
 
-	// Returns the number of bits in the depth buffer.
-	EGLint depthSize;
+    // Returns the number of bits in the depth buffer.
+    EGLint depthSize;
 
-	// Returns the number of bits of green stored in the color buffer.
-	EGLint greenSize;
+    // Returns the number of bits of green stored in the color buffer.
+    EGLint greenSize;
 
-	// Returns the frame buffer level. Level zero is the default frame buffer. Positive levels correspond to frame buffers that overlay the default buffer and negative levels correspond to frame buffers that underlay the default buffer.
-	EGLint level;
+    // Returns the frame buffer level. Level zero is the default frame buffer. Positive levels correspond to frame buffers that overlay the default buffer and negative levels correspond to frame buffers that underlay the default buffer.
+    EGLint level;
 
-	// Returns the number of bits of luminance stored in the luminance buffer.
-	EGLint luminanceSize;
+    // Returns the number of bits of luminance stored in the luminance buffer.
+    EGLint luminanceSize;
 
-	// Input only: Must be followed by the handle of a valid native pixmap, cast to EGLint, or EGL_NONE.
-	EGLint matchNativePixmap;
+    // Input only: Must be followed by the handle of a valid native pixmap, cast to EGLint, or EGL_NONE.
+    EGLint matchNativePixmap;
 
-	// Returns the maximum height of a pixel buffer surface in pixels.
-	EGLint maxPBufferHeight;
+    // Returns the maximum height of a pixel buffer surface in pixels.
+    EGLint maxPBufferHeight;
 
-	// Returns the maximum size of a pixel buffer surface in pixels.
-	EGLint maxPBufferPixels;
+    // Returns the maximum size of a pixel buffer surface in pixels.
+    EGLint maxPBufferPixels;
 
-	// Returns the maximum width of a pixel buffer surface in pixels.
-	EGLint maxPBufferWidth;
+    // Returns the maximum width of a pixel buffer surface in pixels.
+    EGLint maxPBufferWidth;
 
-	// Returns the maximum value that can be passed to eglSwapInterval.
-	EGLint maxSwapInterval;
+    // Returns the maximum value that can be passed to eglSwapInterval.
+    EGLint maxSwapInterval;
 
-	// Returns the minimum value that can be passed to eglSwapInterval.
-	EGLint minSwapInterval;
+    // Returns the minimum value that can be passed to eglSwapInterval.
+    EGLint minSwapInterval;
 
-	// Returns EGL_TRUE if native rendering APIs can render into the surface, EGL_FALSE otherwise.
-	EGLint nativeRenderable;
+    // Returns EGL_TRUE if native rendering APIs can render into the surface, EGL_FALSE otherwise.
+    EGLint nativeRenderable;
 
-	// Returns the ID of the associated native visual.
-	EGLint nativeVisualId;
+    // Returns the ID of the associated native visual.
+    EGLint nativeVisualId;
 
-	// Returns the type of the associated native visual.
-	EGLint nativeVisualType;
+    // Returns the type of the associated native visual.
+    EGLint nativeVisualType;
 
-	// Returns the number of bits of red stored in the color buffer.
-	EGLint redSize;
+    // Returns the number of bits of red stored in the color buffer.
+    EGLint redSize;
 
-	// Returns a bitmask indicating the types of supported client API contexts.
-	EGLint renderableType;
+    // Returns a bitmask indicating the types of supported client API contexts.
+    EGLint renderableType;
 
-	// Returns the number of multisample buffers.
-	EGLint sampleBuffers;
+    // Returns the number of multisample buffers.
+    EGLint sampleBuffers;
 
-	// Returns the number of samples per pixel.
-	EGLint samples;
+    // Returns the number of samples per pixel.
+    EGLint samples;
 
-	// Returns the number of bits in the stencil buffer.
-	EGLint stencilSize;
+    // Returns the number of bits in the stencil buffer.
+    EGLint stencilSize;
 
-	// Returns a bitmask indicating the types of supported EGL surfaces.
-	EGLint surfaceType;
+    // Returns a bitmask indicating the types of supported EGL surfaces.
+    EGLint surfaceType;
 
-	// Returns the transparent blue value.
-	EGLint transparentBlueValue;
+    // Returns the transparent blue value.
+    EGLint transparentBlueValue;
 
-	// Returns the transparent green value.
-	EGLint transparentGreenValue;
+    // Returns the transparent green value.
+    EGLint transparentGreenValue;
 
-	// Returns the transparent red value.
-	EGLint transparentRedValue;
+    // Returns the transparent red value.
+    EGLint transparentRedValue;
 
-	// Returns the type of supported transparency. Possible transparency values are: EGL_NONE, and EGL_TRANSPARENT_RGB.
-	EGLint transparentType;
+    // Returns the type of supported transparency. Possible transparency values are: EGL_NONE, and EGL_TRANSPARENT_RGB.
+    EGLint transparentType;
 
-	// Own data.
+    // Own data.
 
-	EGLint drawToWindow;
-	EGLint drawToPixmap;
-	EGLint drawToPBuffer;
-	EGLint doubleBuffer;
+    EGLint drawToWindow;
+    EGLint drawToPixmap;
+    EGLint drawToPBuffer;
+    EGLint doubleBuffer;
 
-	struct _EGLConfigImpl* next;
+    struct _EGLConfigImpl* next;
 
 } EGLConfigImpl;
 
 typedef struct _EGLSurfaceImpl
 {
 
-	EGLBoolean initialized;
-	EGLBoolean destroy;
+    EGLBoolean initialized;
+    EGLBoolean destroy;
 
-	EGLBoolean drawToWindow;
-	EGLBoolean drawToPixmap;
-	EGLBoolean drawToPBuffer;
-	EGLBoolean doubleBuffer;
-	EGLint configId;
+    EGLBoolean drawToWindow;
+    EGLBoolean drawToPixmap;
+    EGLBoolean drawToPBuffer;
+    EGLBoolean doubleBuffer;
+    EGLint configId;
 
-	EGLint width;
-	EGLint height;
+    EGLint width;
+    EGLint height;
 
-	EGLint swapBehavior;
-	EGLint multisampleResolve;
-	EGLint mipmapLevel;
-	EGLBoolean mipmapTexture;
-	EGLBoolean largestPbuffer;
-	EGLint textureFormat;
-	EGLint textureTarget;
+    EGLint swapBehavior;
+    EGLint multisampleResolve;
+    EGLint mipmapLevel;
+    EGLBoolean mipmapTexture;
+    EGLBoolean largestPbuffer;
+    EGLint textureFormat;
+    EGLint textureTarget;
 
-	// EGL_KHR_gl_colorspace / EGL_EXT_gl_colorspace_*: EGL_GL_COLORSPACE_SRGB, EGL_GL_COLORSPACE_LINEAR, or an HDR colorspace (EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT, etc.)
-	EGLint glColorspace;
+    // EGL_KHR_gl_colorspace / EGL_EXT_gl_colorspace_*: EGL_GL_COLORSPACE_SRGB, EGL_GL_COLORSPACE_LINEAR, or an HDR colorspace (EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT, etc.)
+    EGLint glColorspace;
 
-	// EGL_EXT_surface_SMPTE2086_metadata (values per EGL spec: primaries * 50000, luminance * 10000)
-	EGLint smpte2086DisplayPrimaryRx;
-	EGLint smpte2086DisplayPrimaryRy;
-	EGLint smpte2086DisplayPrimaryGx;
-	EGLint smpte2086DisplayPrimaryGy;
-	EGLint smpte2086DisplayPrimaryBx;
-	EGLint smpte2086DisplayPrimaryBy;
-	EGLint smpte2086WhitePointX;
-	EGLint smpte2086WhitePointY;
-	EGLint smpte2086MaxLuminance;
-	EGLint smpte2086MinLuminance;
+    // EGL_EXT_surface_SMPTE2086_metadata (values per EGL spec: primaries * 50000, luminance * 10000)
+    EGLint smpte2086DisplayPrimaryRx;
+    EGLint smpte2086DisplayPrimaryRy;
+    EGLint smpte2086DisplayPrimaryGx;
+    EGLint smpte2086DisplayPrimaryGy;
+    EGLint smpte2086DisplayPrimaryBx;
+    EGLint smpte2086DisplayPrimaryBy;
+    EGLint smpte2086WhitePointX;
+    EGLint smpte2086WhitePointY;
+    EGLint smpte2086MaxLuminance;
+    EGLint smpte2086MinLuminance;
 
-	// EGL_EXT_surface_CTA861_3_metadata
-	EGLint cta861MaxContentLightLevel;
-	EGLint cta861MaxFrameAverageLightLevel;
+    // EGL_EXT_surface_CTA861_3_metadata
+    EGLint cta861MaxContentLightLevel;
+    EGLint cta861MaxFrameAverageLightLevel;
 
-	union {
-		EGLNativeWindowType win;
-		NativePbufferType pbuf;
-		EGLNativePixmapType pixmap;
-	};
+    union {
+        EGLNativeWindowType win;
+        NativePbufferType pbuf;
+        EGLNativePixmapType pixmap;
+    };
 
-	NativeSurfaceContainer nativeSurfaceContainer;
+    NativeSurfaceContainer nativeSurfaceContainer;
 
-	struct _EGLSurfaceImpl* next;
+    struct _EGLSurfaceImpl* next;
 
 } EGLSurfaceImpl;
 
 typedef struct _EGLContextListImpl
 {
 
-	EGLSurfaceImpl* surface;
+    EGLSurfaceImpl* surface;
 
-	NativeContextContainer nativeContextContainer;
+    NativeContextContainer nativeContextContainer;
 
-	struct _EGLContextListImpl* next;
+    struct _EGLContextListImpl* next;
 
 } EGLContextListImpl;
 
 typedef struct _EGLContextImpl
 {
 
-	EGLBoolean initialized;
-	EGLBoolean destroy;
+    EGLBoolean initialized;
+    EGLBoolean destroy;
 
-	EGLint configId;
-	EGLenum clientAPI;
+    EGLint configId;
+    EGLenum clientAPI;
 
-	struct _EGLContextImpl* sharedCtx;
+    struct _EGLContextImpl* sharedCtx;
 
-	EGLContextListImpl* rootCtxList;
+    EGLContextListImpl* rootCtxList;
 
-	EGLint attribList[CONTEXT_ATTRIB_LIST_SIZE];
+    EGLint attribList[CONTEXT_ATTRIB_LIST_SIZE];
 
-	struct _EGLContextImpl* next;
+    struct _EGLContextImpl* next;
 
 } EGLContextImpl;
 
 typedef struct _EGLImageImpl
 {
 
-	EGLenum target;
+    EGLenum target;
 
-	EGLClientBuffer buffer;
+    EGLClientBuffer buffer;
 
-	struct _EGLImageImpl* next;
+    struct _EGLImageImpl* next;
 
 } EGLImageImpl;
 
 typedef struct _EGLSyncImpl
 {
 
-	EGLenum type;
+    EGLenum type;
 
-	void* glSync;
+    void* glSync;
 
-	struct _EGLSyncImpl* next;
+    struct _EGLSyncImpl* next;
 
 } EGLSyncImpl;
 
 typedef struct _EGLDisplayImpl
 {
-	std::mutex mutex;
+    std::mutex mutex;
 
-	EGLBoolean initialized;
-	EGLBoolean destroy;
+    EGLBoolean initialized;
+    EGLBoolean destroy;
 
-	EGLNativeDisplayType display_id;
+    EGLNativeDisplayType display_id;
 
-	EGLSurfaceImpl* rootSurface;
-	EGLContextImpl* rootCtx;
-	EGLConfigImpl* rootConfig;
-	EGLSyncImpl* rootSync;
-	EGLImageImpl* rootImage;
+    EGLSurfaceImpl* rootSurface;
+    EGLContextImpl* rootCtx;
+    EGLConfigImpl* rootConfig;
+    EGLSyncImpl* rootSync;
+    EGLImageImpl* rootImage;
 
-	EGLBoolean srgbFramebufferSupported;
+    EGLBoolean srgbFramebufferSupported;
 
-	uint32_t supportedHDRColorspaces;  // bitmask of EGL_HDR_CS_*_BIT flags
+    uint32_t supportedHDRColorspaces;  // bitmask of EGL_HDR_CS_*_BIT flags
 
-	EGLSurfaceImpl* currentDraw;
-	EGLSurfaceImpl* currentRead;
-	EGLContextImpl* currentCtx;
+    EGLSurfaceImpl* currentDraw;
+    EGLSurfaceImpl* currentRead;
+    EGLContextImpl* currentCtx;
 
-	struct _EGLDisplayImpl* next;
+    struct _EGLDisplayImpl* next;
 
 } EGLDisplayImpl;
 
 typedef struct _LocalStorage
 {
-	EGLint error;
+    EGLint error;
 
-	EGLenum api;
+    EGLenum api;
 
-	EGLContextImpl* currentCtx;
+    EGLContextImpl* currentCtx;
 } LocalStorage;
 
 //
@@ -671,102 +671,102 @@ EGLBoolean __getPlatformDependentHandles(void* out, const EGLDisplayImpl* walker
 #if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
-	{ return (EGLNativeDisplayType)c->hdc; }
+    { return reinterpret_cast<EGLNativeDisplayType>(c->hdc); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
-	if (platform == EGL_PLATFORM_DEVICE_EXT && !native_display)
-		{ *out = EGL_DEFAULT_DISPLAY; return EGL_TRUE; }
-	return EGL_FALSE;
+    if (platform == EGL_PLATFORM_DEVICE_EXT && !native_display)
+        { *out = EGL_DEFAULT_DISPLAY; return EGL_TRUE; }
+    return EGL_FALSE;
 }
 
 #elif defined(__QNX__)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
-	{ return (EGLNativeDisplayType)c->display; }
+    { return reinterpret_cast<EGLNativeDisplayType>(c->display); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
-	{ return EGL_FALSE; }
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
+    { return EGL_FALSE; }
 
 #elif defined(__EMSCRIPTEN__)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-	{ return (EGLNativeDisplayType)0; }
+    { return reinterpret_cast<EGLNativeDisplayType>(0); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
-	{ return EGL_FALSE; }
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
+    { return EGL_FALSE; }
 
 #elif defined(__WINSCW__) || defined(__SYMBIAN32__)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-	{ return (EGLNativeDisplayType)0; }
+    { return reinterpret_cast<EGLNativeDisplayType>(0); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
-	{ return EGL_FALSE; }
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
+    { return EGL_FALSE; }
 
 #elif defined(WL_EGL_PLATFORM)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-	{ return (EGLNativeDisplayType)0; }
+    { return reinterpret_cast<EGLNativeDisplayType>(0); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
-	if (platform == EGL_PLATFORM_WAYLAND_EXT || platform == EGL_PLATFORM_WAYLAND_KHR)
-		{ *out = (EGLNativeDisplayType)native_display; return EGL_TRUE; }
-	return EGL_FALSE;
+    if (platform == EGL_PLATFORM_WAYLAND_EXT || platform == EGL_PLATFORM_WAYLAND_KHR)
+        { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
+    return EGL_FALSE;
 }
 
 #elif defined(__GBM__)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-	{ return (EGLNativeDisplayType)0; }
+    { return reinterpret_cast<EGLNativeDisplayType>(0); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
-	if (platform == EGL_PLATFORM_GBM_MESA || platform == EGL_PLATFORM_GBM_KHR)
-		{ *out = (EGLNativeDisplayType)native_display; return EGL_TRUE; }
-	return EGL_FALSE;
+    if (platform == EGL_PLATFORM_GBM_MESA || platform == EGL_PLATFORM_GBM_KHR)
+        { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
+    return EGL_FALSE;
 }
 
 #elif defined(__ANDROID__) || defined(ANDROID)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-	{ return (EGLNativeDisplayType)0; }
+    { return reinterpret_cast<EGLNativeDisplayType>(0); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
-	if (platform == EGL_PLATFORM_ANDROID_KHR)
-		{ *out = (EGLNativeDisplayType)native_display; return EGL_TRUE; }
-	return EGL_FALSE;
+    if (platform == EGL_PLATFORM_ANDROID_KHR)
+        { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
+    return EGL_FALSE;
 }
 
 #elif defined(USE_OZONE)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-	{ return (EGLNativeDisplayType)0; }
+    { return reinterpret_cast<EGLNativeDisplayType>(0); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
-	{ return EGL_FALSE; }
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
+    { return EGL_FALSE; }
 
 #elif defined(USE_X11) || defined(__unix__)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
-	{ return (EGLNativeDisplayType)c->display; }
+    { return reinterpret_cast<EGLNativeDisplayType>(c->display); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, void* native_display, EGLNativeDisplayType* out)
+static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
-	if (platform == EGL_PLATFORM_X11_EXT || platform == EGL_PLATFORM_X11_KHR)
-		{ *out = (EGLNativeDisplayType)native_display; return EGL_TRUE; }
-	return EGL_FALSE;
+    if (platform == EGL_PLATFORM_X11_EXT || platform == EGL_PLATFORM_X11_KHR)
+        { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
+    return EGL_FALSE;
 }
 
 #else
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-	{ return (EGLNativeDisplayType)0; }
+    { return reinterpret_cast<EGLNativeDisplayType>(0); }
 
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, void*, EGLNativeDisplayType*)
-	{ return EGL_FALSE; }
+static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
+    { return EGL_FALSE; }
 
 #endif
 #endif // __cplusplus

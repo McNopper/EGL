@@ -1,6 +1,7 @@
-#include "egl_windows_vk.h"
+﻿#include "egl_windows_vk.h"
 #include "egl_common.h"
 #include <vector>
+#include <algorithm>
 #include <EGL/eglext.h>
 
 extern __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname);
@@ -167,13 +168,11 @@ EGLBoolean __vkInit()
     vkGetPhysicalDeviceQueueFamilyProperties(g_vkPhysDevice, &qfCount, qfProps.data());
 
     g_vkQueueFamily = UINT32_MAX;
-    for (uint32_t i = 0; i < qfCount; i++)
     {
-        if (qfProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-        {
-            g_vkQueueFamily = i;
-            break;
-        }
+        auto it = std::find_if(qfProps.begin(), qfProps.end(),
+            [](const VkQueueFamilyProperties& p){ return (p.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0; });
+        if (it != qfProps.end())
+            g_vkQueueFamily = static_cast<uint32_t>(it - qfProps.begin());
     }
     if (g_vkQueueFamily == UINT32_MAX)
     {
@@ -198,16 +197,11 @@ EGLBoolean __vkInit()
     vkEnumerateDeviceExtensionProperties(g_vkPhysDevice, nullptr, &extCount, availExts.data());
 
     std::vector<const char*> enabledDevExts;
-    for (auto req : wantedDevExts)
+    for (const auto* req : wantedDevExts)
     {
-        for (auto& avail : availExts)
-        {
-            if (strcmp(req, avail.extensionName) == 0)
-            {
-                enabledDevExts.push_back(req);
-                break;
-            }
-        }
+        if (std::any_of(availExts.begin(), availExts.end(),
+                [req](const VkExtensionProperties& e){ return strcmp(req, e.extensionName) == 0; }))
+            enabledDevExts.push_back(req);
     }
 
     float qPriority = 1.0f;
@@ -308,9 +302,8 @@ uint32_t __vkQueryHDRColorspaces(HWND hwnd)
     for (auto& entry : k_entries)
     {
         // First check that the driver lists this exact format+colorspace pair.
-        bool listed = false;
-        for (auto& f : formats)
-            if (f.format == entry.fmt && f.colorSpace == entry.cs) { listed = true; break; }
+        bool listed = std::any_of(formats.begin(), formats.end(),
+            [&entry](const VkSurfaceFormatKHR& f){ return f.format == entry.fmt && f.colorSpace == entry.cs; });
         if (!listed)
             continue;
 
@@ -513,7 +506,7 @@ static EGLBoolean __vkRecreateSwapchain(NativeHDRSurfaceContainer* hdr, bool dra
 
     uint32_t newImgCount = 0;
     vkGetSwapchainImagesKHR(g_vkDevice, hdr->vkSwapchain, &newImgCount, nullptr);
-    hdr->swapchainImages = (VkImage*)malloc(newImgCount * sizeof(VkImage));
+    hdr->swapchainImages = reinterpret_cast<VkImage*>(malloc(newImgCount * sizeof(VkImage)));
     if (!hdr->swapchainImages) return EGL_FALSE;
     vkGetSwapchainImagesKHR(g_vkDevice, hdr->vkSwapchain, &newImgCount, hdr->swapchainImages);
 
@@ -529,8 +522,8 @@ static EGLBoolean __vkRecreateSwapchain(NativeHDRSurfaceContainer* hdr, bool dra
         }
         free(hdr->fences);
 
-        hdr->cmdBuffers = (VkCommandBuffer*)malloc(newImgCount * sizeof(VkCommandBuffer));
-        hdr->fences     = (VkFence*)malloc(newImgCount * sizeof(VkFence));
+        hdr->cmdBuffers = reinterpret_cast<VkCommandBuffer*>(malloc(newImgCount * sizeof(VkCommandBuffer)));
+        hdr->fences     = reinterpret_cast<VkFence*>(malloc(newImgCount * sizeof(VkFence)));
         if (!hdr->cmdBuffers || !hdr->fences) return EGL_FALSE;
 
         VkCommandBufferAllocateInfo cbAI = {};
@@ -695,9 +688,8 @@ EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr, HWND win, EGLint
         vkGetPhysicalDeviceSurfaceFormatsKHR(g_vkPhysDevice, hdr->vkSurface, &fmtCount, nullptr);
         std::vector<VkSurfaceFormatKHR> formats(fmtCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(g_vkPhysDevice, hdr->vkSurface, &fmtCount, formats.data());
-        bool found = false;
-        for (auto& f : formats)
-            if (f.format == hdr->vkFormat && f.colorSpace == hdr->vkColorSpace) { found = true; break; }
+        bool found = std::any_of(formats.begin(), formats.end(),
+            [hdr](const VkSurfaceFormatKHR& f){ return f.format == hdr->vkFormat && f.colorSpace == hdr->vkColorSpace; });
         if (!found)
             goto cleanup;
     }
@@ -733,7 +725,7 @@ EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr, HWND win, EGLint
 
     // 3. Retrieve swapchain images
     vkGetSwapchainImagesKHR(g_vkDevice, hdr->vkSwapchain, &hdr->imageCount, nullptr);
-    hdr->swapchainImages = (VkImage*)malloc(hdr->imageCount * sizeof(VkImage));
+    hdr->swapchainImages = reinterpret_cast<VkImage*>(malloc(hdr->imageCount * sizeof(VkImage)));
     if (!hdr->swapchainImages) goto cleanup;
     vkGetSwapchainImagesKHR(g_vkDevice, hdr->vkSwapchain, &hdr->imageCount, hdr->swapchainImages);
 
@@ -746,8 +738,8 @@ EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr, HWND win, EGLint
         if (vkCreateCommandPool(g_vkDevice, &cpCI, nullptr, &hdr->cmdPool) != VK_SUCCESS)
             goto cleanup;
 
-        hdr->cmdBuffers = (VkCommandBuffer*)malloc(hdr->imageCount * sizeof(VkCommandBuffer));
-        hdr->fences     = (VkFence*)malloc(hdr->imageCount * sizeof(VkFence));
+        hdr->cmdBuffers = reinterpret_cast<VkCommandBuffer*>(malloc(hdr->imageCount * sizeof(VkCommandBuffer)));
+        hdr->fences     = reinterpret_cast<VkFence*>(malloc(hdr->imageCount * sizeof(VkFence)));
         if (!hdr->cmdBuffers || !hdr->fences) goto cleanup;
 
         VkCommandBufferAllocateInfo cbAI = {};
@@ -926,7 +918,7 @@ static bool __vkInitGLSide(NativeHDRSurfaceContainer* hdr)
                    ? 0x881A  // GL_RGBA16F
                    : 0x8059; // GL_RGB10_A2
     g_pfnTexStorageMem2D(GL_TEXTURE_2D, 1, glFmt,
-                         (GLsizei)hdr->width, (GLsizei)hdr->height,
+                         static_cast<GLsizei>(hdr->width), static_cast<GLsizei>(hdr->height),
                          hdr->glMemoryObject, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -960,8 +952,8 @@ EGLBoolean __vkPresent(NativeHDRSurfaceContainer* hdr)
     // Step 1: blit from default GL framebuffer (FBO 0) to interop texture
     g_pfnBindFBO(GL_READ_FRAMEBUFFER, 0);
     g_pfnBindFBO(GL_DRAW_FRAMEBUFFER, hdr->blitFbo);
-    g_pfnBlitFBO(0, 0, (GLint)hdr->width, (GLint)hdr->height,
-                  0, 0, (GLint)hdr->width, (GLint)hdr->height,
+    g_pfnBlitFBO(0, 0, static_cast<GLint>(hdr->width), static_cast<GLint>(hdr->height),
+                  0, 0, static_cast<GLint>(hdr->width), static_cast<GLint>(hdr->height),
                   GL_COLOR_BUFFER_BIT, GL_NEAREST);
     g_pfnBindFBO(GL_READ_FRAMEBUFFER, 0);
     g_pfnBindFBO(GL_DRAW_FRAMEBUFFER, 0);

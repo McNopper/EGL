@@ -1,4 +1,4 @@
-/**
+﻿/**
  * EGL windows desktop implementation.
  *
  * The MIT License (MIT)
@@ -68,1431 +68,1427 @@ static LRESULT CALLBACK __DummyWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
 
 EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* GL_max_supported, EGLint* ES_max_supported)
 {
-	if (!nativeLocalStorageContainer)
-	{
-		return EGL_FALSE;
-	}
+    if (!nativeLocalStorageContainer)
+    {
+        return EGL_FALSE;
+    }
 
-	if (nativeLocalStorageContainer->hdc && nativeLocalStorageContainer->ctx)
-	{
-		return EGL_TRUE;
-	}
+    if (nativeLocalStorageContainer->hdc && nativeLocalStorageContainer->ctx)
+    {
+        return EGL_TRUE;
+    }
 
-	if (nativeLocalStorageContainer->hdc)
-	{
-		return EGL_FALSE;
-	}
+    if (nativeLocalStorageContainer->hdc)
+    {
+        return EGL_FALSE;
+    }
 
-	if (nativeLocalStorageContainer->ctx)
-	{
-		return EGL_FALSE;
-	}
+    if (nativeLocalStorageContainer->ctx)
+    {
+        return EGL_FALSE;
+    }
 
-	//
+    //
 
-	opengl32dll = LoadLibrary("opengl32.dll");
+    opengl32dll = LoadLibrary("opengl32.dll");
 
-	wglCreateContext_PTR = (__PFN_wglCreateContext)GetProcAddress(opengl32dll, "wglCreateContext");
-	wglDeleteContext_PTR = (__PFN_wglDeleteContext)GetProcAddress(opengl32dll, "wglDeleteContext");
-	wglMakeCurrent_PTR = (__PFN_wglMakeCurrent)GetProcAddress(opengl32dll, "wglMakeCurrent");
-	wglGetProcAddress_PTR = (__PFN_wglGetProcAddress)GetProcAddress(opengl32dll, "wglGetProcAddress");
+    wglCreateContext_PTR = reinterpret_cast<__PFN_wglCreateContext>(GetProcAddress(opengl32dll, "wglCreateContext"));
+    wglDeleteContext_PTR = reinterpret_cast<__PFN_wglDeleteContext>(GetProcAddress(opengl32dll, "wglDeleteContext"));
+    wglMakeCurrent_PTR = reinterpret_cast<__PFN_wglMakeCurrent>(GetProcAddress(opengl32dll, "wglMakeCurrent"));
+    wglGetProcAddress_PTR = reinterpret_cast<__PFN_wglGetProcAddress>(GetProcAddress(opengl32dll, "wglGetProcAddress"));
 
-	//
+    //
 
     nativeLocalStorageContainer->hwnd = CreateWindowA("STATIC", "dummy", 0, 0, 0, 1, 1, NULL, NULL, NULL, NULL);
 
     //
 
-	if (!nativeLocalStorageContainer->hwnd)
-	{
-		return EGL_FALSE;
-	}
+    if (!nativeLocalStorageContainer->hwnd)
+    {
+        return EGL_FALSE;
+    }
 
     nativeLocalStorageContainer->hdc = GetDC(nativeLocalStorageContainer->hwnd);
 
-	if (!nativeLocalStorageContainer->hdc)
-	{
-		DestroyWindow(nativeLocalStorageContainer->hwnd);
-		nativeLocalStorageContainer->hwnd = 0;
+    if (!nativeLocalStorageContainer->hdc)
+    {
+        DestroyWindow(nativeLocalStorageContainer->hwnd);
+        nativeLocalStorageContainer->hwnd = 0;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	PIXELFORMATDESCRIPTOR dummyPfd = {};
-	dummyPfd.nSize = sizeof(dummyPfd);
-	dummyPfd.nVersion = 1;
-	dummyPfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-	dummyPfd.iPixelType = PFD_TYPE_RGBA;
-	dummyPfd.cColorBits = 32;
-	dummyPfd.cAlphaBits = 8;
-	dummyPfd.cDepthBits = 24;
+    PIXELFORMATDESCRIPTOR dummyPfd = {};
+    dummyPfd.nSize = sizeof(dummyPfd);
+    dummyPfd.nVersion = 1;
+    dummyPfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    dummyPfd.iPixelType = PFD_TYPE_RGBA;
+    dummyPfd.cColorBits = 32;
+    dummyPfd.cAlphaBits = 8;
+    dummyPfd.cDepthBits = 24;
 
-	EGLint dummyPixelFormat = ChoosePixelFormat(nativeLocalStorageContainer->hdc, &dummyPfd);
+    EGLint dummyPixelFormat = ChoosePixelFormat(nativeLocalStorageContainer->hdc, &dummyPfd);
 
-	if (dummyPixelFormat == 0)
-	{
-		ReleaseDC(0, nativeLocalStorageContainer->hdc);
-		nativeLocalStorageContainer->hdc = 0;
+    if (dummyPixelFormat == 0)
+    {
+        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        nativeLocalStorageContainer->hdc = 0;
 
-		DestroyWindow(nativeLocalStorageContainer->hwnd);
-		nativeLocalStorageContainer->hwnd = 0;
+        DestroyWindow(nativeLocalStorageContainer->hwnd);
+        nativeLocalStorageContainer->hwnd = 0;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	if (!SetPixelFormat(nativeLocalStorageContainer->hdc, dummyPixelFormat, &dummyPfd))
-	{
-		ReleaseDC(0, nativeLocalStorageContainer->hdc);
-		nativeLocalStorageContainer->hdc = 0;
+    if (!SetPixelFormat(nativeLocalStorageContainer->hdc, dummyPixelFormat, &dummyPfd))
+    {
+        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        nativeLocalStorageContainer->hdc = 0;
 
-		DestroyWindow(nativeLocalStorageContainer->hwnd);
-		nativeLocalStorageContainer->hwnd = 0;
+        DestroyWindow(nativeLocalStorageContainer->hwnd);
+        nativeLocalStorageContainer->hwnd = 0;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	nativeLocalStorageContainer->ctx = wglCreateContext_PTR(nativeLocalStorageContainer->hdc);
+    nativeLocalStorageContainer->ctx = wglCreateContext_PTR(nativeLocalStorageContainer->hdc);
 
-	if (!nativeLocalStorageContainer->ctx)
-	{
-		ReleaseDC(0, nativeLocalStorageContainer->hdc);
-		nativeLocalStorageContainer->hdc = 0;
+    if (!nativeLocalStorageContainer->ctx)
+    {
+        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        nativeLocalStorageContainer->hdc = 0;
 
-		DestroyWindow(nativeLocalStorageContainer->hwnd);
-		nativeLocalStorageContainer->hwnd = 0;
+        DestroyWindow(nativeLocalStorageContainer->hwnd);
+        nativeLocalStorageContainer->hwnd = 0;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	if (!wglMakeCurrent_PTR(nativeLocalStorageContainer->hdc, nativeLocalStorageContainer->ctx))
-	{
-		wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
-		nativeLocalStorageContainer->ctx = 0;
+    if (!wglMakeCurrent_PTR(nativeLocalStorageContainer->hdc, nativeLocalStorageContainer->ctx))
+    {
+        wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
+        nativeLocalStorageContainer->ctx = 0;
 
-		ReleaseDC(0, nativeLocalStorageContainer->hdc);
-		nativeLocalStorageContainer->hdc = 0;
+        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        nativeLocalStorageContainer->hdc = 0;
 
-		DestroyWindow(nativeLocalStorageContainer->hwnd);
-		nativeLocalStorageContainer->hwnd = 0;
+        DestroyWindow(nativeLocalStorageContainer->hwnd);
+        nativeLocalStorageContainer->hwnd = 0;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	wglChoosePixelFormatARB =
+    wglChoosePixelFormatARB =
       (PFNWGLCHOOSEPIXELFORMATARBPROC)
       __getProcAddress("wglChoosePixelFormatARB");
-	wglGetPixelFormatAttribivARB =
+    wglGetPixelFormatAttribivARB =
       (PFNWGLGETPIXELFORMATATTRIBIVARBPROC)
       __getProcAddress("wglGetPixelFormatAttribivARB");
-	wglCreateContextAttribsARB =
+    wglCreateContextAttribsARB =
       (PFNWGLCREATECONTEXTATTRIBSARBPROC)
       __getProcAddress("wglCreateContextAttribsARB");
-	wglSwapIntervalEXT =
-      (PFNWGLSWAPINTERVALEXTPROC)__getProcAddress("wglSwapIntervalEXT");
-	wglGetExtensionsStringARB =
+    wglSwapIntervalEXT =
+      reinterpret_cast<PFNWGLSWAPINTERVALEXTPROC>(__getProcAddress("wglSwapIntervalEXT"));
+    wglGetExtensionsStringARB =
       (PFNWGLGETEXTENSIONSSTRINGARBPROC)
       __getProcAddress("wglGetExtensionsStringARB");
-	glFinish_PTR = (__PFN_glFinish)__getProcAddress("glFinish");
-	glFenceSync_PTR = (__PFN_glFenceSync)__getProcAddress("glFenceSync");
-	glDeleteSync_PTR = (__PFN_glDeleteSync)__getProcAddress("glDeleteSync");
-	glClientWaitSync_PTR = (__PFN_glClientWaitSync)__getProcAddress("glClientWaitSync");
-	glWaitSync_PTR = (__PFN_glWaitSync)__getProcAddress("glWaitSync");
-	glGetSynciv_PTR = (__PFN_glGetSynciv)__getProcAddress("glGetSynciv");
+    glFinish_PTR = reinterpret_cast<__PFN_glFinish>(__getProcAddress("glFinish"));
+    glFenceSync_PTR = reinterpret_cast<__PFN_glFenceSync>(__getProcAddress("glFenceSync"));
+    glDeleteSync_PTR = reinterpret_cast<__PFN_glDeleteSync>(__getProcAddress("glDeleteSync"));
+    glClientWaitSync_PTR = reinterpret_cast<__PFN_glClientWaitSync>(__getProcAddress("glClientWaitSync"));
+    glWaitSync_PTR = reinterpret_cast<__PFN_glWaitSync>(__getProcAddress("glWaitSync"));
+    glGetSynciv_PTR = reinterpret_cast<__PFN_glGetSynciv>(__getProcAddress("glGetSynciv"));
 
-	wglCreatePbufferARB = (PFNWGLCREATEPBUFFERARBPROC)__getProcAddress("wglCreatePbufferARB");
-	wglGetPbufferDCARB = (PFNWGLGETPBUFFERDCARBPROC)__getProcAddress("wglGetPbufferDCARB");
-	wglReleasePbufferDCARB = (PFNWGLRELEASEPBUFFERDCARBPROC)__getProcAddress("wglReleasePbufferDCARB");
-	wglDestroyPbufferARB = (PFNWGLDESTROYPBUFFERARBPROC)__getProcAddress("wglDestroyPbufferARB");
-	wglBindTexImageARB_PTR = (PFNWGLBINDTEXIMAGEARBPROC)__getProcAddress("wglBindTexImageARB");
-	wglReleaseTexImageARB_PTR = (PFNWGLRELEASETEXIMAGEARBPROC)__getProcAddress("wglReleaseTexImageARB");
+    wglCreatePbufferARB = reinterpret_cast<PFNWGLCREATEPBUFFERARBPROC>(__getProcAddress("wglCreatePbufferARB"));
+    wglGetPbufferDCARB = reinterpret_cast<PFNWGLGETPBUFFERDCARBPROC>(__getProcAddress("wglGetPbufferDCARB"));
+    wglReleasePbufferDCARB = reinterpret_cast<PFNWGLRELEASEPBUFFERDCARBPROC>(__getProcAddress("wglReleasePbufferDCARB"));
+    wglDestroyPbufferARB = reinterpret_cast<PFNWGLDESTROYPBUFFERARBPROC>(__getProcAddress("wglDestroyPbufferARB"));
+    wglBindTexImageARB_PTR = reinterpret_cast<PFNWGLBINDTEXIMAGEARBPROC>(__getProcAddress("wglBindTexImageARB"));
+    wglReleaseTexImageARB_PTR = reinterpret_cast<PFNWGLRELEASETEXIMAGEARBPROC>(__getProcAddress("wglReleaseTexImageARB"));
 
-	wglMakeCurrent_PTR(NULL, NULL);
+    wglMakeCurrent_PTR(NULL, NULL);
 
-	EGLint attrib_list[] = {
-		WGL_CONTEXT_MAJOR_VERSION_ARB, 1,
-		WGL_CONTEXT_MINOR_VERSION_ARB, 0,
-		WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-		0
-	};
+    EGLint attrib_list[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 1,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 0,
+        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0
+    };
 
-	HGLRC testctx = NULL;
-	EGLint GL_major = 4, GL_minor = 6;
-	for (; GL_major >= 1 && !testctx; --GL_major)
-	{
-		for (; GL_minor >= 0 && !testctx; --GL_minor)
-		{
-			attrib_list[1] = GL_major;
-			attrib_list[3] = GL_minor;
-			testctx = wglCreateContextAttribsARB(nativeLocalStorageContainer->hdc, NULL, attrib_list);
-		}
-	}
-	++GL_major;
-	++GL_minor;
+    HGLRC testctx = NULL;
+    EGLint GL_major = 4, GL_minor = 6;
+    for (; GL_major >= 1 && !testctx; --GL_major)
+    {
+        for (; GL_minor >= 0 && !testctx; --GL_minor)
+        {
+            attrib_list[1] = GL_major;
+            attrib_list[3] = GL_minor;
+            testctx = wglCreateContextAttribsARB(nativeLocalStorageContainer->hdc, NULL, attrib_list);
+        }
+    }
+    ++GL_major;
+    ++GL_minor;
 
-	if (testctx)
-	{
-		wglDeleteContext_PTR(testctx);
-		testctx = NULL;
-	}
-	else
-	{
-		GL_major = 0;
-		GL_minor = 0;
-	}
-	GL_max_supported[0] = GL_major;
-	GL_max_supported[1] = GL_minor;
+    if (testctx)
+    {
+        wglDeleteContext_PTR(testctx);
+        testctx = NULL;
+    }
+    else
+    {
+        GL_major = 0;
+        GL_minor = 0;
+    }
+    GL_max_supported[0] = GL_major;
+    GL_max_supported[1] = GL_minor;
 
 
-	attrib_list[5] = WGL_CONTEXT_ES_PROFILE_BIT_EXT;
-	EGLint ES_major = 3, ES_minor = 2;
-	for (; ES_major >= 1 && !testctx; --ES_major)
-	{
-		for (; ES_minor >= 0 && !testctx; --ES_minor)
-		{
-			attrib_list[1] = ES_major;
-			attrib_list[3] = ES_minor;
-			testctx = wglCreateContextAttribsARB(nativeLocalStorageContainer->hdc, NULL, attrib_list);
-		}
-	}
-	++ES_major;
-	++ES_minor;
+    attrib_list[5] = WGL_CONTEXT_ES_PROFILE_BIT_EXT;
+    EGLint ES_major = 3, ES_minor = 2;
+    for (; ES_major >= 1 && !testctx; --ES_major)
+    {
+        for (; ES_minor >= 0 && !testctx; --ES_minor)
+        {
+            attrib_list[1] = ES_major;
+            attrib_list[3] = ES_minor;
+            testctx = wglCreateContextAttribsARB(nativeLocalStorageContainer->hdc, NULL, attrib_list);
+        }
+    }
+    ++ES_major;
+    ++ES_minor;
 
-	if (testctx)
-	{
-		wglDeleteContext_PTR(testctx);
-		testctx = NULL;
-	}
-	else
-	{
-		ES_major = 0;
-		ES_minor = 0;
-	}
-	ES_max_supported[0] = ES_major;
-	ES_max_supported[1] = ES_minor;
+    if (testctx)
+    {
+        wglDeleteContext_PTR(testctx);
+        testctx = NULL;
+    }
+    else
+    {
+        ES_major = 0;
+        ES_minor = 0;
+    }
+    ES_max_supported[0] = ES_major;
+    ES_max_supported[1] = ES_minor;
 
-	// Initialize Vulkan HDR backend (non-fatal if unavailable)
-	__vkInit();
+    // Initialize Vulkan HDR backend (non-fatal if unavailable)
+    __vkInit();
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
 EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageContainer)
 {
-	if (!nativeLocalStorageContainer)
-	{
-		return EGL_FALSE;
-	}
+    if (!nativeLocalStorageContainer)
+    {
+        return EGL_FALSE;
+    }
 
-	wglMakeCurrent_PTR(0, 0);
+    wglMakeCurrent_PTR(0, 0);
 
-	if (nativeLocalStorageContainer->ctx)
-	{
-		wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
-		nativeLocalStorageContainer->ctx = 0;
-	}
+    if (nativeLocalStorageContainer->ctx)
+    {
+        wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
+        nativeLocalStorageContainer->ctx = 0;
+    }
 
-	if (nativeLocalStorageContainer->hdc)
-	{
-		ReleaseDC(0, nativeLocalStorageContainer->hdc);
-		nativeLocalStorageContainer->hdc = 0;
-	}
+    if (nativeLocalStorageContainer->hdc)
+    {
+        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        nativeLocalStorageContainer->hdc = 0;
+    }
 
-	if (nativeLocalStorageContainer->hwnd)
-	{
-		DestroyWindow(nativeLocalStorageContainer->hwnd);
-		nativeLocalStorageContainer->hwnd = 0;
-	}
+    if (nativeLocalStorageContainer->hwnd)
+    {
+        DestroyWindow(nativeLocalStorageContainer->hwnd);
+        nativeLocalStorageContainer->hwnd = 0;
+    }
 
-	UnregisterClass("DummyWindow", NULL);
+    UnregisterClass("DummyWindow", NULL);
 
-	__vkTerm();
+    __vkTerm();
 
-	FreeLibrary(opengl32dll);
+    FreeLibrary(opengl32dll);
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
 EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextContainer* nativeContextContainer)
 {
-	if (!walkerDpy || !nativeContextContainer)
-	{
-		return EGL_FALSE;
-	}
+    if (!walkerDpy || !nativeContextContainer)
+    {
+        return EGL_FALSE;
+    }
 
-	return wglDeleteContext_PTR(nativeContextContainer->ctx);
+    return wglDeleteContext_PTR(nativeContextContainer->ctx);
 }
 
 EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error)
 {
-	if (!target_attrib_list || !attrib_list || !error)
-	{
-		return EGL_FALSE;
-	}
+    if (!target_attrib_list || !attrib_list || !error)
+    {
+        return EGL_FALSE;
+    }
 
-	const EGLint defaultProfileMask = ((api == EGL_OPENGL_ES_API) ? WGL_CONTEXT_ES_PROFILE_BIT_EXT : WGL_CONTEXT_CORE_PROFILE_BIT_ARB);
-	EGLint template_attrib_list[] = {
-			WGL_CONTEXT_MAJOR_VERSION_ARB, 1,
-			WGL_CONTEXT_MINOR_VERSION_ARB, 0,
-			WGL_CONTEXT_LAYER_PLANE_ARB, 0,
-			WGL_CONTEXT_FLAGS_ARB, 0,
-			WGL_CONTEXT_PROFILE_MASK_ARB, defaultProfileMask,
-			WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, WGL_NO_RESET_NOTIFICATION_ARB,
-			0
-	};
+    const EGLint defaultProfileMask = ((api == EGL_OPENGL_ES_API) ? WGL_CONTEXT_ES_PROFILE_BIT_EXT : WGL_CONTEXT_CORE_PROFILE_BIT_ARB);
+    EGLint template_attrib_list[] = {
+            WGL_CONTEXT_MAJOR_VERSION_ARB, 1,
+            WGL_CONTEXT_MINOR_VERSION_ARB, 0,
+            WGL_CONTEXT_LAYER_PLANE_ARB, 0,
+            WGL_CONTEXT_FLAGS_ARB, 0,
+            WGL_CONTEXT_PROFILE_MASK_ARB, defaultProfileMask,
+            WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, WGL_NO_RESET_NOTIFICATION_ARB,
+            0
+    };
 
-	EGLint attribListIndex = 0;
+    EGLint attribListIndex = 0;
 
-	while (attrib_list[attribListIndex] != EGL_NONE)
-	{
-		EGLint value = attrib_list[attribListIndex + 1];
+    while (attrib_list[attribListIndex] != EGL_NONE)
+    {
+        EGLint value = attrib_list[attribListIndex + 1];
 
-		switch (attrib_list[attribListIndex])
-		{
-			case EGL_CONTEXT_MAJOR_VERSION:
-			{
-				if (value < 1)
-				{
-					*error = EGL_BAD_ATTRIBUTE;
+        switch (attrib_list[attribListIndex])
+        {
+            case EGL_CONTEXT_MAJOR_VERSION:
+            {
+                if (value < 1)
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
 
-					return EGL_FALSE;
-				}
+                    return EGL_FALSE;
+                }
 
-				template_attrib_list[1] = value;
-			}
-			break;
-			case EGL_CONTEXT_MINOR_VERSION:
-			{
-				if (value < 0)
-				{
-					*error = EGL_BAD_ATTRIBUTE;
+                template_attrib_list[1] = value;
+            }
+            break;
+            case EGL_CONTEXT_MINOR_VERSION:
+            {
+                if (value < 0)
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
 
-					return EGL_FALSE;
-				}
+                    return EGL_FALSE;
+                }
 
-				template_attrib_list[3] = value;
-			}
-			break;
-			case EGL_CONTEXT_OPENGL_PROFILE_MASK:
-			{
-				if (value == EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT)
-				{
-					template_attrib_list[9] = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-				}
-				else if (value == EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT)
-				{
-					template_attrib_list[9] = WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
-				}
-				else
-				{
-					*error = EGL_BAD_ATTRIBUTE;
+                template_attrib_list[3] = value;
+            }
+            break;
+            case EGL_CONTEXT_OPENGL_PROFILE_MASK:
+            {
+                if (value == EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT)
+                {
+                    template_attrib_list[9] = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+                }
+                else if (value == EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT)
+                {
+                    template_attrib_list[9] = WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+                }
+                else
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
 
-					return EGL_FALSE;
-				}
-			}
-			break;
-			case EGL_CONTEXT_OPENGL_DEBUG:
-			{
-				if (value == EGL_TRUE)
-				{
-					template_attrib_list[7] |= WGL_CONTEXT_DEBUG_BIT_ARB;
-				}
-				else if (value == EGL_FALSE)
-				{
-					template_attrib_list[7] &= ~WGL_CONTEXT_DEBUG_BIT_ARB;
-				}
-				else
-				{
-					*error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+                }
+            }
+            break;
+            case EGL_CONTEXT_OPENGL_DEBUG:
+            {
+                if (value == EGL_TRUE)
+                {
+                    template_attrib_list[7] |= WGL_CONTEXT_DEBUG_BIT_ARB;
+                }
+                else if (value == EGL_FALSE)
+                {
+                    template_attrib_list[7] &= ~WGL_CONTEXT_DEBUG_BIT_ARB;
+                }
+                else
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
 
-					return EGL_FALSE;
-				}
-			}
-			break;
-			case EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE:
-			{
-				if (value == EGL_TRUE)
-				{
-					template_attrib_list[7] |= WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
-				}
-				else if (value == EGL_FALSE)
-				{
-					template_attrib_list[7] &= ~WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
-				}
-				else
-				{
-					*error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+                }
+            }
+            break;
+            case EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE:
+            {
+                if (value == EGL_TRUE)
+                {
+                    template_attrib_list[7] |= WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+                }
+                else if (value == EGL_FALSE)
+                {
+                    template_attrib_list[7] &= ~WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+                }
+                else
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
 
-					return EGL_FALSE;
-				}
-			}
-			break;
-			case EGL_CONTEXT_OPENGL_ROBUST_ACCESS:
-			{
-				if (value == EGL_TRUE)
-				{
-					template_attrib_list[7] |= WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
-				}
-				else if (value == EGL_FALSE)
-				{
-					template_attrib_list[7] &= ~WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
-				}
-				else
-				{
-					*error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+                }
+            }
+            break;
+            case EGL_CONTEXT_OPENGL_ROBUST_ACCESS:
+            {
+                if (value == EGL_TRUE)
+                {
+                    template_attrib_list[7] |= WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
+                }
+                else if (value == EGL_FALSE)
+                {
+                    template_attrib_list[7] &= ~WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
+                }
+                else
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
 
-					return EGL_FALSE;
-				}
-			}
-			break;
-			case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
-			{
-				if (value == EGL_NO_RESET_NOTIFICATION)
-				{
-					template_attrib_list[11] = WGL_NO_RESET_NOTIFICATION_ARB;
-				}
-				else if (value == EGL_LOSE_CONTEXT_ON_RESET)
-				{
-					template_attrib_list[11] = WGL_LOSE_CONTEXT_ON_RESET_ARB;
-				}
-				else
-				{
-					*error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+                }
+            }
+            break;
+            case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
+            {
+                if (value == EGL_NO_RESET_NOTIFICATION)
+                {
+                    template_attrib_list[11] = WGL_NO_RESET_NOTIFICATION_ARB;
+                }
+                else if (value == EGL_LOSE_CONTEXT_ON_RESET)
+                {
+                    template_attrib_list[11] = WGL_LOSE_CONTEXT_ON_RESET_ARB;
+                }
+                else
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
 
-					return EGL_FALSE;
-				}
-			}
-			break;
-			default:
-			{
-				*error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+                }
+            }
+            break;
+            default:
+            {
+                *error = EGL_BAD_ATTRIBUTE;
 
-				return EGL_FALSE;
-			}
-			break;
-		}
+                return EGL_FALSE;
+            }
+        }
 
-		attribListIndex += 2;
+        attribListIndex += 2;
 
-		// More than 14 entries can not exist.
-		if (attribListIndex >= 7 * 2)
-		{
-			*error = EGL_BAD_ATTRIBUTE;
+        // More than 14 entries can not exist.
+        if (attribListIndex >= 7 * 2)
+        {
+            *error = EGL_BAD_ATTRIBUTE;
 
-			return EGL_FALSE;
-		}
-	}
+            return EGL_FALSE;
+        }
+    }
 
-	memcpy(target_attrib_list, template_attrib_list, CONTEXT_ATTRIB_LIST_SIZE * sizeof(EGLint));
+    memcpy(target_attrib_list, template_attrib_list, CONTEXT_ATTRIB_LIST_SIZE * sizeof(EGLint));
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
 EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
-	if (!newSurface || !walkerDpy || !walkerConfig || !error)
-	{
-		return EGL_FALSE;
-	}
+    if (!newSurface || !walkerDpy || !walkerConfig || !error)
+    {
+        return EGL_FALSE;
+    }
 
-	int iattribs[] = {
-			WGL_DRAW_TO_PBUFFER_ARB, GL_TRUE,
-			WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
-			WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-			WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
-			WGL_COLOR_BITS_ARB, 32,
-			WGL_RED_BITS_EXT, 8,
-			WGL_GREEN_BITS_EXT, 8,
-			WGL_BLUE_BITS_EXT, 8,
-			WGL_ALPHA_BITS_EXT, 8,
-			WGL_DEPTH_BITS_ARB, 24,
-			WGL_STENCIL_BITS_ARB, 8,
-			WGL_SAMPLE_BUFFERS_ARB, 0,
-			WGL_SAMPLES_ARB, 0,
-			WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
-			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_FALSE,  // default: linear per spec
-			//WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
-			0
-	};
+    int iattribs[] = {
+            WGL_DRAW_TO_PBUFFER_ARB, GL_TRUE,
+            WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+            WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
+            WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
+            WGL_COLOR_BITS_ARB, 32,
+            WGL_RED_BITS_EXT, 8,
+            WGL_GREEN_BITS_EXT, 8,
+            WGL_BLUE_BITS_EXT, 8,
+            WGL_ALPHA_BITS_EXT, 8,
+            WGL_DEPTH_BITS_ARB, 24,
+            WGL_STENCIL_BITS_ARB, 8,
+            WGL_SAMPLE_BUFFERS_ARB, 0,
+            WGL_SAMPLES_ARB, 0,
+            WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
+            WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_FALSE,  // default: linear per spec
+            //WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
+            0
+    };
 
-	EGLint pbuf_attribs[] = {
-		WGL_PBUFFER_LARGEST_EXT, GL_FALSE,
-		0
-	};
+    EGLint pbuf_attribs[] = {
+        WGL_PBUFFER_LARGEST_EXT, GL_FALSE,
+        0
+    };
 
-	int width = 0;
-	int height = 0;
-	EGLBoolean mipmapTexture = EGL_FALSE;
-	EGLint textureFormat = EGL_NO_TEXTURE;
-	EGLint textureTarget = EGL_NO_TEXTURE;
-	EGLint pbufColorspace = EGL_GL_COLORSPACE_LINEAR;
-	EGLint currentAttribIndex = 0;
-	while (attrib_list[currentAttribIndex] != EGL_NONE)
-	{
-		EGLint attrib = attrib_list[currentAttribIndex];
-		EGLint value = attrib_list[currentAttribIndex + 1];
-		switch (attrib)
-		{
-		case EGL_HEIGHT:
-			height = value;
-			break;
-		case EGL_WIDTH:
-			width = value;
-			break;
-		case EGL_LARGEST_PBUFFER:
-			pbuf_attribs[1] = value;
-			break;
-		case EGL_GL_COLORSPACE:
-			if (value == EGL_GL_COLORSPACE_LINEAR)
-			{
-				iattribs[29] = GL_FALSE;
-				pbufColorspace = EGL_GL_COLORSPACE_LINEAR;
-			}
-			else if (value == EGL_GL_COLORSPACE_SRGB)
-			{
-				// Only request sRGB pixel format if the driver supports it;
-				// otherwise silently fall back to linear per spec.
-				iattribs[29] = walkerDpy->srgbFramebufferSupported ? GL_TRUE : GL_FALSE;
-				pbufColorspace = EGL_GL_COLORSPACE_SRGB;
-			}
-			else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT ||
-			         value == EGL_GL_COLORSPACE_SCRGB_EXT         ||
-			         value == EGL_GL_COLORSPACE_BT2020_PQ_EXT     ||
-			         value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
-			         value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
-			{
-				// HDR colorspaces stored but no Vulkan surface for offscreen buffers
-				iattribs[29] = GL_FALSE;
-				pbufColorspace = value;
-			}
-			else
-			{
-				*error = EGL_BAD_ATTRIBUTE;
-				return EGL_FALSE;
-			}
-			break;
-		case EGL_MIPMAP_TEXTURE:
-			mipmapTexture = (EGLBoolean)value;
-			break;
-		case EGL_TEXTURE_FORMAT:
-			if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_RGB && value != EGL_TEXTURE_RGBA)
-			{
-				*error = EGL_BAD_ATTRIBUTE;
-				return EGL_FALSE;
-			}
-			textureFormat = value;
-			break;
-		case EGL_TEXTURE_TARGET:
-			if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_2D)
-			{
-				*error = EGL_BAD_ATTRIBUTE;
-				return EGL_FALSE;
-			}
-			textureTarget = value;
-			break;
-		case EGL_VG_ALPHA_FORMAT:
-		case EGL_VG_COLORSPACE:
-			*error = EGL_BAD_MATCH;
-			return EGL_FALSE;
-		}
+    int width = 0;
+    int height = 0;
+    EGLBoolean mipmapTexture = EGL_FALSE;
+    EGLint textureFormat = EGL_NO_TEXTURE;
+    EGLint textureTarget = EGL_NO_TEXTURE;
+    EGLint pbufColorspace = EGL_GL_COLORSPACE_LINEAR;
+    EGLint currentAttribIndex = 0;
+    while (attrib_list[currentAttribIndex] != EGL_NONE)
+    {
+        EGLint attrib = attrib_list[currentAttribIndex];
+        EGLint value = attrib_list[currentAttribIndex + 1];
+        switch (attrib)
+        {
+        case EGL_HEIGHT:
+            height = value;
+            break;
+        case EGL_WIDTH:
+            width = value;
+            break;
+        case EGL_LARGEST_PBUFFER:
+            pbuf_attribs[1] = value;
+            break;
+        case EGL_GL_COLORSPACE:
+            if (value == EGL_GL_COLORSPACE_LINEAR)
+            {
+                iattribs[29] = GL_FALSE;
+                pbufColorspace = EGL_GL_COLORSPACE_LINEAR;
+            }
+            else if (value == EGL_GL_COLORSPACE_SRGB)
+            {
+                // Only request sRGB pixel format if the driver supports it;
+                // otherwise silently fall back to linear per spec.
+                iattribs[29] = walkerDpy->srgbFramebufferSupported ? GL_TRUE : GL_FALSE;
+                pbufColorspace = EGL_GL_COLORSPACE_SRGB;
+            }
+            else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT ||
+                     value == EGL_GL_COLORSPACE_SCRGB_EXT         ||
+                     value == EGL_GL_COLORSPACE_BT2020_PQ_EXT     ||
+                     value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
+                     value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
+            {
+                // HDR colorspaces stored but no Vulkan surface for offscreen buffers
+                iattribs[29] = GL_FALSE;
+                pbufColorspace = value;
+            }
+            else
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+        case EGL_MIPMAP_TEXTURE:
+            mipmapTexture = (EGLBoolean)value;
+            break;
+        case EGL_TEXTURE_FORMAT:
+            if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_RGB && value != EGL_TEXTURE_RGBA)
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+            textureFormat = value;
+            break;
+        case EGL_TEXTURE_TARGET:
+            if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_2D)
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+            textureTarget = value;
+            break;
+        case EGL_VG_ALPHA_FORMAT:
+        case EGL_VG_COLORSPACE:
+            *error = EGL_BAD_MATCH;
+            return EGL_FALSE;
+        }
 
-		currentAttribIndex += 2;
-	}
+        currentAttribIndex += 2;
+    }
 
-	iattribs[9] = walkerConfig->bufferSize;
-	iattribs[11] = walkerConfig->redSize;
-	iattribs[13] = walkerConfig->blueSize;
-	iattribs[15] = walkerConfig->greenSize;
-	iattribs[17] = walkerConfig->alphaSize;
-	iattribs[19] = walkerConfig->depthSize;
-	iattribs[21] = walkerConfig->stencilSize;
-	iattribs[23] = walkerConfig->sampleBuffers;
-	iattribs[25] = walkerConfig->samples;
+    iattribs[9] = walkerConfig->bufferSize;
+    iattribs[11] = walkerConfig->redSize;
+    iattribs[13] = walkerConfig->blueSize;
+    iattribs[15] = walkerConfig->greenSize;
+    iattribs[17] = walkerConfig->alphaSize;
+    iattribs[19] = walkerConfig->depthSize;
+    iattribs[21] = walkerConfig->stencilSize;
+    iattribs[23] = walkerConfig->sampleBuffers;
+    iattribs[25] = walkerConfig->samples;
 
-	HDC hdc = walkerDpy->display_id;
+    HDC hdc = walkerDpy->display_id;
 
-	int pformat;
-	UINT max_formats = 1;
-	if (!wglChoosePixelFormatARB(hdc, iattribs, NULL, max_formats, &pformat, &max_formats))
-		return EGL_FALSE;
+    int pformat;
+    UINT max_formats = 1;
+    if (!wglChoosePixelFormatARB(hdc, iattribs, NULL, max_formats, &pformat, &max_formats))
+        return EGL_FALSE;
 
-	// not sure im getting 1st arg ok (HDC)
-	HPBUFFERARB pbuf = wglCreatePbufferARB(hdc, pformat, width, height, pbuf_attribs);
-	if (!pbuf)
-		return EGL_FALSE;
+    // not sure im getting 1st arg ok (HDC)
+    HPBUFFERARB pbuf = wglCreatePbufferARB(hdc, pformat, width, height, pbuf_attribs);
+    if (!pbuf)
+        return EGL_FALSE;
 
-	hdc = wglGetPbufferDCARB(pbuf);
+    hdc = wglGetPbufferDCARB(pbuf);
 
-	if (!hdc)
-	{
-		*error = EGL_BAD_NATIVE_WINDOW;
+    if (!hdc)
+    {
+        *error = EGL_BAD_NATIVE_WINDOW;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	newSurface->drawToWindow = EGL_FALSE;
-	newSurface->drawToPixmap = EGL_FALSE;
-	newSurface->drawToPBuffer = EGL_TRUE;
-	newSurface->doubleBuffer = (EGLBoolean)iattribs[7];
-	newSurface->configId = pformat;
-	newSurface->width = width;
-	newSurface->height = height;
-	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
-	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
-	newSurface->mipmapLevel = 0;
-	newSurface->mipmapTexture = mipmapTexture;
-	newSurface->largestPbuffer = (EGLBoolean)pbuf_attribs[1];
-	newSurface->textureFormat = textureFormat;
-	newSurface->textureTarget = textureTarget;
-	newSurface->glColorspace = pbufColorspace;
-	newSurface->initialized = EGL_TRUE;
-	newSurface->destroy = EGL_FALSE;
-	newSurface->pbuf = pbuf;
-	newSurface->nativeSurfaceContainer.hdc = hdc;
-	newSurface->nativeSurfaceContainer.hdr = nullptr;
+    newSurface->drawToWindow = EGL_FALSE;
+    newSurface->drawToPixmap = EGL_FALSE;
+    newSurface->drawToPBuffer = EGL_TRUE;
+    newSurface->doubleBuffer = (EGLBoolean)iattribs[7];
+    newSurface->configId = pformat;
+    newSurface->width = width;
+    newSurface->height = height;
+    newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+    newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+    newSurface->mipmapLevel = 0;
+    newSurface->mipmapTexture = mipmapTexture;
+    newSurface->largestPbuffer = (EGLBoolean)pbuf_attribs[1];
+    newSurface->textureFormat = textureFormat;
+    newSurface->textureTarget = textureTarget;
+    newSurface->glColorspace = pbufColorspace;
+    newSurface->initialized = EGL_TRUE;
+    newSurface->destroy = EGL_FALSE;
+    newSurface->pbuf = pbuf;
+    newSurface->nativeSurfaceContainer.hdc = hdc;
+    newSurface->nativeSurfaceContainer.hdr = nullptr;
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
 EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
-	if (!newSurface || !walkerDpy || !walkerConfig || !error)
-	{
-		return EGL_FALSE;
-	}
+    if (!newSurface || !walkerDpy || !walkerConfig || !error)
+    {
+        return EGL_FALSE;
+    }
 
-	HDC hdc = GetDC(win);
+    HDC hdc = GetDC(win);
 
-	if (!hdc)
-	{
-		*error = EGL_BAD_NATIVE_WINDOW;
+    if (!hdc)
+    {
+        *error = EGL_BAD_NATIVE_WINDOW;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	// FIXME Check more values.
-	EGLint template_attrib_list[] = {
-			WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
-			WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
-			WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-			WGL_DOUBLE_BUFFER_ARB, walkerConfig->doubleBuffer ? GL_TRUE : GL_FALSE,
-			WGL_COLOR_BITS_ARB, 32,
-			WGL_RED_BITS_EXT, 8,
-			WGL_GREEN_BITS_EXT, 8,
-			WGL_BLUE_BITS_EXT, 8,
-			WGL_ALPHA_BITS_EXT, 8,
-			WGL_DEPTH_BITS_ARB, 24,
-			WGL_STENCIL_BITS_ARB, 8,
-			WGL_SAMPLE_BUFFERS_ARB, 0,
-			WGL_SAMPLES_ARB, 0,
-			WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
-			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_FALSE,  // default: linear per spec
-			//WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
-			0
-	};
+    // FIXME Check more values.
+    EGLint template_attrib_list[] = {
+            WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+            WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+            WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
+            WGL_DOUBLE_BUFFER_ARB, walkerConfig->doubleBuffer ? GL_TRUE : GL_FALSE,
+            WGL_COLOR_BITS_ARB, 32,
+            WGL_RED_BITS_EXT, 8,
+            WGL_GREEN_BITS_EXT, 8,
+            WGL_BLUE_BITS_EXT, 8,
+            WGL_ALPHA_BITS_EXT, 8,
+            WGL_DEPTH_BITS_ARB, 24,
+            WGL_STENCIL_BITS_ARB, 8,
+            WGL_SAMPLE_BUFFERS_ARB, 0,
+            WGL_SAMPLES_ARB, 0,
+            WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
+            WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_FALSE,  // default: linear per spec
+            //WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
+            0
+    };
 
-	EGLint parsedColorspace = EGL_GL_COLORSPACE_LINEAR;
+    EGLint parsedColorspace = EGL_GL_COLORSPACE_LINEAR;
 
-	if (attrib_list)
-	{
-		EGLint indexAttribList = 0;
+    if (attrib_list)
+    {
+        EGLint indexAttribList = 0;
 
-		while (attrib_list[indexAttribList] != EGL_NONE)
-		{
-			EGLint value = attrib_list[indexAttribList + 1];
+        while (attrib_list[indexAttribList] != EGL_NONE)
+        {
+            EGLint value = attrib_list[indexAttribList + 1];
 
-			switch (attrib_list[indexAttribList])
-			{
-				case EGL_GL_COLORSPACE:
-				{
-					if (value == EGL_GL_COLORSPACE_LINEAR)
-					{
-						template_attrib_list[29] = GL_FALSE;
-						parsedColorspace = EGL_GL_COLORSPACE_LINEAR;
-					}
-					else if (value == EGL_GL_COLORSPACE_SRGB)
-					{
-						// Only request sRGB pixel format if the driver supports it;
-						// otherwise silently fall back to linear per spec.
-						template_attrib_list[29] = walkerDpy->srgbFramebufferSupported ? GL_TRUE : GL_FALSE;
-						parsedColorspace = EGL_GL_COLORSPACE_SRGB;
-					}
-					else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT ||
-					         value == EGL_GL_COLORSPACE_SCRGB_EXT         ||
-					         value == EGL_GL_COLORSPACE_BT2020_PQ_EXT     ||
-					         value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
-					         value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
-					{
-						// HDR colorspaces use Vulkan for presentation; WGL framebuffer stays linear
-						template_attrib_list[29] = GL_FALSE;
-						parsedColorspace = value;
-					}
-					else
-					{
-						ReleaseDC(win, hdc);
-						*error = EGL_BAD_ATTRIBUTE;
-						return EGL_FALSE;
-					}
-				}
-				break;
-				case EGL_RENDER_BUFFER:
-				{
-					if (value == EGL_SINGLE_BUFFER)
-					{
-						template_attrib_list[7] = GL_FALSE;
-					}
-					else if (value == EGL_BACK_BUFFER)
-					{
-						template_attrib_list[7] = GL_TRUE;
-					}
-					else
-					{
-						ReleaseDC(win, hdc);
+            switch (attrib_list[indexAttribList])
+            {
+                case EGL_GL_COLORSPACE:
+                {
+                    if (value == EGL_GL_COLORSPACE_LINEAR)
+                    {
+                        template_attrib_list[29] = GL_FALSE;
+                        parsedColorspace = EGL_GL_COLORSPACE_LINEAR;
+                    }
+                    else if (value == EGL_GL_COLORSPACE_SRGB)
+                    {
+                        // Only request sRGB pixel format if the driver supports it;
+                        // otherwise silently fall back to linear per spec.
+                        template_attrib_list[29] = walkerDpy->srgbFramebufferSupported ? GL_TRUE : GL_FALSE;
+                        parsedColorspace = EGL_GL_COLORSPACE_SRGB;
+                    }
+                    else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT ||
+                             value == EGL_GL_COLORSPACE_SCRGB_EXT         ||
+                             value == EGL_GL_COLORSPACE_BT2020_PQ_EXT     ||
+                             value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
+                             value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
+                    {
+                        // HDR colorspaces use Vulkan for presentation; WGL framebuffer stays linear
+                        template_attrib_list[29] = GL_FALSE;
+                        parsedColorspace = value;
+                    }
+                    else
+                    {
+                        ReleaseDC(win, hdc);
+                        *error = EGL_BAD_ATTRIBUTE;
+                        return EGL_FALSE;
+                    }
+                }
+                break;
+                case EGL_RENDER_BUFFER:
+                {
+                    if (value == EGL_SINGLE_BUFFER)
+                    {
+                        template_attrib_list[7] = GL_FALSE;
+                    }
+                    else if (value == EGL_BACK_BUFFER)
+                    {
+                        template_attrib_list[7] = GL_TRUE;
+                    }
+                    else
+                    {
+                        ReleaseDC(win, hdc);
 
-						*error = EGL_BAD_ATTRIBUTE;
+                        *error = EGL_BAD_ATTRIBUTE;
 
-						return EGL_FALSE;
-					}
-				}
-				break;
-				case EGL_VG_ALPHA_FORMAT:
-				{
-					ReleaseDC(win, hdc);
+                        return EGL_FALSE;
+                    }
+                }
+                break;
+                case EGL_VG_ALPHA_FORMAT:
+                {
+                    ReleaseDC(win, hdc);
 
-					*error = EGL_BAD_MATCH;
+                    *error = EGL_BAD_MATCH;
 
-					return EGL_FALSE;
-				}
-				break;
-				case EGL_VG_COLORSPACE:
-				{
-					ReleaseDC(win, hdc);
+                    return EGL_FALSE;
+                }
+                case EGL_VG_COLORSPACE:
+                {
+                    ReleaseDC(win, hdc);
 
-					*error = EGL_BAD_MATCH;
+                    *error = EGL_BAD_MATCH;
 
-					return EGL_FALSE;
-				}
-				break;
-			}
+                    return EGL_FALSE;
+                }
+            }
 
-			indexAttribList += 2;
+            indexAttribList += 2;
 
-			// More than 8 entries can not exist.
-			if (indexAttribList >= 8 * 2)
-			{
-				ReleaseDC(win, hdc);
+            // More than 8 entries can not exist.
+            if (indexAttribList >= 8 * 2)
+            {
+                ReleaseDC(win, hdc);
 
-				*error = EGL_BAD_ATTRIBUTE;
+                *error = EGL_BAD_ATTRIBUTE;
 
-				return EGL_FALSE;
-			}
-		}
-	}
+                return EGL_FALSE;
+            }
+        }
+    }
 
-	// Create out of EGL configuration an array of WGL configuration and use it.
-	// see https://www.opengl.org/registry/specs/ARB/wgl_pixel_format.txt
+    // Create out of EGL configuration an array of WGL configuration and use it.
+    // see https://www.opengl.org/registry/specs/ARB/wgl_pixel_format.txt
 
-	template_attrib_list[9] = walkerConfig->bufferSize;
-	template_attrib_list[11] = walkerConfig->redSize;
-	template_attrib_list[13] = walkerConfig->blueSize;
-	template_attrib_list[15] = walkerConfig->greenSize;
-	template_attrib_list[17] = walkerConfig->alphaSize;
-	template_attrib_list[19] = walkerConfig->depthSize;
-	template_attrib_list[21] = walkerConfig->stencilSize;
-	template_attrib_list[23] = walkerConfig->sampleBuffers;
-	template_attrib_list[25] = walkerConfig->samples;
-	//
+    template_attrib_list[9] = walkerConfig->bufferSize;
+    template_attrib_list[11] = walkerConfig->redSize;
+    template_attrib_list[13] = walkerConfig->blueSize;
+    template_attrib_list[15] = walkerConfig->greenSize;
+    template_attrib_list[17] = walkerConfig->alphaSize;
+    template_attrib_list[19] = walkerConfig->depthSize;
+    template_attrib_list[21] = walkerConfig->stencilSize;
+    template_attrib_list[23] = walkerConfig->sampleBuffers;
+    template_attrib_list[25] = walkerConfig->samples;
+    //
 
-	UINT wgl_max_formats = 1;
-	INT wgl_formats;
-	UINT wgl_num_formats;
+    UINT wgl_max_formats = 1;
+    INT wgl_formats;
+    UINT wgl_num_formats;
 
-	if (!wglChoosePixelFormatARB(hdc, template_attrib_list, 0, wgl_max_formats, &wgl_formats, &wgl_num_formats))
-	{
-		ReleaseDC(win, hdc);
+    if (!wglChoosePixelFormatARB(hdc, template_attrib_list, 0, wgl_max_formats, &wgl_formats, &wgl_num_formats))
+    {
+        ReleaseDC(win, hdc);
 
-		*error = EGL_BAD_MATCH;
+        *error = EGL_BAD_MATCH;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	if (wgl_num_formats == 0)
-	{
-		ReleaseDC(win, hdc);
+    if (wgl_num_formats == 0)
+    {
+        ReleaseDC(win, hdc);
 
-		*error = EGL_BAD_MATCH;
+        *error = EGL_BAD_MATCH;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	PIXELFORMATDESCRIPTOR pfd;
+    PIXELFORMATDESCRIPTOR pfd;
 
-	if (!DescribePixelFormat(hdc, wgl_formats, sizeof(PIXELFORMATDESCRIPTOR), &pfd))
-	{
-		ReleaseDC(win, hdc);
+    if (!DescribePixelFormat(hdc, wgl_formats, sizeof(PIXELFORMATDESCRIPTOR), &pfd))
+    {
+        ReleaseDC(win, hdc);
 
-		*error = EGL_BAD_MATCH;
+        *error = EGL_BAD_MATCH;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	if (!SetPixelFormat(hdc, wgl_formats, &pfd))
-	{
-		ReleaseDC(win, hdc);
+    if (!SetPixelFormat(hdc, wgl_formats, &pfd))
+    {
+        ReleaseDC(win, hdc);
 
-		*error = EGL_BAD_MATCH;
+        *error = EGL_BAD_MATCH;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	newSurface->drawToWindow = EGL_TRUE;
-	newSurface->drawToPixmap = EGL_FALSE;
-	newSurface->drawToPBuffer = EGL_FALSE;
-	newSurface->doubleBuffer = (EGLBoolean)template_attrib_list[7];
-	newSurface->configId = wgl_formats;
+    newSurface->drawToWindow = EGL_TRUE;
+    newSurface->drawToPixmap = EGL_FALSE;
+    newSurface->drawToPBuffer = EGL_FALSE;
+    newSurface->doubleBuffer = (EGLBoolean)template_attrib_list[7];
+    newSurface->configId = wgl_formats;
 
-	RECT rect = { 0 };
-	GetClientRect(win, &rect);
-	newSurface->width = rect.right - rect.left;
-	newSurface->height = rect.bottom - rect.top;
-	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
-	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
-	newSurface->mipmapLevel = 0;
-	newSurface->mipmapTexture = EGL_FALSE;
-	newSurface->largestPbuffer = EGL_FALSE;
-	newSurface->textureFormat = EGL_NO_TEXTURE;
-	newSurface->textureTarget = EGL_NO_TEXTURE;
-	newSurface->glColorspace = parsedColorspace;
+    RECT rect = { 0 };
+    GetClientRect(win, &rect);
+    newSurface->width = rect.right - rect.left;
+    newSurface->height = rect.bottom - rect.top;
+    newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+    newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+    newSurface->mipmapLevel = 0;
+    newSurface->mipmapTexture = EGL_FALSE;
+    newSurface->largestPbuffer = EGL_FALSE;
+    newSurface->textureFormat = EGL_NO_TEXTURE;
+    newSurface->textureTarget = EGL_NO_TEXTURE;
+    newSurface->glColorspace = parsedColorspace;
 
-	newSurface->initialized = EGL_TRUE;
-	newSurface->destroy = EGL_FALSE;
-	newSurface->win = win;
-	newSurface->nativeSurfaceContainer.hdc = hdc;
-	newSurface->nativeSurfaceContainer.hdr = nullptr;
+    newSurface->initialized = EGL_TRUE;
+    newSurface->destroy = EGL_FALSE;
+    newSurface->win = win;
+    newSurface->nativeSurfaceContainer.hdc = hdc;
+    newSurface->nativeSurfaceContainer.hdr = nullptr;
 
-	// For HDR colorspaces, create a Vulkan HDR surface
-	{
-		VkFormat vkFmt; VkColorSpaceKHR vkCS;
-		if (_eglHDRColorspaceToVk(parsedColorspace, &vkFmt, &vkCS) && __vkIsReady())
-		{
-			NativeHDRSurfaceContainer* hdrContainer = (NativeHDRSurfaceContainer*)malloc(sizeof(NativeHDRSurfaceContainer));
-			if (hdrContainer)
-			{
-				if (__vkCreateHDRSurface(hdrContainer, win, parsedColorspace,
-				                          (uint32_t)(rect.right - rect.left),
-				                          (uint32_t)(rect.bottom - rect.top)) == EGL_TRUE)
-				{
-					newSurface->nativeSurfaceContainer.hdr = hdrContainer;
-				}
-				else
-				{
-					free(hdrContainer);
-					ReleaseDC(win, hdc);
-					*error = EGL_BAD_MATCH;
-					return EGL_FALSE;
-				}
-			}
-		}
-	}
+    // For HDR colorspaces, create a Vulkan HDR surface
+    {
+        VkFormat vkFmt; VkColorSpaceKHR vkCS;
+        if (_eglHDRColorspaceToVk(parsedColorspace, &vkFmt, &vkCS) && __vkIsReady())
+        {
+            NativeHDRSurfaceContainer* hdrContainer = reinterpret_cast<NativeHDRSurfaceContainer*>(malloc(sizeof(NativeHDRSurfaceContainer)));
+            if (hdrContainer)
+            {
+                if (__vkCreateHDRSurface(hdrContainer, win, parsedColorspace,
+                                          (uint32_t)(rect.right - rect.left),
+                                          (uint32_t)(rect.bottom - rect.top)) == EGL_TRUE)
+                {
+                    newSurface->nativeSurfaceContainer.hdr = hdrContainer;
+                }
+                else
+                {
+                    free(hdrContainer);
+                    ReleaseDC(win, hdc);
+                    *error = EGL_BAD_MATCH;
+                    return EGL_FALSE;
+                }
+            }
+        }
+    }
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
 EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface)
 {
-	if (!surface)
-	{
-		return EGL_FALSE;
-	}
-	const NativeSurfaceContainer* nativeSurfaceContainer = &surface->nativeSurfaceContainer;
+    if (!surface)
+    {
+        return EGL_FALSE;
+    }
+    const NativeSurfaceContainer* nativeSurfaceContainer = &surface->nativeSurfaceContainer;
 
-	if (surface->nativeSurfaceContainer.hdr)
-	{
-		__vkDestroyHDRSurface(surface->nativeSurfaceContainer.hdr);
-		free(surface->nativeSurfaceContainer.hdr);
-	}
+    if (surface->nativeSurfaceContainer.hdr)
+    {
+        __vkDestroyHDRSurface(surface->nativeSurfaceContainer.hdr);
+        free(surface->nativeSurfaceContainer.hdr);
+    }
 
-	if (surface->drawToWindow)
-		ReleaseDC(surface->win, nativeSurfaceContainer->hdc);
-	else if (surface->drawToPBuffer)
-	{
-		wglReleasePbufferDCARB(surface->pbuf, surface->nativeSurfaceContainer.hdc);
-		wglDestroyPbufferARB(surface->pbuf);
-	}
-	else if (surface->drawToPixmap)
-	{
-		DeleteDC(nativeSurfaceContainer->hdc);
-	}
+    if (surface->drawToWindow)
+        ReleaseDC(surface->win, nativeSurfaceContainer->hdc);
+    else if (surface->drawToPBuffer)
+    {
+        wglReleasePbufferDCARB(surface->pbuf, surface->nativeSurfaceContainer.hdc);
+        wglDestroyPbufferARB(surface->pbuf);
+    }
+    else if (surface->drawToPixmap)
+    {
+        DeleteDC(nativeSurfaceContainer->hdc);
+    }
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
 EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType pixmap,
-	const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
+    const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error)
 {
-	if (!newSurface || !walkerDpy || !walkerConfig || !error)
-		return EGL_FALSE;
+    if (!newSurface || !walkerDpy || !walkerConfig || !error)
+        return EGL_FALSE;
 
-	if (!pixmap)
-	{
-		*error = EGL_BAD_NATIVE_PIXMAP;
-		return EGL_FALSE;
-	}
+    if (!pixmap)
+    {
+        *error = EGL_BAD_NATIVE_PIXMAP;
+        return EGL_FALSE;
+    }
 
-	EGLint glColorspace = EGL_GL_COLORSPACE_LINEAR;
-	if (attrib_list)
-	{
-		EGLint i = 0;
-		while (attrib_list[i] != EGL_NONE)
-		{
-			EGLint attrib = attrib_list[i];
-			EGLint value  = attrib_list[i + 1];
-			switch (attrib)
-			{
-				case EGL_GL_COLORSPACE:
-					if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB ||
-					    value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT || value == EGL_GL_COLORSPACE_SCRGB_EXT ||
-					    value == EGL_GL_COLORSPACE_BT2020_PQ_EXT || value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
-					    value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
-						glColorspace = value;
-					else
-					{
-						*error = EGL_BAD_ATTRIBUTE;
-						return EGL_FALSE;
-					}
-					break;
-				case EGL_VG_ALPHA_FORMAT:
-				case EGL_VG_COLORSPACE:
-					*error = EGL_BAD_MATCH;
-					return EGL_FALSE;
-				default:
-					*error = EGL_BAD_ATTRIBUTE;
-					return EGL_FALSE;
-			}
-			i += 2;
-		}
-	}
+    EGLint glColorspace = EGL_GL_COLORSPACE_LINEAR;
+    if (attrib_list)
+    {
+        EGLint i = 0;
+        while (attrib_list[i] != EGL_NONE)
+        {
+            EGLint attrib = attrib_list[i];
+            EGLint value  = attrib_list[i + 1];
+            switch (attrib)
+            {
+                case EGL_GL_COLORSPACE:
+                    if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB ||
+                        value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT || value == EGL_GL_COLORSPACE_SCRGB_EXT ||
+                        value == EGL_GL_COLORSPACE_BT2020_PQ_EXT || value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
+                        value == EGL_GL_COLORSPACE_BT2020_HLG_EXT)
+                        glColorspace = value;
+                    else
+                    {
+                        *error = EGL_BAD_ATTRIBUTE;
+                        return EGL_FALSE;
+                    }
+                    break;
+                case EGL_VG_ALPHA_FORMAT:
+                case EGL_VG_COLORSPACE:
+                    *error = EGL_BAD_MATCH;
+                    return EGL_FALSE;
+                default:
+                    *error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+            }
+            i += 2;
+        }
+    }
 
-	BITMAP bm;
-	memset(&bm, 0, sizeof(bm));
-	if (!GetObject(pixmap, sizeof(bm), &bm))
-	{
-		*error = EGL_BAD_NATIVE_PIXMAP;
-		return EGL_FALSE;
-	}
+    BITMAP bm;
+    memset(&bm, 0, sizeof(bm));
+    if (!GetObject(pixmap, sizeof(bm), &bm))
+    {
+        *error = EGL_BAD_NATIVE_PIXMAP;
+        return EGL_FALSE;
+    }
 
-	HDC screenDC = GetDC(NULL);
-	HDC memDC = CreateCompatibleDC(screenDC);
-	ReleaseDC(NULL, screenDC);
-	if (!memDC)
-	{
-		*error = EGL_BAD_ALLOC;
-		return EGL_FALSE;
-	}
+    HDC screenDC = GetDC(NULL);
+    HDC memDC = CreateCompatibleDC(screenDC);
+    ReleaseDC(NULL, screenDC);
+    if (!memDC)
+    {
+        *error = EGL_BAD_ALLOC;
+        return EGL_FALSE;
+    }
 
-	SelectObject(memDC, pixmap);
+    SelectObject(memDC, pixmap);
 
-	PIXELFORMATDESCRIPTOR pfd;
-	memset(&pfd, 0, sizeof(pfd));
-	pfd.nSize = sizeof(pfd);
-	DescribePixelFormat(walkerDpy->display_id, walkerConfig->configId, sizeof(pfd), &pfd);
+    PIXELFORMATDESCRIPTOR pfd;
+    memset(&pfd, 0, sizeof(pfd));
+    pfd.nSize = sizeof(pfd);
+    DescribePixelFormat(walkerDpy->display_id, walkerConfig->configId, sizeof(pfd), &pfd);
 
-	if (!SetPixelFormat(memDC, walkerConfig->configId, &pfd))
-	{
-		DeleteDC(memDC);
-		*error = EGL_BAD_MATCH;
-		return EGL_FALSE;
-	}
+    if (!SetPixelFormat(memDC, walkerConfig->configId, &pfd))
+    {
+        DeleteDC(memDC);
+        *error = EGL_BAD_MATCH;
+        return EGL_FALSE;
+    }
 
-	newSurface->drawToWindow = EGL_FALSE;
-	newSurface->drawToPixmap = EGL_TRUE;
-	newSurface->drawToPBuffer = EGL_FALSE;
-	newSurface->doubleBuffer = EGL_FALSE;
-	newSurface->configId = walkerConfig->configId;
-	newSurface->width = bm.bmWidth;
-	newSurface->height = bm.bmHeight;
-	newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
-	newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
-	newSurface->mipmapLevel = 0;
-	newSurface->mipmapTexture = EGL_FALSE;
-	newSurface->largestPbuffer = EGL_FALSE;
-	newSurface->textureFormat = EGL_NO_TEXTURE;
-	newSurface->textureTarget = EGL_NO_TEXTURE;
-	newSurface->glColorspace = glColorspace;
+    newSurface->drawToWindow = EGL_FALSE;
+    newSurface->drawToPixmap = EGL_TRUE;
+    newSurface->drawToPBuffer = EGL_FALSE;
+    newSurface->doubleBuffer = EGL_FALSE;
+    newSurface->configId = walkerConfig->configId;
+    newSurface->width = bm.bmWidth;
+    newSurface->height = bm.bmHeight;
+    newSurface->swapBehavior = EGL_BUFFER_DESTROYED;
+    newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+    newSurface->mipmapLevel = 0;
+    newSurface->mipmapTexture = EGL_FALSE;
+    newSurface->largestPbuffer = EGL_FALSE;
+    newSurface->textureFormat = EGL_NO_TEXTURE;
+    newSurface->textureTarget = EGL_NO_TEXTURE;
+    newSurface->glColorspace = glColorspace;
 
-	newSurface->initialized = EGL_TRUE;
-	newSurface->destroy = EGL_FALSE;
-	newSurface->pixmap = pixmap;
-	newSurface->nativeSurfaceContainer.hdc = memDC;
-	newSurface->nativeSurfaceContainer.hdr = nullptr;
+    newSurface->initialized = EGL_TRUE;
+    newSurface->destroy = EGL_FALSE;
+    newSurface->pixmap = pixmap;
+    newSurface->nativeSurfaceContainer.hdc = memDC;
+    newSurface->nativeSurfaceContainer.hdr = nullptr;
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
 EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* surface, EGLNativePixmapType target)
 {
-	(void)walkerDpy; (void)surface;
+    (void)walkerDpy; (void)surface;
 
-	if (!target)
-		return EGL_FALSE;
+    if (!target)
+        return EGL_FALSE;
 
-	BITMAP bm;
-	memset(&bm, 0, sizeof(bm));
-	if (!GetObject(target, sizeof(bm), &bm))
-		return EGL_FALSE;
+    BITMAP bm;
+    memset(&bm, 0, sizeof(bm));
+    if (!GetObject(target, sizeof(bm), &bm))
+        return EGL_FALSE;
 
-	GLint viewport[4];
-	glGetIntegerv(GL_VIEWPORT, viewport);
-	GLint width  = viewport[2];
-	GLint height = viewport[3];
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    GLint width  = viewport[2];
+    GLint height = viewport[3];
 
-	if (width <= 0 || height <= 0)
-		return EGL_FALSE;
+    if (width <= 0 || height <= 0)
+        return EGL_FALSE;
 
-	GLsizei stride = (width * 4 + 3) & ~3;
-	GLubyte* pixels = (GLubyte*)malloc((size_t)stride * height);
-	if (!pixels)
-		return EGL_FALSE;
+    GLsizei stride = (width * 4 + 3) & ~3;
+    GLubyte* pixels = reinterpret_cast<GLubyte*>(malloc((size_t)stride * height));
+    if (!pixels)
+        return EGL_FALSE;
 
-	// GL_BGRA = 0x80E1; bottom-up origin matches positive-height DIB
-	glReadPixels(0, 0, width, height, 0x80E1, GL_UNSIGNED_BYTE, pixels);
+    // GL_BGRA = 0x80E1; bottom-up origin matches positive-height DIB
+    glReadPixels(0, 0, width, height, 0x80E1, GL_UNSIGNED_BYTE, pixels);
 
-	BITMAPINFO bi;
-	memset(&bi, 0, sizeof(bi));
-	bi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
-	bi.bmiHeader.biWidth       = width;
-	bi.bmiHeader.biHeight      = height;  // positive = bottom-up, matches GL origin
-	bi.bmiHeader.biPlanes      = 1;
-	bi.bmiHeader.biBitCount    = 32;
-	bi.bmiHeader.biCompression = BI_RGB;
+    BITMAPINFO bi;
+    memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth       = width;
+    bi.bmiHeader.biHeight      = height;  // positive = bottom-up, matches GL origin
+    bi.bmiHeader.biPlanes      = 1;
+    bi.bmiHeader.biBitCount    = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
 
-	HDC screenDC = GetDC(NULL);
-	HDC memDC    = CreateCompatibleDC(screenDC);
-	ReleaseDC(NULL, screenDC);
-	HGDIOBJ oldBmp = SelectObject(memDC, target);
-	SetDIBits(memDC, target, 0, (UINT)height, pixels, &bi, DIB_RGB_COLORS);
-	SelectObject(memDC, oldBmp);
-	DeleteDC(memDC);
-	free(pixels);
+    HDC screenDC = GetDC(NULL);
+    HDC memDC    = CreateCompatibleDC(screenDC);
+    ReleaseDC(NULL, screenDC);
+    HGDIOBJ oldBmp = SelectObject(memDC, target);
+    SetDIBits(memDC, target, 0, (UINT)height, pixels, &bi, DIB_RGB_COLORS);
+    SelectObject(memDC, oldBmp);
+    DeleteDC(memDC);
+    free(pixels);
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname)
 {
-	__eglMustCastToProperFunctionPointerType ptr = NULL;
-	ptr = (__eglMustCastToProperFunctionPointerType) wglGetProcAddress_PTR(procname);
-	if (ptr != NULL)
-		return ptr;
-	// https://www.khronos.org/opengl/wiki/Talk:Platform_specifics:_Windows
-	return (__eglMustCastToProperFunctionPointerType) GetProcAddress(opengl32dll, procname);
+    __eglMustCastToProperFunctionPointerType ptr = NULL;
+    ptr = reinterpret_cast<__eglMustCastToProperFunctionPointerType>(wglGetProcAddress_PTR(procname));
+    if (ptr != NULL)
+        return ptr;
+    // https://www.khronos.org/opengl/wiki/Talk:Platform_specifics:_Windows
+    return reinterpret_cast<__eglMustCastToProperFunctionPointerType>(GetProcAddress(opengl32dll, procname));
 }
 
 EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* error)
 {
-	if (!walkerDpy || !nativeLocalStorageContainer || !error)
-	{
-		return EGL_FALSE;
-	}
+    if (!walkerDpy || !nativeLocalStorageContainer || !error)
+    {
+        return EGL_FALSE;
+    }
 
-	// Create configuration list.
+    // Create configuration list.
 
-	EGLint numberPixelFormats;
+    EGLint numberPixelFormats;
 
-	EGLint attribute = WGL_NUMBER_PIXEL_FORMATS_ARB;
-	if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, 1, 0, 1, &attribute, &numberPixelFormats))
-	{
-		*error = EGL_NOT_INITIALIZED;
+    EGLint attribute = WGL_NUMBER_PIXEL_FORMATS_ARB;
+    if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, 1, 0, 1, &attribute, &numberPixelFormats))
+    {
+        *error = EGL_NOT_INITIALIZED;
 
-		return EGL_FALSE;
-	}
+        return EGL_FALSE;
+    }
 
-	const char* extensions_str = wglGetExtensionsStringARB(nativeLocalStorageContainer->hdc);
+    const char* extensions_str = wglGetExtensionsStringARB(nativeLocalStorageContainer->hdc);
 
-	const int render_texture_supported = strstr(extensions_str, "WGL_ARB_render_texture") != NULL;
-	const int ES_supported = strstr(extensions_str, "WGL_EXT_create_context_es_profile") != NULL;
-	const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+    const int render_texture_supported = strstr(extensions_str, "WGL_ARB_render_texture") != NULL;
+    const int ES_supported = strstr(extensions_str, "WGL_EXT_create_context_es_profile") != NULL;
+    const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
 
-	walkerDpy->srgbFramebufferSupported =
-		(strstr(extensions_str, "WGL_ARB_framebuffer_sRGB") != NULL ||
-		 strstr(extensions_str, "WGL_EXT_framebuffer_sRGB") != NULL) ? EGL_TRUE : EGL_FALSE;
+    walkerDpy->srgbFramebufferSupported =
+        (strstr(extensions_str, "WGL_ARB_framebuffer_sRGB") != NULL ||
+         strstr(extensions_str, "WGL_EXT_framebuffer_sRGB") != NULL) ? EGL_TRUE : EGL_FALSE;
 
-	// Query HDR colorspace support from the dummy window's display
-	walkerDpy->supportedHDRColorspaces = __vkQueryHDRColorspaces(nativeLocalStorageContainer->hwnd);
+    // Query HDR colorspace support from the dummy window's display
+    walkerDpy->supportedHDRColorspaces = __vkQueryHDRColorspaces(nativeLocalStorageContainer->hwnd);
 
-	EGLConfigImpl* lastConfig = 0;
-	for (EGLint currentPixelFormat = 1; currentPixelFormat <= numberPixelFormats; currentPixelFormat++)
-	{
-		EGLint value;
+    EGLConfigImpl* lastConfig = 0;
+    for (EGLint currentPixelFormat = 1; currentPixelFormat <= numberPixelFormats; currentPixelFormat++)
+    {
+        EGLint value;
 
-		attribute = WGL_SUPPORT_OPENGL_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &value))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_SUPPORT_OPENGL_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &value))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
-		if (!value)
-		{
-			continue;
-		}
+            return EGL_FALSE;
+        }
+        if (!value)
+        {
+            continue;
+        }
 
-		attribute = WGL_PIXEL_TYPE_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &value))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_PIXEL_TYPE_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &value))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
-		if (value != WGL_TYPE_RGBA_ARB)
-		{
-			continue;
-		}
+            return EGL_FALSE;
+        }
+        if (value != WGL_TYPE_RGBA_ARB)
+        {
+            continue;
+        }
 
-		//
+        //
 
-		EGLConfigImpl* newConfig = (EGLConfigImpl*)malloc(sizeof(EGLConfigImpl));
-		if (!newConfig)
-		{
-			*error = EGL_NOT_INITIALIZED;
+        EGLConfigImpl* newConfig = reinterpret_cast<EGLConfigImpl*>(malloc(sizeof(EGLConfigImpl)));
+        if (!newConfig)
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
-		_eglInternalSetDefaultConfig(newConfig);
+            return EGL_FALSE;
+        }
+        _eglInternalSetDefaultConfig(newConfig);
 
-		// Store in the same order as received.
-		newConfig->next = 0;
-		if (lastConfig != 0)
-		{
-			lastConfig->next = newConfig;
-		}
-		else
-		{
-			walkerDpy->rootConfig = newConfig;
-		}
-		lastConfig = newConfig;
+        // Store in the same order as received.
+        newConfig->next = 0;
+        if (lastConfig != 0)
+        {
+            lastConfig->next = newConfig;
+        }
+        else
+        {
+            walkerDpy->rootConfig = newConfig;
+        }
+        lastConfig = newConfig;
 
-		//
+        //
 
-		attribute = WGL_DRAW_TO_WINDOW_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToWindow))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_DRAW_TO_WINDOW_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToWindow))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_DRAW_TO_BITMAP_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToPixmap))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_DRAW_TO_BITMAP_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToPixmap))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_DRAW_TO_PBUFFER_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToPBuffer))
-		{
-			newConfig->drawToPBuffer = EGL_FALSE;
-		}
+        attribute = WGL_DRAW_TO_PBUFFER_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToPBuffer))
+        {
+            newConfig->drawToPBuffer = EGL_FALSE;
+        }
 
-		attribute = WGL_DOUBLE_BUFFER_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->doubleBuffer))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_DOUBLE_BUFFER_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->doubleBuffer))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		//
-		newConfig->conformant = (EGL_OPENGL_BIT | ES_mask);
-		newConfig->renderableType = (EGL_OPENGL_BIT | ES_mask);
-		newConfig->surfaceType = 0;
-		if (newConfig->drawToWindow)
-		{
-			newConfig->surfaceType |= EGL_WINDOW_BIT;
-		}
-		if (newConfig->drawToPixmap)
-		{
-			newConfig->surfaceType |= EGL_PIXMAP_BIT;
-		}
-		if (newConfig->drawToPBuffer)
-		{
-			newConfig->surfaceType |= EGL_PBUFFER_BIT;
-		}
-		newConfig->colorBufferType = EGL_RGB_BUFFER;
-		newConfig->configId = currentPixelFormat;
+        //
+        newConfig->conformant = (EGL_OPENGL_BIT | ES_mask);
+        newConfig->renderableType = (EGL_OPENGL_BIT | ES_mask);
+        newConfig->surfaceType = 0;
+        if (newConfig->drawToWindow)
+        {
+            newConfig->surfaceType |= EGL_WINDOW_BIT;
+        }
+        if (newConfig->drawToPixmap)
+        {
+            newConfig->surfaceType |= EGL_PIXMAP_BIT;
+        }
+        if (newConfig->drawToPBuffer)
+        {
+            newConfig->surfaceType |= EGL_PBUFFER_BIT;
+        }
+        newConfig->colorBufferType = EGL_RGB_BUFFER;
+        newConfig->configId = currentPixelFormat;
 
-		attribute = WGL_COLOR_BITS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bufferSize))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_COLOR_BITS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bufferSize))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_RED_BITS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->redSize))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_RED_BITS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->redSize))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_GREEN_BITS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->greenSize))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_GREEN_BITS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->greenSize))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_BLUE_BITS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->blueSize))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_BLUE_BITS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->blueSize))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_ALPHA_BITS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->alphaSize))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_ALPHA_BITS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->alphaSize))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_DEPTH_BITS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->depthSize))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_DEPTH_BITS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->depthSize))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_STENCIL_BITS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->stencilSize))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_STENCIL_BITS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->stencilSize))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
 
-		//
+        //
 
-		attribute = WGL_SAMPLE_BUFFERS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->sampleBuffers))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_SAMPLE_BUFFERS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->sampleBuffers))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_SAMPLES_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->samples))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_SAMPLES_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->samples))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		//
+        //
 
-		attribute = WGL_BIND_TO_TEXTURE_RGB_ARB;
-		if (render_texture_supported &&
+        attribute = WGL_BIND_TO_TEXTURE_RGB_ARB;
+        if (render_texture_supported &&
         !wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGB))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
-		newConfig->bindToTextureRGB = newConfig->bindToTextureRGB ? EGL_TRUE : EGL_FALSE;
+            return EGL_FALSE;
+        }
+        newConfig->bindToTextureRGB = newConfig->bindToTextureRGB ? EGL_TRUE : EGL_FALSE;
 
-		attribute = WGL_BIND_TO_TEXTURE_RGBA_ARB;
-		if (render_texture_supported &&
+        attribute = WGL_BIND_TO_TEXTURE_RGBA_ARB;
+        if (render_texture_supported &&
         !wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGBA))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
-		newConfig->bindToTextureRGBA = newConfig->bindToTextureRGBA ? EGL_TRUE : EGL_FALSE;
+            return EGL_FALSE;
+        }
+        newConfig->bindToTextureRGBA = newConfig->bindToTextureRGBA ? EGL_TRUE : EGL_FALSE;
 
-		//
+        //
 
-		attribute = WGL_MAX_PBUFFER_PIXELS_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferPixels))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_MAX_PBUFFER_PIXELS_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferPixels))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_MAX_PBUFFER_WIDTH_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferWidth))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_MAX_PBUFFER_WIDTH_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferWidth))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_MAX_PBUFFER_HEIGHT_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferHeight))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_MAX_PBUFFER_HEIGHT_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferHeight))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		//
+        //
 
-		attribute = WGL_TRANSPARENT_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentType))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_TRANSPARENT_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentType))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
-		newConfig->transparentType = newConfig->transparentType ? EGL_TRANSPARENT_RGB : EGL_NONE;
+            return EGL_FALSE;
+        }
+        newConfig->transparentType = newConfig->transparentType ? EGL_TRANSPARENT_RGB : EGL_NONE;
 
-		attribute = WGL_TRANSPARENT_RED_VALUE_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentRedValue))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_TRANSPARENT_RED_VALUE_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentRedValue))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_TRANSPARENT_GREEN_VALUE_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentGreenValue))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_TRANSPARENT_GREEN_VALUE_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentGreenValue))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		attribute = WGL_TRANSPARENT_BLUE_VALUE_ARB;
-		if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentBlueValue))
-		{
-			*error = EGL_NOT_INITIALIZED;
+        attribute = WGL_TRANSPARENT_BLUE_VALUE_ARB;
+        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentBlueValue))
+        {
+            *error = EGL_NOT_INITIALIZED;
 
-			return EGL_FALSE;
-		}
+            return EGL_FALSE;
+        }
 
-		newConfig->matchNativePixmap = EGL_NONE;
-		newConfig->nativeRenderable = EGL_DONT_CARE; // ???
+        newConfig->matchNativePixmap = EGL_NONE;
+        newConfig->nativeRenderable = EGL_DONT_CARE; // ???
 
-		// Query configCaveat from acceleration type.
-		int accelValue = 0;
-		attribute = WGL_ACCELERATION_ARB;
-		if (wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &accelValue))
-		{
-			if (accelValue == WGL_NO_ACCELERATION_ARB)
-				newConfig->configCaveat = EGL_SLOW_CONFIG;
-			else if (accelValue == WGL_GENERIC_ACCELERATION_ARB)
-				newConfig->configCaveat = EGL_SLOW_CONFIG;
-			else
-				newConfig->configCaveat = EGL_NONE;
-		}
-		else
-		{
-			newConfig->configCaveat = EGL_NONE;
-		}
+        // Query configCaveat from acceleration type.
+        int accelValue = 0;
+        attribute = WGL_ACCELERATION_ARB;
+        if (wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &accelValue))
+        {
+            if (accelValue == WGL_NO_ACCELERATION_ARB)
+                newConfig->configCaveat = EGL_SLOW_CONFIG;
+            else if (accelValue == WGL_GENERIC_ACCELERATION_ARB)
+                newConfig->configCaveat = EGL_SLOW_CONFIG;
+            else
+                newConfig->configCaveat = EGL_NONE;
+        }
+        else
+        {
+            newConfig->configCaveat = EGL_NONE;
+        }
 
-		// WGL has no concept of overlay/underlay levels.
-		newConfig->level = 0;
+        // WGL has no concept of overlay/underlay levels.
+        newConfig->level = 0;
 
-		// Reasonable desktop defaults for swap interval range.
-		newConfig->minSwapInterval = 0;
-		newConfig->maxSwapInterval = 1;
-	}
+        // Reasonable desktop defaults for swap interval range.
+        newConfig->minSwapInterval = 0;
+        newConfig->maxSwapInterval = 1;
+    }
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }
 
-EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeSurfaceContainer, const EGLint* attribList)
+EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList)
 {
-	if (!walkerDpy || !nativeContextContainer || !nativeSurfaceContainer)
-	{
-		return EGL_FALSE;
-	}
+    if (!walkerDpy || !nativeContextContainer || !nativeSurfaceContainer)
+    {
+        return EGL_FALSE;
+    }
 
-	nativeContextContainer->ctx = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeSurfaceContainer ? sharedNativeSurfaceContainer->ctx : 0, attribList);
-	DWORD err = GetLastError();
+    nativeContextContainer->ctx = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, attribList);
+    DWORD err = GetLastError();
 
-	return nativeContextContainer->ctx != 0;
+    return nativeContextContainer->ctx != 0;
 }
 
 EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
 {
-	if (!walkerDpy || (nativeContextContainer && !nativeSurfaceContainer))
-	{
-		return EGL_FALSE;
-	}
+    if (!walkerDpy || (nativeContextContainer && !nativeSurfaceContainer))
+    {
+        return EGL_FALSE;
+    }
 
-	if (!nativeContextContainer)
-		return (EGLBoolean)wglMakeCurrent_PTR(NULL, NULL);
+    if (!nativeContextContainer)
+        return (EGLBoolean)wglMakeCurrent_PTR(NULL, NULL);
 
-	BOOL res = (EGLBoolean)wglMakeCurrent_PTR(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
-	return res;
+    BOOL res = (EGLBoolean)wglMakeCurrent_PTR(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
+    return res;
 }
 
 EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface)
 {
-	if (!walkerDpy || !walkerSurface)
-	{
-		return EGL_FALSE;
-	}
+    if (!walkerDpy || !walkerSurface)
+    {
+        return EGL_FALSE;
+    }
 
-	if (walkerSurface->nativeSurfaceContainer.hdr)
-		return __vkPresent(walkerSurface->nativeSurfaceContainer.hdr);
+    if (walkerSurface->nativeSurfaceContainer.hdr)
+        return __vkPresent(walkerSurface->nativeSurfaceContainer.hdr);
 
-	return (EGLBoolean)SwapBuffers(walkerSurface->nativeSurfaceContainer.hdc);
+    return (EGLBoolean)SwapBuffers(walkerSurface->nativeSurfaceContainer.hdc);
 }
 
 EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 {
-	if (!walkerDpy)
-	{
-		return EGL_FALSE;
-	}
+    if (!walkerDpy)
+    {
+        return EGL_FALSE;
+    }
 
-	return (EGLBoolean)wglSwapIntervalEXT(interval);
+    return (EGLBoolean)wglSwapIntervalEXT(interval);
 }
 
 EGLBoolean __bindTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint buffer)
 {
-	if (!walkerDpy || !walkerSurface)
-		return EGL_FALSE;
-	if (!wglBindTexImageARB_PTR)
-		return EGL_FALSE;
+    if (!walkerDpy || !walkerSurface)
+        return EGL_FALSE;
+    if (!wglBindTexImageARB_PTR)
+        return EGL_FALSE;
 
-	int wglBuffer = (buffer == EGL_BACK_BUFFER) ? WGL_BACK_LEFT_ARB : WGL_FRONT_LEFT_ARB;
-	return (EGLBoolean)wglBindTexImageARB_PTR(walkerSurface->pbuf, wglBuffer);
+    int wglBuffer = (buffer == EGL_BACK_BUFFER) ? WGL_BACK_LEFT_ARB : WGL_FRONT_LEFT_ARB;
+    return (EGLBoolean)wglBindTexImageARB_PTR(walkerSurface->pbuf, wglBuffer);
 }
 
 EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint buffer)
 {
-	if (!walkerDpy || !walkerSurface)
-		return EGL_FALSE;
-	if (!wglReleaseTexImageARB_PTR)
-		return EGL_FALSE;
+    if (!walkerDpy || !walkerSurface)
+        return EGL_FALSE;
+    if (!wglReleaseTexImageARB_PTR)
+        return EGL_FALSE;
 
-	int wglBuffer = (buffer == EGL_BACK_BUFFER) ? WGL_BACK_LEFT_ARB : WGL_FRONT_LEFT_ARB;
-	return (EGLBoolean)wglReleaseTexImageARB_PTR(walkerSurface->pbuf, wglBuffer);
+    int wglBuffer = (buffer == EGL_BACK_BUFFER) ? WGL_BACK_LEFT_ARB : WGL_FRONT_LEFT_ARB;
+    return (EGLBoolean)wglReleaseTexImageARB_PTR(walkerSurface->pbuf, wglBuffer);
 }
 
-EGLBoolean __getPlatformDependentHandles(void* _out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
+EGLBoolean __getPlatformDependentHandles(void* out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
 {
-	if (!nativeSurfaceContainer || !nativeContextContainer)
-		return EGL_FALSE;
+    if (!nativeSurfaceContainer || !nativeContextContainer)
+        return EGL_FALSE;
 
-	EGLContextInternals* out = (EGLContextInternals*) _out;
+    EGLContextInternals* handles = reinterpret_cast<EGLContextInternals*>(out);
 
-	out->display = walkerDpy->display_id;
-	out->context = nativeContextContainer->ctx;
-	out->surface = nativeSurfaceContainer->hdc;
+    handles->display = walkerDpy->display_id;
+    handles->context = nativeContextContainer->ctx;
+    handles->surface = nativeSurfaceContainer->hdc;
 
-	return EGL_TRUE;
+    return EGL_TRUE;
 }

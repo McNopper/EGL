@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <atomic>
 #include <thread>
@@ -37,107 +37,107 @@ extern __PFN_glGetSynciv glGetSynciv_PTR;
 
 struct GlobalStorage
 {
-	EGLDisplayImpl* rootDpy = nullptr;
+    EGLDisplayImpl* rootDpy = nullptr;
 
-	void rootDpy_readacq()
-	{
-		lock_read(lock_dpy);
-	}
-	void rootDpy_writeacq()
-	{
-		lock_write(lock_dpy);
-	}
-	void rootDpy_readrel()
-	{
-		unlock_read(lock_dpy);
-	}
-	void rootDpy_writerel()
-	{
-		unlock_write(lock_dpy);
-	}
+    void rootDpy_readacq()
+    {
+        lock_read(lock_dpy);
+    }
+    void rootDpy_writeacq()
+    {
+        lock_write(lock_dpy);
+    }
+    void rootDpy_readrel()
+    {
+        unlock_read(lock_dpy);
+    }
+    void rootDpy_writerel()
+    {
+        unlock_write(lock_dpy);
+    }
 
-	auto dummy_read()
-	{
-		lock_read(lock_dummy);
-		auto d = dummy;
-		unlock_read(lock_dummy);
-		return d;
-	}
-	void dummy_write(NativeLocalStorageContainer d)
-	{
-		lock_write(lock_dummy);
-		dummy = d;
-		unlock_write(lock_dummy);
-	}
+    auto dummy_read()
+    {
+        lock_read(lock_dummy);
+        auto d = dummy;
+        unlock_read(lock_dummy);
+        return d;
+    }
+    void dummy_write(NativeLocalStorageContainer d)
+    {
+        lock_write(lock_dummy);
+        dummy = d;
+        unlock_write(lock_dummy);
+    }
 
-	struct ReadLock
-	{
-		ReadLock(GlobalStorage* gs) : parent(gs)
-		{
-			parent->rootDpy_readacq();
-		}
-		~ReadLock()
-		{
-			parent->rootDpy_readrel();
-		}
+    struct ReadLock
+    {
+        explicit ReadLock(GlobalStorage* gs) : parent(gs)
+        {
+            parent->rootDpy_readacq();
+        }
+        ~ReadLock()
+        {
+            parent->rootDpy_readrel();
+        }
 
-		GlobalStorage* parent;
-	};
-	struct WriteLock
-	{
-		WriteLock(GlobalStorage* gs) : parent(gs)
-		{
-			parent->rootDpy_writeacq();
-		}
-		~WriteLock()
-		{
-			parent->rootDpy_writerel();
-		}
+        GlobalStorage* parent;
+    };
+    struct WriteLock
+    {
+        explicit WriteLock(GlobalStorage* gs) : parent(gs)
+        {
+            parent->rootDpy_writeacq();
+        }
+        ~WriteLock()
+        {
+            parent->rootDpy_writerel();
+        }
 
-		GlobalStorage* parent;
-	};
+        GlobalStorage* parent;
+    };
 
-	ReadLock  placeRootDpy_readlock() { return this; }
-	WriteLock placeRootDpy_writelock() { return this; }
+    ReadLock  placeRootDpy_readlock() { return ReadLock(this); }
+    WriteLock placeRootDpy_writelock() { return WriteLock(this); }
 
-	GlobalStorage()
-	{
-		memset(&dummy, 0, sizeof(dummy));
-	}
+    GlobalStorage()
+    {
+        memset(&dummy, 0, sizeof(dummy));
+    }
 
 private:
-	NativeLocalStorageContainer dummy;
+    NativeLocalStorageContainer dummy;
 
-	std::atomic_uint32_t lock_dpy = 0u;
-	std::atomic_uint32_t lock_dummy = 0u;
+    std::atomic_uint32_t lock_dpy = 0u;
+    std::atomic_uint32_t lock_dummy = 0u;
 
-	static void lock_read(std::atomic_uint32_t& c)
-	{
-		if (++c > LOCK_WRITE_VALUE)
-		{
-			while (c >= LOCK_WRITE_VALUE)
-				std::this_thread::yield();
-		}
-	}
-	static void unlock_read(std::atomic_uint32_t& c)
-	{
-		--c;
-	}
-	static void lock_write(std::atomic_uint32_t& c)
-	{
-		uint32_t expected = 0u;
-		while (!c.compare_exchange_strong(expected, LOCK_WRITE_VALUE))
-		{
-			expected = 0u;
-			std::this_thread::yield();
-		}
-	}
-	static void unlock_write(std::atomic_uint32_t& c)
-	{
-		c -= LOCK_WRITE_VALUE;
-	}
+    static void lock_read(std::atomic_uint32_t& c)
+    {
+        if (++c > LOCK_WRITE_VALUE)
+        {
+            while (c >= LOCK_WRITE_VALUE)
+                std::this_thread::yield();
+        }
+    }
+    static void unlock_read(std::atomic_uint32_t& c)
+    {
+        --c;
+    }
+    static void lock_write(std::atomic_uint32_t& c)
+    {
+        uint32_t expected = 0u;
+        while (!c.compare_exchange_strong(expected, LOCK_WRITE_VALUE))
+        {
+            expected = 0u;
+            std::this_thread::yield();
+        }
+    }
+    static void unlock_write(std::atomic_uint32_t& c)
+    {
+        c -= LOCK_WRITE_VALUE;
+    }
 
-	constexpr inline static uint32_t LOCK_WRITE_VALUE = 0xdeadbeefu;
+    constexpr inline static uint32_t LOCK_WRITE_VALUE = 0xdeadbeefu;
 };
 
 typedef std::lock_guard<std::mutex> guard_t;
