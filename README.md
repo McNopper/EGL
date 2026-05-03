@@ -240,12 +240,15 @@ egl.c                     Public C API (thin shims, no logic)
   └── egl_internal.h       Backend interface declarations (implemented by platform backends)
   └── egl_common.h         Shared internal types and helpers
   └── egl_windows_vk.h     Windows Vulkan HDR — internal declarations for egl_windows_vk.cpp
+  └── egl_linux_vk.h       Linux Vulkan HDR — internal declarations for egl_linux_vk.cpp
   └── wglext.h             WGL extension prototypes (Windows)
 
   Platform backends (implement the functions declared in egl_internal.h):
   └── egl_windows.cpp      Windows — WGL
   └── egl_windows_vk.cpp   Windows — Vulkan HDR presentation
   └── egl_x11_glx.cpp      Linux / Unix — X11 + GLX
+  └── egl_wayland.cpp      Linux / Unix — Wayland + xdg-shell (paired with egl_linux_vk.cpp)
+  └── egl_linux_vk.cpp     Linux — Vulkan HDR presentation (shared by X11+VK and Wayland)
   └── egl_<platform>.cpp   Future backends
 ```
 
