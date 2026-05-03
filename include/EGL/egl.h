@@ -289,7 +289,6 @@ typedef void *EGLImage;
 #define EGL_SYNC_CONDITION                0x30F8
 #define EGL_SIGNALED                      0x30F2
 #define EGL_UNSIGNALED                    0x30F3
-#define EGL_WAIT_FAILED                   0x30F4
 #define EGL_SYNC_FLUSH_COMMANDS_BIT       0x0001
 #define EGL_FOREVER                       0xFFFFFFFFFFFFFFFFull
 #define EGL_TIMEOUT_EXPIRED               0x30F5

@@ -19,6 +19,13 @@
 #define GL_SYNC_FLUSH_COMMANDS_BIT_GL     0x00000001
 #define GL_TIMEOUT_IGNORED_GL             0xFFFFFFFFFFFFFFFFull
 
+// Internal token used by our eglClientWaitSync implementation to signal a wait failure.
+// EGL 1.5 reserves 0x30F4 but does not expose it as a public define; it's referenced as
+// EGL_WAIT_FAILED_KHR by EGL_KHR_reusable_sync. Defined here to keep <EGL/egl.h> unmodified.
+#ifndef EGL_WAIT_FAILED
+#define EGL_WAIT_FAILED                   0x30F4
+#endif
+
 typedef void(*__PFN_glFinish)();
 typedef void* (*__PFN_glFenceSync)(GLenum condition, GLbitfield flags);
 typedef void  (*__PFN_glDeleteSync)(void* sync);
