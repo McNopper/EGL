@@ -742,7 +742,7 @@ static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalSt
 static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
     if (platform == EGL_PLATFORM_WAYLAND_EXT || platform == EGL_PLATFORM_WAYLAND_KHR)
-        { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
+        { *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display)); return EGL_TRUE; }
     return EGL_FALSE;
 }
 

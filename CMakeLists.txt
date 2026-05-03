@@ -11,6 +11,7 @@ if(WIN32)
     set(EGL_PLATFORM_SOURCES
         ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp
         ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows_vk.cpp)
+    set(EGL_BACKEND_SUFFIX "_Windows_WGL_VK")
 
 elseif(EMSCRIPTEN)
     # WebAssembly / Emscripten — future egl_emscripten.cpp backend
@@ -82,14 +83,17 @@ elseif(UNIX)
         set(EGL_PLATFORM_SOURCES
             ${CMAKE_CURRENT_LIST_DIR}/src/egl_wayland.cpp
             ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
+        set(EGL_BACKEND_SUFFIX "_Linux_Wayland_VK")
     elseif(GBM_PLATFORM)
         message(STATUS "EGL: GBM/DRM backend not yet implemented")
         add_compile_definitions(__GBM__)
         set(EGL_PLATFORM_SOURCES "")
+        set(EGL_BACKEND_SUFFIX "_Linux_GBM")
     elseif(OZONE_PLATFORM)
         message(STATUS "EGL: Ozone backend not yet implemented")
         add_compile_definitions(USE_OZONE)
         set(EGL_PLATFORM_SOURCES "")
+        set(EGL_BACKEND_SUFFIX "_Linux_Ozone")
     else()
         message(STATUS "EGL: X11/GLX backend (default Unix)")
         cmake_policy(SET CMP0072 NEW)
@@ -104,9 +108,11 @@ elseif(UNIX)
             set(EGL_PLATFORM_SOURCES
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
+            set(EGL_BACKEND_SUFFIX "_Linux_X11_GLX_VK")
         else()
             set(EGL_PLATFORM_SOURCES
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp)
+            set(EGL_BACKEND_SUFFIX "_Linux_X11_GLX")
         endif()
     endif()
 

@@ -111,4 +111,12 @@ void __closeDisplay(EGLNativeDisplayType nativeDpy)
         XCloseDisplay(reinterpret_cast<Display*>(nativeDpy));
 }
 
-const char* __osName() { return "Linux"; }
+const char* __osName()       { return "Linux"; }
+const char* __windowingName() { return "X11"; }
+const char* __backendName()  {
+#ifdef LINUX_VK
+    return "GLX_VK";
+#else
+    return "GLX";
+#endif
+}

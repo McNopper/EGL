@@ -103,4 +103,6 @@ void __destroyWindow(__NativeWindow* win)
 
 void __closeDisplay(EGLNativeDisplayType) {}
 
-const char* __osName() { return "Windows"; }
+const char* __osName()       { return "Windows"; }
+const char* __windowingName() { return "WGL"; }
+const char* __backendName()  { return "VK"; }

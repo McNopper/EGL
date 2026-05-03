@@ -38,6 +38,12 @@ void __closeDisplay(EGLNativeDisplayType dpy);
 // Return the OS name, e.g. "Windows" or "Linux".
 const char* __osName();
 
+// Return the windowing system name, e.g. "WGL", "X11", "Wayland".
+const char* __windowingName();
+
+// Return the rendering/present backend name, e.g. "VK", "GLX", "GLX+VK".
+const char* __backendName();
+
 static inline bool ext_supported(const char* exts, const char* ext)
 {
     if (!exts) return false;

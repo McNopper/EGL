@@ -35,6 +35,7 @@
 
 #include "egl_linux_vk.h"
 #include "egl_common.h"
+#include <GL/glext.h>
 #include <vector>
 #include <algorithm>
 #include <unistd.h>
@@ -50,31 +51,48 @@ typedef VkResult (VKAPI_PTR *PFN_vkSetHdrMetadataEXT_t)(VkDevice, uint32_t, cons
 typedef VkResult (VKAPI_PTR *PFN_vkGetMemoryFdKHR_t)(VkDevice, const VkMemoryGetFdInfoKHR*, int*);
 typedef VkResult (VKAPI_PTR *PFN_vkGetSemaphoreFdKHR_t)(VkDevice, const VkSemaphoreGetFdInfoKHR*, int*);
 
-// ---- GL interop function pointer types ----
+// ---- GL interop function pointer types (use system <GL/glext.h> definitions where available) ----
 
+#ifndef GL_EXT_memory_object
 typedef void (APIENTRY* PFNGLCREATEMEMORYOBJECTSEXTPROC)(GLsizei n, GLuint* memoryObjects);
 typedef void (APIENTRY* PFNGLDELETEMEMORYOBJECTSEXTPROC)(GLsizei n, const GLuint* memoryObjects);
-typedef void (APIENTRY* PFNGLIMPORTMEMORYFDEXTPROC)(GLuint memory, unsigned long long size, GLenum handleType, int fd);
-typedef void (APIENTRY* PFNGLTEXSTORAGEMEM2DEXTPROC)(GLenum target, GLsizei levels, GLenum internalFormat, GLsizei width, GLsizei height, GLuint memory, unsigned long long offset);
+typedef void (APIENTRY* PFNGLIMPORTMEMORYFDEXTPROC)(GLuint memory, GLuint64 size, GLenum handleType, GLint fd);
+typedef void (APIENTRY* PFNGLTEXSTORAGEMEM2DEXTPROC)(GLenum target, GLsizei levels, GLenum internalFormat, GLsizei width, GLsizei height, GLuint memory, GLuint64 offset);
+#endif
+
+#ifndef GL_EXT_semaphore
 typedef void (APIENTRY* PFNGLGENSEMAPHORESEXTPROC)(GLsizei n, GLuint* semaphores);
 typedef void (APIENTRY* PFNGLDELETESEMAPHORESEXTPROC)(GLsizei n, const GLuint* semaphores);
-typedef void (APIENTRY* PFNGLIMPORTSEMAPHOREFDEXTPROC)(GLuint semaphore, GLenum handleType, int fd);
+typedef void (APIENTRY* PFNGLIMPORTSEMAPHOREFDEXTPROC)(GLuint semaphore, GLenum handleType, GLint fd);
 typedef void (APIENTRY* PFNGLSIGNALSEMAPHOREEXTPROC)(GLuint semaphore, GLuint numBufferBarriers, const GLuint* buffers, GLuint numTextureBarriers, const GLuint* textures, const GLenum* dstLayouts);
 typedef void (APIENTRY* PFNGLWAITSEMAPHOREEXTPROC)(GLuint semaphore, GLuint numBufferBarriers, const GLuint* buffers, GLuint numTextureBarriers, const GLuint* textures, const GLenum* srcLayouts);
+#endif
 
-// GL FBO function pointer types (GL 3.0 core)
+// GL FBO function pointer types (GL 3.0 core — may be in system headers)
+#ifndef GL_ARB_framebuffer_object
 typedef void (APIENTRY* PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint* framebuffers);
 typedef void (APIENTRY* PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei n, const GLuint* framebuffers);
 typedef void (APIENTRY* PFNGLBINDFRAMEBUFFERPROC)(GLenum target, GLuint framebuffer);
 typedef void (APIENTRY* PFNGLFRAMEBUFFERTEXTURE2DPROC)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
 typedef void (APIENTRY* PFNGLBLITFRAMEBUFFERPROC)(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
+#endif
 
-// GL interop constants
-#define GL_HANDLE_TYPE_OPAQUE_FD_EXT      0x9586u
-#define GL_LAYOUT_GENERAL_EXT             0x958Du
-#define GL_READ_FRAMEBUFFER               0x8CA8u
-#define GL_DRAW_FRAMEBUFFER               0x8CA9u
-#define GL_COLOR_ATTACHMENT0              0x8CE0u
+// GL interop constants — use system definitions where available
+#ifndef GL_HANDLE_TYPE_OPAQUE_FD_EXT
+#  define GL_HANDLE_TYPE_OPAQUE_FD_EXT    0x9586u
+#endif
+#ifndef GL_LAYOUT_GENERAL_EXT
+#  define GL_LAYOUT_GENERAL_EXT           0x958Du
+#endif
+#ifndef GL_READ_FRAMEBUFFER
+#  define GL_READ_FRAMEBUFFER             0x8CA8u
+#endif
+#ifndef GL_DRAW_FRAMEBUFFER
+#  define GL_DRAW_FRAMEBUFFER             0x8CA9u
+#endif
+#ifndef GL_COLOR_ATTACHMENT0
+#  define GL_COLOR_ATTACHMENT0            0x8CE0u
+#endif
 
 // ---- Vulkan singleton globals (one device shared across all surfaces) ----
 

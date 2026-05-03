@@ -288,4 +288,6 @@ void __closeDisplay(EGLNativeDisplayType nativeDpy)
         wl_display_disconnect(reinterpret_cast<struct wl_display*>(nativeDpy));
 }
 
-const char* __osName() { return "Linux"; }
+const char* __osName()       { return "Linux"; }
+const char* __windowingName() { return "Wayland"; }
+const char* __backendName()  { return "VK"; }

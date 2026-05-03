@@ -68,7 +68,7 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
     eglGetConfigAttrib(app->dpy, cfg, EGL_NATIVE_VISUAL_ID, &visual_id);
 
     char full_title[256];
-    snprintf(full_title, sizeof(full_title), "%s [%s]", title, __osName());
+    snprintf(full_title, sizeof(full_title), "%s [%s/%s/%s]", title, __osName(), __windowingName(), __backendName());
 
     app->win = __createWindow(app->native_dpy, visual_id, width, height, full_title);
     if (!app->win)

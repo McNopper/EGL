@@ -3,10 +3,16 @@
 .cproject
 .settings/
 
-### CMake
+### CMake build directories
 build/
 build-linux/
+build_x11/
+build_x11vk/
+build_wl/
 bin/
+bin_x11/
+bin_x11vk/
+bin_wl/
 lib/
 out/
 CMakeCache.txt
