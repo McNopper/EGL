@@ -140,24 +140,44 @@ typedef void* NativePbufferType;
 
 #elif defined(WL_EGL_PLATFORM)
 
-// Wayland — EGL native — future egl_wayland.cpp backend
+// Wayland — GLX via XWayland for GL context + Vulkan for all presentation.
+// wl_egl_window is our native implementation (eglplatform.h maps EGLNativeWindowType to it).
+#include <X11/X.h>
+#include <GL/glx.h>
+#define CONTEXT_ATTRIB_LIST_SIZE 11
+
 struct wl_display;
-struct wl_egl_window;
-#define CONTEXT_ATTRIB_LIST_SIZE 13
+struct wl_compositor;
+struct wl_surface;
+
+// Our native wl_egl_window (matches EGLNativeWindowType from eglplatform.h)
+struct wl_egl_window {
+    struct wl_surface* surface;
+    int                width;
+    int                height;
+};
+
+// Forward declaration; full definition is in egl_linux_vk.h
+typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
 typedef struct _NativeSurfaceContainer {
-    struct wl_egl_window* window;
+    GLXPbuffer             glxPbuffer;  // offscreen GL drawable (XWayland)
+    GLXFBConfig            glxConfig;
+    struct wl_egl_window*  eglWindow;   // Wayland window; eglWindow->surface used for VK
+    NativeHDRSurfaceContainer* vk;      // always non-NULL for Wayland surfaces
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
-    void* ctx;                // EGLContext from platform libEGL or Mesa
+    GLXContext ctx;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
-    struct wl_display* display;
+    Display*   x11Display;  // XWayland display (for GLX)
+    Window     x11Window;   // dummy X11 window (for bootstrap)
+    GLXContext ctx;
 } NativeLocalStorageContainer;
 
-typedef void* NativePbufferType;
+typedef GLXPbuffer NativePbufferType;
 
 #elif defined(__GBM__)
 
@@ -226,14 +246,18 @@ typedef intptr_t NativePbufferType;
 
 #elif defined(USE_X11)
 
-// X11 explicit — GLX — future egl_x11_glx.cpp backend
+// X11 explicit — GLX backend (egl_x11_glx.cpp)
 #include <X11/X.h>
 #include <GL/glx.h>
 #define CONTEXT_ATTRIB_LIST_SIZE 11
 
+// Forward declaration; full definition is in egl_linux_vk.h (only with LINUX_VK)
+typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
+
 typedef struct _NativeSurfaceContainer {
     GLXDrawable drawable;
     GLXFBConfig config;
+    NativeHDRSurfaceContainer* hdr;  // NULL = SDR (GLX); non-NULL = Vulkan HDR
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
@@ -250,14 +274,18 @@ typedef GLXPbuffer NativePbufferType;
 
 #elif defined(__unix__)
 
-// Generic Unix fallback (Linux+X11, FreeBSD, OpenBSD, etc.) — GLX — future egl_x11_glx.cpp backend
+// Generic Unix fallback (Linux+X11, FreeBSD, OpenBSD, etc.) — GLX backend (egl_x11_glx.cpp)
 #include <X11/X.h>
 #include <GL/glx.h>
 #define CONTEXT_ATTRIB_LIST_SIZE 11
 
+// Forward declaration; full definition is in egl_linux_vk.h (only with LINUX_VK)
+typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
+
 typedef struct _NativeSurfaceContainer {
     GLXDrawable drawable;
     GLXFBConfig config;
+    NativeHDRSurfaceContainer* hdr;  // NULL = SDR (GLX); non-NULL = Vulkan HDR
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {

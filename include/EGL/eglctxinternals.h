@@ -14,9 +14,9 @@ struct _EGLContextInternals
     HGLRC context;
 };
 
-#elif defined(__unix__)
+#elif defined(WL_EGL_PLATFORM) || defined(USE_X11) || defined(__unix__)
 
-/* X11 (tentative)  */
+/* X11/GLX (X11 backend and Wayland backend both use GLX context internals) */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 

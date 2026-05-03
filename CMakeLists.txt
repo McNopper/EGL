@@ -49,12 +49,39 @@ elseif(ANDROID)
 
 elseif(UNIX)
     # Linux / *BSD / Unix-like — select sub-platform via compile-time defines
-    # Pass -DWL_EGL_PLATFORM=1, -D__GBM__=1, or -DUSE_OZONE=1 to select.
-    # Default falls back to X11/GLX.
+    # Pass -DWL_EGL_PLATFORM=ON, -DGBM_PLATFORM=ON, or -DOZONE_PLATFORM=ON to select.
+    # Default falls back to X11/GLX.  Add -DLINUX_VK=ON to enable Vulkan HDR on X11.
     if(WL_EGL_PLATFORM)
-        message(STATUS "EGL: Wayland EGL backend not yet implemented")
+        message(STATUS "EGL: Wayland backend — GLX/XWayland + Vulkan")
+        cmake_policy(SET CMP0072 NEW)
+        find_package(Vulkan REQUIRED)
+        find_package(OpenGL REQUIRED)
+        find_package(X11 REQUIRED)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client)
+        find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
+        execute_process(
+            COMMAND pkg-config --variable=pkgdatadir wayland-protocols
+            OUTPUT_VARIABLE WAYLAND_PROTOCOLS_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        set(XDG_SHELL_XML "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml")
+        set(XDG_SHELL_HDR "${CMAKE_BINARY_DIR}/xdg-shell-client-protocol.h")
+        set(XDG_SHELL_SRC "${CMAKE_BINARY_DIR}/xdg-shell-protocol.c")
+        add_custom_command(
+            OUTPUT  ${XDG_SHELL_HDR}
+            COMMAND ${WAYLAND_SCANNER} client-header ${XDG_SHELL_XML} ${XDG_SHELL_HDR}
+            DEPENDS ${XDG_SHELL_XML})
+        add_custom_command(
+            OUTPUT  ${XDG_SHELL_SRC}
+            COMMAND ${WAYLAND_SCANNER} private-code ${XDG_SHELL_XML} ${XDG_SHELL_SRC}
+            DEPENDS ${XDG_SHELL_XML})
+        add_library(xdg_shell_protocol STATIC ${XDG_SHELL_SRC} ${XDG_SHELL_HDR})
+        set_source_files_properties(${XDG_SHELL_SRC} ${XDG_SHELL_HDR} PROPERTIES GENERATED TRUE)
+        target_include_directories(xdg_shell_protocol PUBLIC ${CMAKE_BINARY_DIR})
         add_compile_definitions(WL_EGL_PLATFORM)
-        set(EGL_PLATFORM_SOURCES "")
+        set(EGL_PLATFORM_SOURCES
+            ${CMAKE_CURRENT_LIST_DIR}/src/egl_wayland.cpp
+            ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
     elseif(GBM_PLATFORM)
         message(STATUS "EGL: GBM/DRM backend not yet implemented")
         add_compile_definitions(__GBM__)
@@ -69,8 +96,18 @@ elseif(UNIX)
         find_package(X11 REQUIRED)
         find_package(OpenGL REQUIRED)
         add_compile_definitions(USE_X11)
-        set(EGL_PLATFORM_SOURCES
-            ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp)
+        option(LINUX_VK "Enable Vulkan HDR backend for X11/GLX" OFF)
+        if(LINUX_VK)
+            message(STATUS "EGL: X11/GLX + Vulkan HDR enabled (LINUX_VK)")
+            find_package(Vulkan REQUIRED)
+            add_compile_definitions(LINUX_VK)
+            set(EGL_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp
+                ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
+        else()
+            set(EGL_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp)
+        endif()
     endif()
 
 else()
@@ -106,8 +143,19 @@ set_target_properties(EGL PROPERTIES
 if(WIN32)
     target_link_libraries(EGL PUBLIC Vulkan::Vulkan)
     target_include_directories(EGL PRIVATE ${Vulkan_INCLUDE_DIRS})
-elseif(UNIX AND NOT WL_EGL_PLATFORM AND NOT GBM_PLATFORM AND NOT OZONE_PLATFORM)
+elseif(UNIX AND WL_EGL_PLATFORM)
+    target_link_libraries(EGL PUBLIC
+        ${CMAKE_DL_LIBS} X11::X11 OpenGL::GL
+        ${WAYLAND_CLIENT_LIBRARIES} Vulkan::Vulkan)
+    target_include_directories(EGL PRIVATE
+        ${X11_INCLUDE_DIR}
+        ${WAYLAND_CLIENT_INCLUDE_DIRS}
+        ${CMAKE_BINARY_DIR})
+elseif(UNIX AND NOT GBM_PLATFORM AND NOT OZONE_PLATFORM)
     target_link_libraries(EGL PUBLIC ${CMAKE_DL_LIBS} X11::X11 OpenGL::GL)
+    if(LINUX_VK)
+        target_link_libraries(EGL PUBLIC Vulkan::Vulkan)
+    endif()
     target_include_directories(EGL PRIVATE ${X11_INCLUDE_DIR})
 endif()
 
