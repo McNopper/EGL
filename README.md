@@ -258,9 +258,7 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
-03.05.2026 - Added Linux Wayland + Vulkan HDR backend, Linux X11 + Vulkan HDR variant
-            (`-DLINUX_VK`), and OS/Windowing/Backend naming for executables and titles.
-            v1.2.0.
+03.05.2026 - Added Linux Wayland + Vulkan HDR backend
 
 19.04.2026 - Added Linux X11/GLX backend. v1.1.0.
 
