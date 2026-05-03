@@ -1,6 +1,5 @@
 /**
  * EGL BT.2020 HLG — ~500 nits green
- * (Windows only)
  *
  * The MIT License (MIT)
  * Copyright (c) since 2014 Norbert Nopper

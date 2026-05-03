@@ -1,6 +1,5 @@
 /**
  * EGL Display P3 — vivid green (fully-saturated P3 green)
- * (Windows only)
  *
  * Display P3 uses the sRGB transfer function (same encoding as sRGB) but a
  * wider color gamut. A pure (0, 1, 0) green here is the Display P3 primary

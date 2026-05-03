@@ -1,6 +1,5 @@
 /**
  * EGL BT.2020 PQ (HDR10) — ~500 nits green with SMPTE 2086 metadata
- * (Windows only)
  *
  * The MIT License (MIT)
  * Copyright (c) since 2014 Norbert Nopper

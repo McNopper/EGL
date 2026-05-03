@@ -1,6 +1,5 @@
 /**
  * EGL BT.2020 Linear — ~500 nits green
- * (Windows only)
  *
  * WGL pixel format is 8-bit. The fp16 HDR precision comes from the Vulkan
  * swapchain (R16G16B16A16_SFLOAT / BT2020_LINEAR) via GL-Vulkan interop.

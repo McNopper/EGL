@@ -1,6 +1,5 @@
 /**
  * EGL Display P3 Linear — vivid green at reference white
- * (Windows only)
  *
  * WGL pixel format is 8-bit. The fp16 precision comes from the Vulkan
  * swapchain (R16G16B16A16_SFLOAT / DISPLAY_P3_LINEAR) via GL-Vulkan interop.

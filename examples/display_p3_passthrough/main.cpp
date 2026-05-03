@@ -1,6 +1,5 @@
 /**
  * EGL Display P3 Passthrough — vivid green (Display P3, no compositor conversion)
- * (Windows only)
  *
  * Like EGL_GL_COLORSPACE_DISPLAY_P3_EXT but signals that the compositor should
  * pass framebuffer values through without applying any additional color
