@@ -1,4 +1,4 @@
-add_executable(bt2020_pq main.cpp)
+add_executable(bt2020_pq main.cpp ../common_egl.cpp ../common_windows.cpp)
 
 set_target_properties(bt2020_pq PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY         ${CMAKE_SOURCE_DIR}/bin

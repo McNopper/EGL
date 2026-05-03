@@ -1,4 +1,4 @@
-add_executable(display_p3_passthrough main.cpp)
+add_executable(display_p3_passthrough main.cpp ../common_egl.cpp ../common_windows.cpp)
 
 set_target_properties(display_p3_passthrough PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY         ${CMAKE_SOURCE_DIR}/bin

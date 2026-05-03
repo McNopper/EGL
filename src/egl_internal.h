@@ -36,15 +36,7 @@
 #include <stdint.h>
 #include <mutex>
 
-#if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__) /* Win32 and WinCE */
-
-#include <windows.h>
-
-#define WIN32_LEAN_AND_MEAN
-#include <GL/gl.h>
-#include "wglext.h"
-
-// HDR colorspace support bitmask flags
+// HDR colorspace support bitmask flags (universal — value 0 on non-Windows platforms)
 #define EGL_HDR_CS_SCRGB_LINEAR_BIT      (1u << 0)
 #define EGL_HDR_CS_SCRGB_BIT             (1u << 1)
 #define EGL_HDR_CS_BT2020_PQ_BIT         (1u << 2)
@@ -52,6 +44,14 @@
 #define EGL_HDR_CS_BT2020_HLG_BIT        (1u << 4)
 #define EGL_HDR_CS_DISPLAY_P3_BIT        (1u << 5)
 #define EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT (1u << 6)
+
+#if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__) /* Win32 and WinCE */
+
+#include <windows.h>
+
+#define WIN32_LEAN_AND_MEAN
+#include <GL/gl.h>
+#include "wglext.h"
 
 // Forward declaration; full definition is in egl_windows_vk.h
 typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
@@ -758,7 +758,7 @@ static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalSt
 static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
     if (platform == EGL_PLATFORM_X11_EXT || platform == EGL_PLATFORM_X11_KHR)
-        { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
+        { *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display)); return EGL_TRUE; }
     return EGL_FALSE;
 }
 

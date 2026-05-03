@@ -1,5 +1,6 @@
 ﻿#include "egl_common.h"
 #include <cstring>
+#include <cstdio>
 
 extern "C"
 {
@@ -208,8 +209,8 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
                     extBuf[0] = '\0';
                     uint32_t hdr = walkerDpy->supportedHDRColorspaces;
                     auto appendExt = [&](const char* s) {
-                        if (extBuf[0]) strncat_s(extBuf, sizeof(extBuf), " ", _TRUNCATE);
-                        strncat_s(extBuf, sizeof(extBuf), s, _TRUNCATE);
+                        size_t len = strlen(extBuf);
+                        snprintf(extBuf + len, sizeof(extBuf) - len, "%s%s", len ? " " : "", s);
                     };
                     appendExt("EGL_KHR_gl_colorspace");
                     appendExt("EGL_KHR_create_context");

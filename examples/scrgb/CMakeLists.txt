@@ -1,4 +1,4 @@
-add_executable(scrgb main.cpp)
+add_executable(scrgb main.cpp ../common_egl.cpp ../common_windows.cpp)
 
 set_target_properties(scrgb PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY         ${CMAKE_SOURCE_DIR}/bin

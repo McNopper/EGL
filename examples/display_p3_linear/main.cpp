@@ -1,5 +1,5 @@
 /**
- * EGL Display P3 Linear — vivid green at reference white (Display P3 primaries, linear light)
+ * EGL Display P3 Linear — vivid green at reference white
  * (Windows only)
  *
  * WGL pixel format is 8-bit. The fp16 precision comes from the Vulkan
@@ -7,19 +7,15 @@
  *
  * Linear Display P3: 1.0 = reference white (~80 nits SDR). Values are linear
  * light in the Display P3 color gamut with no transfer function applied.
+ *
+ * The MIT License (MIT)
+ * Copyright (c) since 2014 Norbert Nopper
  */
 
-#include "../common.h"
+#include "../common_egl.h"
 
 #include <GL/gl.h>
-
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-
 #include <stdio.h>
-
-static const int WIDTH  = 800;
-static const int HEIGHT = 600;
 
 static const EGLint k_config_attribs[] = {
     EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
@@ -36,103 +32,26 @@ static const EGLint k_surface_attribs[] = {
     EGL_NONE
 };
 
-static const EGLint k_context_attribs[] = { EGL_NONE };
-
+static void frame(EGLApp* app, void*)
+{
+    /* Display P3 green primary at reference white, linear light */
+    glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    eglSwapBuffers(app->dpy, app->surf);
+}
 
 int main(void)
 {
-    EGLDisplay dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    EGLint major = 0, minor = 0;
-    if (!eglInitialize(dpy, &major, &minor)) {
-        fprintf(stderr, "eglInitialize failed\n");
+    EGLApp* app = egl_app_create(k_config_attribs, k_surface_attribs,
+                                  "EGL_EXT_gl_colorspace_display_p3_linear",
+                                  "EGL Display P3 Linear", 800, 600);
+    if (!app)
         return 1;
-    }
-    printf("EGL %d.%d\n", major, minor);
 
-    const char* exts = eglQueryString(dpy, EGL_EXTENSIONS);
-    if (!ext_supported(exts, "EGL_EXT_gl_colorspace_display_p3_linear")) {
-        fprintf(stderr, "EGL_EXT_gl_colorspace_display_p3_linear not supported\n");
-        eglTerminate(dpy);
-        return 1;
-    }
-    printf("EGL_EXT_gl_colorspace_display_p3_linear: supported\n");
-
-    eglBindAPI(EGL_OPENGL_API);
-
-    EGLConfig cfg = NULL;
-    EGLint ncfg = 0;
-    eglChooseConfig(dpy, k_config_attribs, &cfg, 1, &ncfg);
-    if (!ncfg) {
-        fprintf(stderr, "No matching EGL config\n");
-        eglTerminate(dpy);
-        return 1;
-    }
-
-    HINSTANCE hInst = GetModuleHandle(NULL);
-    WNDCLASSEX wc = {};
-    wc.cbSize = sizeof(WNDCLASSEX);
-    wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = hInst;
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.lpszClassName = "EGLDisplayP3Linear";
-    RegisterClassEx(&wc);
-
-    RECT rect = { 0, 0, WIDTH, HEIGHT };
-    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
-    HWND hwnd = CreateWindowEx(0, "EGLDisplayP3Linear", "EGL Display P3 Linear",
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-        rect.right - rect.left, rect.bottom - rect.top,
-        NULL, NULL, hInst, NULL);
-
-    EGLSurface surf = eglCreateWindowSurface(dpy, cfg, (EGLNativeWindowType)hwnd, k_surface_attribs);
-    if (surf == EGL_NO_SURFACE) {
-        fprintf(stderr, "EGL_EXT_gl_colorspace_display_p3_linear not supported (eglCreateWindowSurface failed: 0x%x)\n", eglGetError());
-        DestroyWindow(hwnd);
-        eglTerminate(dpy);
-        return 1;
-    }
-
-    EGLContext ctx = eglCreateContext(dpy, cfg, EGL_NO_CONTEXT, k_context_attribs);
-    if (ctx == EGL_NO_CONTEXT) {
-        fprintf(stderr, "eglCreateContext failed\n");
-        eglDestroySurface(dpy, surf);
-        DestroyWindow(hwnd);
-        eglTerminate(dpy);
-        return 1;
-    }
-    if (!eglMakeCurrent(dpy, surf, surf, ctx)) {
-        fprintf(stderr, "eglMakeCurrent failed\n");
-        eglDestroyContext(dpy, ctx);
-        eglDestroySurface(dpy, surf);
-        DestroyWindow(hwnd);
-        eglTerminate(dpy);
-        return 1;
-    }
-
-    ShowWindow(hwnd, SW_SHOW);
-    UpdateWindow(hwnd);
-
-    printf("GL renderer: %s\n", (const char*)glGetString(GL_RENDERER));
     printf("Clear: G=1.0 (Display P3 green primary at reference white, linear light)\n");
     printf("Press Escape or close the window to exit.\n");
 
-    MSG msg = {};
-    while (g_running) {
-        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-        /* Display P3 green primary at reference white, linear light */
-        glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        eglSwapBuffers(dpy, surf);
-    }
-
-    eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroyContext(dpy, ctx);
-    eglDestroySurface(dpy, surf);
-    eglTerminate(dpy);
-    DestroyWindow(hwnd);
+    egl_app_run(app, frame, nullptr);
+    egl_app_destroy(app);
     return 0;
 }

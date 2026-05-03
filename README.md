@@ -14,9 +14,9 @@ The Khronos headers bundled with the library are the official, unmodified ones f
 | Operating System | Supported APIs | Platform API | Backend API | Status Quo |
 |---|---|---|---|---|
 | Windows | OpenGL | WGL, DXGI | Vulkan | **Implemented** |
+| Linux — X11 | OpenGL | GLX | - | **Implemented** |
 | macOS / iOS | - | CGL, EAGL, CAMetalLayer | - | Prepared |
 | Android | - | ANativeWindow | - | Prepared |
-| Linux — X11 | - | GLX | - | Prepared |
 | Linux — Wayland | - | wl_egl_window | - | Prepared |
 | Linux — DRM/KMS | - | GBM, libdrm | - | Prepared |
 | Linux — ChromeOS | - | Ozone | - | Prepared |
@@ -65,6 +65,37 @@ The following colorspace extensions are probed at `eglInitialize` time and adver
 
 ## Building
 
+### Linux — X11/GLX (implemented)
+
+Requirements: CMake 3.10+, GCC/Clang, X11 and OpenGL development headers.
+
+On Ubuntu/Debian:
+
+```
+sudo apt install build-essential cmake ninja-build \
+    libx11-dev libxext-dev libgl-dev libglu1-mesa-dev
+```
+
+```
+mkdir build-linux
+cd build-linux
+cmake .. -G Ninja
+ninja
+```
+
+Outputs: `lib/libEGL.a` and example executables `bin/linear` and `bin/srgb`.
+
+To run under WSL2 on Windows 11, WSLg provides the display server automatically — no additional
+setup is required. Launch examples directly from the WSL2 shell:
+
+```
+./bin/linear
+./bin/srgb
+```
+
+> **Note:** HDR examples (`scrgb_*`, `bt2020_*`, `display_p3_*`) are Windows-only and are excluded
+> from the Linux build.
+
 ### Windows (implemented)
 
 Requirements: CMake 3.10+, MSVC (Visual Studio 2019+), Vulkan SDK.
@@ -103,7 +134,7 @@ cmake .. -DGBM_PLATFORM=1
 cmake .. -DOZONE_PLATFORM=1
 ```
 
-Non-Windows builds will compile until the link stage and then fail on the 17 unimplemented `__`
+Non-X11 Unix builds will compile until the link stage and then fail on the unimplemented `__`
 backend functions — this is intentional and indicates where the new backend code goes.
 
 
@@ -147,6 +178,7 @@ egl.c                     Public C API (thin shims, no logic)
   Platform backends (implement the functions declared in egl_internal.h):
   └── egl_windows.cpp      Windows — WGL
   └── egl_windows_vk.cpp   Windows — Vulkan HDR presentation
+  └── egl_x11_glx.cpp      Linux / Unix — X11 + GLX
   └── egl_<platform>.cpp   Future backends
 ```
 
@@ -155,6 +187,8 @@ egl.c                     Public C API (thin shims, no logic)
 
 
 ## Changelog
+
+19.04.2026 - Added Linux X11/GLX backend. v1.1.0.
 
 19.04.2026 - Major refactoring using AI v1.0.0.
 
