@@ -48,13 +48,10 @@ across platforms remain unambiguous.
 | macOS / iOS | CGL, EAGL, CAMetalLayer | — | — | Prepared |
 | Android | ANativeWindow | — | — | Prepared |
 | Linux — DRM/KMS | GBM, libdrm | — | — | Prepared |
-| Linux — ChromeOS | Ozone | — | — | Prepared |
 | QNX | Screen API | — | — | Prepared |
 | HarmonyOS (OHOS) | OHNativeWindow | — | — | Prepared |
-| Haiku | BGLView | — | — | Prepared |
 | Fuchsia | Scenic / Flatland | — | — | Prepared |
 | WebAssembly | Emscripten | — | — | Prepared |
-| Symbian (legacy) | Native | — | — | Prepared |
 
 ## EGL 1.5 API Coverage
 
@@ -74,6 +71,126 @@ The full EGL 1.5 API surface is implemented in the platform-agnostic core:
 - Image objects: `eglCreateImage`, `eglDestroyImage`
 - Threading: `eglBindAPI`, `eglQueryAPI`, `eglReleaseThread` (per-thread state via `thread_local`)
 - Utilities: `eglGetError`, `eglGetProcAddress`, `eglQueryString`
+
+
+## OpenGL ES support
+
+This library targets **desktop OpenGL** as its primary client API. It can
+additionally route `EGL_OPENGL_ES_API` contexts to a pluggable ES backend so
+that one and the same `libEGL` produced here serves both GL and ES through
+the standard EGL entry points.
+
+The ES backend is intentionally an **option, not a hard dependency** — the
+core EGL layer has no link-time requirement on any ES implementation. Each
+platform can wire in whichever ES provider is appropriate:
+
+| Platform | Available ES backends | Status |
+|---|---|---|
+| Windows | [ANGLE](https://github.com/google/angle) (D3D11) | implemented |
+| Linux (X11 / Wayland) | system `libGLESv2` (Mesa), ANGLE (Vulkan) | not yet wired |
+| Android, HarmonyOS | system `libGLESv2` from the OS | not yet wired |
+
+A platform with no ES backend simply returns `EGL_BAD_MATCH` from
+`eglCreateContext` after `eglBindAPI(EGL_OPENGL_ES_API)`; desktop GL keeps
+working unchanged.
+
+### Selecting the client API at runtime
+
+Application code is identical to any standard EGL implementation — there is
+no separate library, no separate display, no separate code path:
+
+```cpp
+EGLDisplay dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+eglInitialize(dpy, nullptr, nullptr);
+
+// Pick one — per thread, before eglCreateContext:
+eglBindAPI(EGL_OPENGL_API);     // -> desktop OpenGL
+// eglBindAPI(EGL_OPENGL_ES_API); // -> OpenGL ES 2.0 / 3.x via the active ES backend
+
+EGLConfig cfg; EGLint n = 0;
+eglChooseConfig(dpy, configAttribs, &cfg, 1, &n);
+
+EGLContext ctx  = eglCreateContext(dpy, cfg, EGL_NO_CONTEXT, ctxAttribs);
+EGLSurface surf = eglCreateWindowSurface(dpy, cfg, hwnd, surfAttribs);
+eglMakeCurrent(dpy, surf, surf, ctx);
+```
+
+`eglBindAPI` is per-thread; the next `eglCreateContext` honors whichever API
+was last bound. On Windows the choice is **sticky per `HWND`**
+(`SetPixelFormat` is one-shot, and ANGLE owns the `HWND` through D3D11) —
+pick GL or ES before creating the first surface for that window, then keep
+it. Different threads / windows can use different APIs concurrently.
+
+### Windows ES backend: ANGLE (option)
+
+ANGLE is the currently-implemented ES backend on Windows. It is **not bundled** —
+the library loads it at runtime via `LoadLibrary("libEGL.dll" / "libGLESv2.dll")`,
+so a Windows build that does not need ES can omit ANGLE entirely.
+
+Build switches:
+
+- `-DEGL_WIN_ENABLE_ANGLE=ON` (default) — compile the ANGLE routing code.
+  If the ANGLE DLLs are not found at runtime, ES context creation fails
+  cleanly and desktop GL is unaffected.
+- `-DEGL_WIN_ENABLE_ANGLE=OFF` — desktop-GL-only `libEGL`, identical to the
+  pre-ANGLE behavior. No vcpkg required.
+
+#### Getting ANGLE via vcpkg (recommended)
+
+This repo ships a `vcpkg.json` manifest that pins a known-good ANGLE.
+vcpkg in **manifest mode** fetches it automatically during CMake configure —
+there is no global `vcpkg install` step.
+
+Requirements:
+
+- CMake 3.15+, MSVC (Visual Studio 2019 or newer)
+- Vulkan SDK
+- vcpkg (any recent checkout). If you do not have it:
+  ```
+  git clone https://github.com/microsoft/vcpkg C:\vcpkg
+  C:\vcpkg\bootstrap-vcpkg.bat
+  ```
+  Some Visual Studio installs already ship vcpkg under
+  `C:\Program Files\Microsoft Visual Studio\<ver>\Community\VC\vcpkg`.
+
+Configure and build:
+
+```
+mkdir build
+cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake --build .
+```
+
+First configure downloads and builds ANGLE into `vcpkg_installed/`
+(gitignored); subsequent configures reuse the binary cache. To upgrade
+ANGLE later, bump the `builtin-baseline` (or `version>=`) in `vcpkg.json`
+and reconfigure.
+
+Other ways to provide ANGLE (e.g. system install, a manual download, or a
+different package manager) work as well as long as `find_package(unofficial-angle CONFIG)`
+succeeds; vcpkg is just the convenient default.
+
+What gets built:
+
+- `lib/libEGL.lib` — same static lib as before, with ES routing compiled in.
+- `bin/<example>_GL_Windows_WGL_VK.exe` — desktop GL examples (unchanged).
+- `bin/green_window_ES_Windows_ANGLE.exe` — ES proof example.
+- `bin/libEGL.dll`, `bin/libGLESv2.dll` — ANGLE runtime DLLs copied next to
+  the ES executable by a post-build step. Ship these alongside any
+  application that uses `EGL_OPENGL_ES_API`.
+
+### Why this exists (and why it is optional)
+
+ANGLE alone already covers many ES + HDR scenarios on Windows (HDR10, scRGB,
+Display P3). If your application only needs ES with those colorspaces, you
+can use ANGLE directly without this library. This library focuses on what
+ANGLE does **not** provide: full HDR signaling for desktop GL and Vulkan,
+including BT.2020 HLG, BT.2020 linear, `IDXGISwapChain4::SetHDRMetaData`
+(mastering display, MaxCLL / MaxFALL), and Wayland `wp_color_management_v1`.
+Bundling ES routing through the same `libEGL` lets a single application
+codebase reach both worlds — but the ES side stays opt-in so projects that
+only want desktop GL pay nothing for it.
 
 
 ## HDR Support
@@ -96,7 +213,8 @@ The following colorspace extensions are probed at `eglInitialize` time and adver
 
 All build variants share one source tree. The CMake configuration sets a per-variant
 `EGL_BACKEND_SUFFIX` that's appended to every executable's filename, e.g. `linear` →
-`linear_Windows_WGL_VK.exe`, `linear_Linux_Wayland_VK`, etc.
+`linear_GL_Windows_WGL_VK.exe`, `linear_GL_Linux_Wayland_VK`, etc. When
+`EGL_WIN_ENABLE_ANGLE` is on, ES variants use the suffix `_ES_Windows_ANGLE`.
 
 ### Windows — WGL + Vulkan HDR (implemented)
 
@@ -193,7 +311,6 @@ based on `CMAKE_SYSTEM_NAME`. For Linux sub-platforms pass the appropriate defin
 
 ```
 cmake .. -DGBM_PLATFORM=1     # GBM / DRM-KMS
-cmake .. -DOZONE_PLATFORM=1   # Ozone (ChromeOS)
 ```
 
 Non-implemented Unix builds will compile until the link stage and then fail on the unimplemented
@@ -258,9 +375,11 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
-03.05.2026 - Added Linux Wayland + Vulkan HDR backend
+03.05.2026 - Added OpenGL ES support via ANGLE on Windows. Documentation fixes. v1.0.3.
 
-19.04.2026 - Added Linux X11/GLX backend. v1.1.0.
+03.05.2026 - Added Linux Wayland + Vulkan HDR backend. v1.0.2.
+
+19.04.2026 - Added Linux X11/GLX backend. v1.0.1.
 
 19.04.2026 - Major refactoring using AI v1.0.0.
 

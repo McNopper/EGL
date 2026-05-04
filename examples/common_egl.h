@@ -38,7 +38,8 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
                        const EGLint* surface_attribs,
                        const char*   ext_required,
                        const char*   title,
-                       int width, int height);
+                       int width, int height,
+                       EGLenum       api = EGL_OPENGL_API);
 
 /**
  * Run the render loop.

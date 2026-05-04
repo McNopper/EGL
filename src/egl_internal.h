@@ -58,13 +58,25 @@ typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
 #define CONTEXT_ATTRIB_LIST_SIZE 13
 
+// Backend tag identifies which native subsystem owns a context/surface on
+// Windows. WGL is the default desktop OpenGL path; ANGLE is the OpenGL ES
+// path delegated to Google ANGLE's libEGL.dll / libGLESv2.dll.
+typedef enum {
+    EGL_BACKEND_WGL   = 0,
+    EGL_BACKEND_ANGLE = 1
+} NativeBackend;
+
 typedef struct _NativeSurfaceContainer {
     HDC hdc;
     NativeHDRSurfaceContainer* hdr;  // NULL for sRGB/linear; non-NULL for HDR Vulkan surfaces
+    NativeBackend backend;           // 0 = WGL (default), 1 = ANGLE
+    void* angleSurface;              // EGLSurface from ANGLE when backend == ANGLE
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
     HGLRC ctx;
+    NativeBackend backend;           // 0 = WGL (default), 1 = ANGLE
+    void* angleCtx;                  // EGLContext from ANGLE when backend == ANGLE
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
@@ -118,25 +130,6 @@ typedef struct _NativeLocalStorageContainer {
 } NativeLocalStorageContainer;
 
 typedef int NativePbufferType;
-
-#elif defined(__WINSCW__) || defined(__SYMBIAN32__)
-
-// Symbian OS (legacy) — future egl_symbian.cpp backend
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    void* window;             // RWindow handle
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    void* ctx;
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    void* display;            // RWsSession handle
-} NativeLocalStorageContainer;
-
-typedef void* NativePbufferType;
 
 #elif defined(WL_EGL_PLATFORM)
 
@@ -224,26 +217,6 @@ typedef struct _NativeLocalStorageContainer {
 
 typedef struct egl_native_pixmap_t* NativePbufferType;
 
-#elif defined(USE_OZONE)
-
-// Ozone — ChromeOS / Lacros — future egl_ozone.cpp backend
-#include <stdint.h>
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    intptr_t window;
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    void* ctx;
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    intptr_t display;
-} NativeLocalStorageContainer;
-
-typedef intptr_t NativePbufferType;
-
 #elif defined(USE_X11)
 
 // X11 explicit — GLX backend (egl_x11_glx.cpp)
@@ -319,26 +292,6 @@ typedef struct _NativeLocalStorageContainer {
 
 typedef void* NativePbufferType;
 
-#elif defined(__HAIKU__)
-
-// Haiku OS — future egl_haiku.cpp backend
-#include <stdint.h>
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    khronos_uintptr_t window;
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    void* ctx;
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    void* display;
-} NativeLocalStorageContainer;
-
-typedef khronos_uintptr_t NativePbufferType;
-
 #elif defined(__Fuchsia__)
 
 // Fuchsia OS — future egl_fuchsia.cpp backend
@@ -379,7 +332,7 @@ typedef struct _NativeLocalStorageContainer {
 typedef void* NativePbufferType;
 
 #else
-#error "Platform not recognized. Supported: _WIN32, __QNX__, __EMSCRIPTEN__, __SYMBIAN32__, WL_EGL_PLATFORM, __GBM__, __ANDROID__, USE_OZONE, USE_X11, __unix__, __APPLE__, __HAIKU__, __Fuchsia__, OHOS"
+#error "Platform not recognized. Supported: _WIN32, __QNX__, __EMSCRIPTEN__, WL_EGL_PLATFORM, __GBM__, __ANDROID__, USE_X11, __unix__, __APPLE__, __Fuchsia__, OHOS"
 #endif
 
 #include <EGL/egl.h>
@@ -726,14 +679,6 @@ static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalSt
 static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
     { return EGL_FALSE; }
 
-#elif defined(__WINSCW__) || defined(__SYMBIAN32__)
-
-static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-    { return reinterpret_cast<EGLNativeDisplayType>(0); }
-
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
-    { return EGL_FALSE; }
-
 #elif defined(WL_EGL_PLATFORM)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
@@ -769,14 +714,6 @@ static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* na
         { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
     return EGL_FALSE;
 }
-
-#elif defined(USE_OZONE)
-
-static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-    { return reinterpret_cast<EGLNativeDisplayType>(0); }
-
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
-    { return EGL_FALSE; }
 
 #elif defined(USE_X11) || defined(__unix__)
 

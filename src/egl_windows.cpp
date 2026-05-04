@@ -27,6 +27,9 @@
 #include "egl_windows_vk.h"
 #include "egl_common.h"
 #include "../../EGL/include/EGL/eglctxinternals.h"
+#ifdef EGL_WIN_ENABLE_ANGLE
+#include "egl_windows_angle.h"
+#endif
 
 HMODULE opengl32dll = NULL;
 
@@ -270,6 +273,23 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
     ES_max_supported[0] = ES_major;
     ES_max_supported[1] = ES_minor;
 
+#ifdef EGL_WIN_ENABLE_ANGLE
+    // Try to initialize ANGLE for OpenGL ES. Non-fatal if unavailable.
+    {
+        EGLint angleES[2] = { 0, 0 };
+        if (angle_init(angleES) == EGL_TRUE)
+        {
+            // Prefer ANGLE's ES version if higher than what WGL exposes.
+            if (angleES[0] > ES_max_supported[0] ||
+                (angleES[0] == ES_max_supported[0] && angleES[1] > ES_max_supported[1]))
+            {
+                ES_max_supported[0] = angleES[0];
+                ES_max_supported[1] = angleES[1];
+            }
+        }
+    }
+#endif
+
     // Initialize Vulkan HDR backend (non-fatal if unavailable)
     __vkInit();
 
@@ -307,6 +327,10 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 
     __vkTerm();
 
+#ifdef EGL_WIN_ENABLE_ANGLE
+    angle_terminate();
+#endif
+
     FreeLibrary(opengl32dll);
 
     return EGL_TRUE;
@@ -318,6 +342,13 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
     {
         return EGL_FALSE;
     }
+
+#ifdef EGL_WIN_ENABLE_ANGLE
+    if (nativeContextContainer->backend == EGL_BACKEND_ANGLE)
+    {
+        return angle_destroyContext(nativeContextContainer->angleCtx);
+    }
+#endif
 
     return wglDeleteContext_PTR(nativeContextContainer->ctx);
 }
@@ -661,6 +692,46 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
         return EGL_FALSE;
     }
 
+#ifdef EGL_WIN_ENABLE_ANGLE
+    if (g_localStorage.api == EGL_OPENGL_ES_API && angle_isAvailable())
+    {
+        // ANGLE owns the HWND's pixel format. Do NOT call SetPixelFormat here.
+        void* angleSurf = nullptr;
+        if (angle_createWindowSurface(win, &angleSurf) != EGL_TRUE)
+        {
+            *error = EGL_BAD_NATIVE_WINDOW;
+            return EGL_FALSE;
+        }
+
+        RECT rect = { 0 };
+        GetClientRect(win, &rect);
+
+        newSurface->drawToWindow      = EGL_TRUE;
+        newSurface->drawToPixmap      = EGL_FALSE;
+        newSurface->drawToPBuffer     = EGL_FALSE;
+        newSurface->doubleBuffer      = EGL_TRUE;
+        newSurface->configId          = 0;
+        newSurface->width             = rect.right - rect.left;
+        newSurface->height            = rect.bottom - rect.top;
+        newSurface->swapBehavior      = EGL_BUFFER_DESTROYED;
+        newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+        newSurface->mipmapLevel       = 0;
+        newSurface->mipmapTexture     = EGL_FALSE;
+        newSurface->largestPbuffer    = EGL_FALSE;
+        newSurface->textureFormat     = EGL_NO_TEXTURE;
+        newSurface->textureTarget     = EGL_NO_TEXTURE;
+        newSurface->glColorspace      = EGL_GL_COLORSPACE_LINEAR;
+        newSurface->initialized       = EGL_TRUE;
+        newSurface->destroy           = EGL_FALSE;
+        newSurface->win               = win;
+        newSurface->nativeSurfaceContainer.hdc          = nullptr;
+        newSurface->nativeSurfaceContainer.hdr          = nullptr;
+        newSurface->nativeSurfaceContainer.backend      = EGL_BACKEND_ANGLE;
+        newSurface->nativeSurfaceContainer.angleSurface = angleSurf;
+        return EGL_TRUE;
+    }
+#endif
+
     HDC hdc = GetDC(win);
 
     if (!hdc)
@@ -870,6 +941,8 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
     newSurface->win = win;
     newSurface->nativeSurfaceContainer.hdc = hdc;
     newSurface->nativeSurfaceContainer.hdr = nullptr;
+    newSurface->nativeSurfaceContainer.backend = EGL_BACKEND_WGL;
+    newSurface->nativeSurfaceContainer.angleSurface = nullptr;
 
     // For HDR colorspaces, create a Vulkan HDR surface
     {
@@ -906,6 +979,15 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
         return EGL_FALSE;
     }
     const NativeSurfaceContainer* nativeSurfaceContainer = &surface->nativeSurfaceContainer;
+
+#ifdef EGL_WIN_ENABLE_ANGLE
+    if (nativeSurfaceContainer->backend == EGL_BACKEND_ANGLE)
+    {
+        if (nativeSurfaceContainer->angleSurface)
+            angle_destroySurface(nativeSurfaceContainer->angleSurface);
+        return EGL_TRUE;
+    }
+#endif
 
     if (surface->nativeSurfaceContainer.hdr)
     {
@@ -1114,7 +1196,13 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
     const int render_texture_supported = strstr(extensions_str, "WGL_ARB_render_texture") != NULL;
     const int ES_supported = strstr(extensions_str, "WGL_EXT_create_context_es_profile") != NULL;
-    const EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+    EGLint ES_mask = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+#ifdef EGL_WIN_ENABLE_ANGLE
+    // ANGLE provides real ES contexts independent of WGL — advertise the bits
+    // on every config so eglChooseConfig with EGL_OPENGL_ES*_BIT can match.
+    if (angle_isAvailable())
+        ES_mask |= (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+#endif
 
     walkerDpy->srgbFramebufferSupported =
         (strstr(extensions_str, "WGL_ARB_framebuffer_sRGB") != NULL ||
@@ -1422,6 +1510,39 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const
         return EGL_FALSE;
     }
 
+#ifdef EGL_WIN_ENABLE_ANGLE
+    if (g_localStorage.api == EGL_OPENGL_ES_API && angle_isAvailable())
+    {
+        // Extract requested ES version from the WGL-style attrib list that
+        // __processAttribList produced.
+        EGLint major = 2, minor = 0;
+        if (attribList)
+        {
+            for (EGLint i = 0; attribList[i] != 0; i += 2)
+            {
+                if (attribList[i] == WGL_CONTEXT_MAJOR_VERSION_ARB)
+                    major = attribList[i + 1];
+                else if (attribList[i] == WGL_CONTEXT_MINOR_VERSION_ARB)
+                    minor = attribList[i + 1];
+            }
+        }
+        void* share = nullptr;
+        if (sharedNativeContextContainer && sharedNativeContextContainer->backend == EGL_BACKEND_ANGLE)
+            share = sharedNativeContextContainer->angleCtx;
+
+        void* ctx = nullptr;
+        if (angle_createContext(major, minor, share, &ctx) != EGL_TRUE)
+            return EGL_FALSE;
+
+        nativeContextContainer->backend  = EGL_BACKEND_ANGLE;
+        nativeContextContainer->angleCtx = ctx;
+        nativeContextContainer->ctx      = nullptr;
+        return EGL_TRUE;
+    }
+#endif
+
+    nativeContextContainer->backend  = EGL_BACKEND_WGL;
+    nativeContextContainer->angleCtx = nullptr;
     nativeContextContainer->ctx = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, attribList);
     DWORD err = GetLastError();
 
@@ -1434,6 +1555,30 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
     {
         return EGL_FALSE;
     }
+
+#ifdef EGL_WIN_ENABLE_ANGLE
+    if (nativeContextContainer && nativeContextContainer->backend == EGL_BACKEND_ANGLE)
+    {
+        // Backend must match — an ANGLE context cannot be made current on a
+        // WGL surface (and the WGL surface's `angleSurface` would be nullptr).
+        if (!nativeSurfaceContainer || nativeSurfaceContainer->backend != EGL_BACKEND_ANGLE)
+            return EGL_FALSE;
+        return angle_makeCurrent(nativeSurfaceContainer->angleSurface,
+                                 nativeContextContainer->angleCtx);
+    }
+    if (nativeContextContainer && nativeSurfaceContainer &&
+        nativeSurfaceContainer->backend == EGL_BACKEND_ANGLE)
+    {
+        // Inverse mismatch: WGL context with ANGLE surface.
+        return EGL_FALSE;
+    }
+    if (!nativeContextContainer)
+    {
+        // Detach from both backends to be safe.
+        if (angle_isAvailable())
+            angle_makeCurrent(nullptr, nullptr);
+    }
+#endif
 
     if (!nativeContextContainer)
         return (EGLBoolean)wglMakeCurrent_PTR(NULL, NULL);
@@ -1449,6 +1594,11 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
         return EGL_FALSE;
     }
 
+#ifdef EGL_WIN_ENABLE_ANGLE
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_ANGLE)
+        return angle_swapBuffers(walkerSurface->nativeSurfaceContainer.angleSurface);
+#endif
+
     if (walkerSurface->nativeSurfaceContainer.hdr)
         return __vkPresent(walkerSurface->nativeSurfaceContainer.hdr);
 
@@ -1461,6 +1611,11 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
     {
         return EGL_FALSE;
     }
+
+#ifdef EGL_WIN_ENABLE_ANGLE
+    if (g_localStorage.api == EGL_OPENGL_ES_API && angle_isAvailable())
+        return angle_swapInterval(interval);
+#endif
 
     return (EGLBoolean)wglSwapIntervalEXT(interval);
 }

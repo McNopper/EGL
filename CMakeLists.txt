@@ -11,7 +11,26 @@ if(WIN32)
     set(EGL_PLATFORM_SOURCES
         ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp
         ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows_vk.cpp)
-    set(EGL_BACKEND_SUFFIX "_Windows_WGL_VK")
+    set(EGL_BACKEND_SUFFIX "_GL_Windows_WGL_VK")
+
+    # Optional: enable real OpenGL ES via Google ANGLE (delegated through libEGL).
+    # ANGLE is provided via the vcpkg manifest (vcpkg.json at repo root).
+    option(EGL_WIN_ENABLE_ANGLE "Enable OpenGL ES backend via ANGLE on Windows" ON)
+    if(EGL_WIN_ENABLE_ANGLE)
+        find_package(unofficial-angle CONFIG QUIET)
+        if(unofficial-angle_FOUND)
+            message(STATUS "EGL: ANGLE found via unofficial-angle CONFIG package")
+            set(EGL_HAS_ANGLE ON)
+            list(APPEND EGL_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows_angle.cpp)
+            set(EGL_ES_BACKEND_SUFFIX "_ES_Windows_ANGLE")
+        else()
+            message(WARNING "EGL: EGL_WIN_ENABLE_ANGLE=ON but ANGLE package not found. "
+                            "Run 'vcpkg install' or pass -DCMAKE_TOOLCHAIN_FILE=<vcpkg.cmake>. "
+                            "Disabling ANGLE for this build.")
+            set(EGL_HAS_ANGLE OFF)
+        endif()
+    endif()
 
 elseif(EMSCRIPTEN)
     # WebAssembly / Emscripten — future egl_emscripten.cpp backend
@@ -21,11 +40,6 @@ elseif(EMSCRIPTEN)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "QNX")
     # QNX — Screen API — future egl_qnx.cpp backend
     message(STATUS "EGL: QNX Screen API backend not yet implemented")
-    set(EGL_PLATFORM_SOURCES "")
-
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
-    # Haiku OS — future egl_haiku.cpp backend
-    message(STATUS "EGL: Haiku backend not yet implemented")
     set(EGL_PLATFORM_SOURCES "")
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Fuchsia")
@@ -50,7 +64,7 @@ elseif(ANDROID)
 
 elseif(UNIX)
     # Linux / *BSD / Unix-like — select sub-platform via compile-time defines
-    # Pass -DWL_EGL_PLATFORM=ON, -DGBM_PLATFORM=ON, or -DOZONE_PLATFORM=ON to select.
+    # Pass -DWL_EGL_PLATFORM=ON or -DGBM_PLATFORM=ON to select.
     # Default falls back to X11/GLX.  Add -DLINUX_VK=ON to enable Vulkan HDR on X11.
     if(WL_EGL_PLATFORM)
         message(STATUS "EGL: Wayland backend — GLX/XWayland + Vulkan")
@@ -83,17 +97,12 @@ elseif(UNIX)
         set(EGL_PLATFORM_SOURCES
             ${CMAKE_CURRENT_LIST_DIR}/src/egl_wayland.cpp
             ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
-        set(EGL_BACKEND_SUFFIX "_Linux_Wayland_VK")
+        set(EGL_BACKEND_SUFFIX "_GL_Linux_Wayland_VK")
     elseif(GBM_PLATFORM)
         message(STATUS "EGL: GBM/DRM backend not yet implemented")
         add_compile_definitions(__GBM__)
         set(EGL_PLATFORM_SOURCES "")
-        set(EGL_BACKEND_SUFFIX "_Linux_GBM")
-    elseif(OZONE_PLATFORM)
-        message(STATUS "EGL: Ozone backend not yet implemented")
-        add_compile_definitions(USE_OZONE)
-        set(EGL_PLATFORM_SOURCES "")
-        set(EGL_BACKEND_SUFFIX "_Linux_Ozone")
+        set(EGL_BACKEND_SUFFIX "_GL_Linux_GBM")
     else()
         message(STATUS "EGL: X11/GLX backend (default Unix)")
         cmake_policy(SET CMP0072 NEW)
@@ -108,16 +117,16 @@ elseif(UNIX)
             set(EGL_PLATFORM_SOURCES
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
-            set(EGL_BACKEND_SUFFIX "_Linux_X11_GLX_VK")
+            set(EGL_BACKEND_SUFFIX "_GL_Linux_X11_GLX_VK")
         else()
             set(EGL_PLATFORM_SOURCES
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp)
-            set(EGL_BACKEND_SUFFIX "_Linux_X11_GLX")
+            set(EGL_BACKEND_SUFFIX "_GL_Linux_X11_GLX")
         endif()
     endif()
 
 else()
-    message(FATAL_ERROR "EGL: Unsupported platform. Supported: WIN32, EMSCRIPTEN, QNX, Haiku, Fuchsia, OHOS, APPLE, ANDROID, UNIX")
+    message(FATAL_ERROR "EGL: Unsupported platform. Supported: WIN32, EMSCRIPTEN, QNX, Fuchsia, OHOS, APPLE, ANDROID, UNIX")
 endif()
 
 set(EGL_SOURCES
@@ -149,6 +158,11 @@ set_target_properties(EGL PROPERTIES
 if(WIN32)
     target_link_libraries(EGL PUBLIC Vulkan::Vulkan)
     target_include_directories(EGL PRIVATE ${Vulkan_INCLUDE_DIRS})
+    if(EGL_HAS_ANGLE)
+        target_compile_definitions(EGL PUBLIC EGL_WIN_ENABLE_ANGLE)
+        # No link-time dependency on ANGLE — egl_windows_angle.cpp loads it
+        # dynamically at eglInitialize via LoadLibrary.
+    endif()
 elseif(UNIX AND WL_EGL_PLATFORM)
     target_link_libraries(EGL PUBLIC
         ${CMAKE_DL_LIBS} X11::X11 OpenGL::GL
@@ -157,7 +171,7 @@ elseif(UNIX AND WL_EGL_PLATFORM)
         ${X11_INCLUDE_DIR}
         ${WAYLAND_CLIENT_INCLUDE_DIRS}
         ${CMAKE_BINARY_DIR})
-elseif(UNIX AND NOT GBM_PLATFORM AND NOT OZONE_PLATFORM)
+elseif(UNIX AND NOT GBM_PLATFORM)
     target_link_libraries(EGL PUBLIC ${CMAKE_DL_LIBS} X11::X11 OpenGL::GL)
     if(LINUX_VK)
         target_link_libraries(EGL PUBLIC Vulkan::Vulkan)

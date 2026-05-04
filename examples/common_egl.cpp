@@ -14,7 +14,8 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
                        const EGLint* surface_attribs,
                        const char*   ext_required,
                        const char*   title,
-                       int width, int height)
+                       int width, int height,
+                       EGLenum       api)
 {
     EGLApp* app = new EGLApp{};
 
@@ -51,7 +52,8 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
         printf("%s: supported\n", ext_required);
     }
 
-    eglBindAPI(EGL_OPENGL_API);
+    eglBindAPI(api);
+    const char* apiTag = (api == EGL_OPENGL_ES_API) ? "ES" : "GL";
 
     EGLConfig cfg = nullptr;
     EGLint    ncfg = 0;
@@ -68,7 +70,16 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
     eglGetConfigAttrib(app->dpy, cfg, EGL_NATIVE_VISUAL_ID, &visual_id);
 
     char full_title[256];
-    snprintf(full_title, sizeof(full_title), "%s [%s/%s/%s]", title, __osName(), __windowingName(), __backendName());
+    if (api == EGL_OPENGL_ES_API)
+    {
+        snprintf(full_title, sizeof(full_title), "%s [%s/%s/ANGLE]", title,
+                 apiTag, __osName());
+    }
+    else
+    {
+        snprintf(full_title, sizeof(full_title), "%s [%s/%s/%s/%s]", title,
+                 apiTag, __osName(), __windowingName(), __backendName());
+    }
 
     app->win = __createWindow(app->native_dpy, visual_id, width, height, full_title);
     if (!app->win)
@@ -89,7 +100,14 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
         return nullptr;
     }
 
-    static const EGLint ctx_attribs[] = { EGL_NONE };
+    static const EGLint default_ctx_attribs_gl[]  = { EGL_NONE };
+    static const EGLint default_ctx_attribs_es3[] = {
+        EGL_CONTEXT_MAJOR_VERSION, 3,
+        EGL_CONTEXT_MINOR_VERSION, 0,
+        EGL_NONE
+    };
+    const EGLint* ctx_attribs = (api == EGL_OPENGL_ES_API) ? default_ctx_attribs_es3
+                                                           : default_ctx_attribs_gl;
     app->ctx = eglCreateContext(app->dpy, cfg, EGL_NO_CONTEXT, ctx_attribs);
     if (app->ctx == EGL_NO_CONTEXT)
     {
@@ -113,6 +131,7 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
     }
 
     printf("GL renderer: %s\n", (const char*)glGetString(GL_RENDERER));
+    (void)apiTag;
     return app;
 }
 
