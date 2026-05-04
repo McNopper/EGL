@@ -963,8 +963,12 @@ EGLBoolean __vkPresent(NativeHDRSurfaceContainer* hdr)
     // Step 1: blit from default GL framebuffer (FBO 0) to interop texture
     g_pfnBindFBO(GL_READ_FRAMEBUFFER, 0);
     g_pfnBindFBO(GL_DRAW_FRAMEBUFFER, hdr->blitFbo);
+    // Flip Y during the GL->GL blit: GL's framebuffer origin is bottom-left
+    // while Vulkan stores image memory top-down. Swapping dst Y coords here
+    // ensures the swapchain image (which Vulkan blits 1:1 afterwards) ends
+    // up right-side up on screen.
     g_pfnBlitFBO(0, 0, static_cast<GLint>(hdr->width), static_cast<GLint>(hdr->height),
-                  0, 0, static_cast<GLint>(hdr->width), static_cast<GLint>(hdr->height),
+                  0, static_cast<GLint>(hdr->height), static_cast<GLint>(hdr->width), 0,
                   GL_COLOR_BUFFER_BIT, GL_NEAREST);
     g_pfnBindFBO(GL_READ_FRAMEBUFFER, 0);
     g_pfnBindFBO(GL_DRAW_FRAMEBUFFER, 0);
