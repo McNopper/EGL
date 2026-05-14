@@ -32,36 +32,6 @@ if(WIN32)
         endif()
     endif()
 
-elseif(EMSCRIPTEN)
-    # WebAssembly / Emscripten — future egl_emscripten.cpp backend
-    message(STATUS "EGL: Emscripten/WebGL backend not yet implemented")
-    set(EGL_PLATFORM_SOURCES "")
-
-elseif(CMAKE_SYSTEM_NAME STREQUAL "QNX")
-    # QNX — Screen API — future egl_qnx.cpp backend
-    message(STATUS "EGL: QNX Screen API backend not yet implemented")
-    set(EGL_PLATFORM_SOURCES "")
-
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Fuchsia")
-    # Fuchsia OS — future egl_fuchsia.cpp backend
-    message(STATUS "EGL: Fuchsia backend not yet implemented")
-    set(EGL_PLATFORM_SOURCES "")
-
-elseif(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
-    # HarmonyOS (OpenHarmony) — future egl_harmonyos.cpp backend
-    message(STATUS "EGL: HarmonyOS backend not yet implemented")
-    set(EGL_PLATFORM_SOURCES "")
-
-elseif(APPLE)
-    # macOS / iOS — CGL / EAGL / Metal — future egl_apple.cpp backend
-    message(STATUS "EGL: Apple (macOS/iOS) backend not yet implemented")
-    set(EGL_PLATFORM_SOURCES "")
-
-elseif(ANDROID)
-    # Android — EGL passthrough — future egl_android.cpp backend
-    message(STATUS "EGL: Android backend not yet implemented")
-    set(EGL_PLATFORM_SOURCES "")
-
 elseif(UNIX)
     # Linux / *BSD / Unix-like — select sub-platform via compile-time defines
     # Pass -DWL_EGL_PLATFORM=ON or -DGBM_PLATFORM=ON to select.
@@ -99,10 +69,7 @@ elseif(UNIX)
             ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
         set(EGL_BACKEND_SUFFIX "_GL_Linux_Wayland_VK")
     elseif(GBM_PLATFORM)
-        message(STATUS "EGL: GBM/DRM backend not yet implemented")
-        add_compile_definitions(__GBM__)
-        set(EGL_PLATFORM_SOURCES "")
-        set(EGL_BACKEND_SUFFIX "_GL_Linux_GBM")
+        message(FATAL_ERROR "EGL: GBM/DRM backend has been removed. Use WL_EGL_PLATFORM for Wayland or the default X11/GLX backend.")
     else()
         message(STATUS "EGL: X11/GLX backend (default Unix)")
         cmake_policy(SET CMP0072 NEW)
@@ -126,7 +93,7 @@ elseif(UNIX)
     endif()
 
 else()
-    message(FATAL_ERROR "EGL: Unsupported platform. Supported: WIN32, EMSCRIPTEN, QNX, Fuchsia, OHOS, APPLE, ANDROID, UNIX")
+    message(FATAL_ERROR "EGL: Unsupported platform. Supported: WIN32, UNIX")
 endif()
 
 set(EGL_SOURCES

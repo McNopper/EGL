@@ -88,49 +88,6 @@ typedef struct _NativeLocalStorageContainer {
 
 typedef HPBUFFERARB NativePbufferType;
 
-#elif defined(__QNX__)
-
-// QNX — Screen API — future egl_qnx.cpp backend
-#include <screen/screen.h>
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    screen_window_t window;   // screen_window_t
-    screen_context_t ctx;     // screen_context_t (needed for surface ops)
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    screen_context_t ctx;     // screen_context_t
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    screen_display_t display; // screen_display_t
-    screen_context_t ctx;
-} NativeLocalStorageContainer;
-
-typedef screen_pixmap_t NativePbufferType;
-
-#elif defined(__EMSCRIPTEN__)
-
-// WebAssembly / Emscripten — WebGL — future egl_emscripten.cpp backend
-#include <emscripten/html5.h>
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    int             target;   // canvas target (0 = default canvas)
-    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx;
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx;
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    int display;              // unused; WebGL has no explicit display
-} NativeLocalStorageContainer;
-
-typedef int NativePbufferType;
-
 #elif defined(WL_EGL_PLATFORM)
 
 // Wayland — GLX via XWayland for GL context + Vulkan for all presentation.
@@ -171,51 +128,6 @@ typedef struct _NativeLocalStorageContainer {
 } NativeLocalStorageContainer;
 
 typedef GLXPbuffer NativePbufferType;
-
-#elif defined(__GBM__)
-
-// DRM/KMS via GBM — future egl_gbm.cpp backend
-struct gbm_device;
-struct gbm_surface;
-struct gbm_bo;
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    struct gbm_surface* surface;
-    unsigned int        fb;   // DRM framebuffer id
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    void* ctx;
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    struct gbm_device* device;
-    int                drmFd; // DRM device file descriptor
-} NativeLocalStorageContainer;
-
-typedef struct gbm_bo* NativePbufferType;
-
-#elif defined(__ANDROID__) || defined(ANDROID)
-
-// Android — EGL passthrough via ANativeWindow — future egl_android.cpp backend
-struct ANativeWindow;
-struct egl_native_pixmap_t;
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    struct ANativeWindow* window;
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    void* ctx;                // EGLContext (Android system EGL)
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    void* display;            // EGLDisplay (Android system EGL)
-} NativeLocalStorageContainer;
-
-typedef struct egl_native_pixmap_t* NativePbufferType;
 
 #elif defined(USE_X11)
 
@@ -273,66 +185,8 @@ typedef struct _NativeLocalStorageContainer {
 
 typedef GLXPbuffer NativePbufferType;
 
-#elif defined(__APPLE__)
-
-// macOS / iOS — CGL / EAGL / Metal — future egl_apple.cpp backend
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    void* view;               // NSView* (macOS) or CAEAGLLayer* (iOS), opaque to avoid ObjC headers
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    void* ctx;                // NSOpenGLContext* (macOS) or EAGLContext* (iOS)
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    void* display;            // CGDirectDisplayID cast to void*
-} NativeLocalStorageContainer;
-
-typedef void* NativePbufferType;
-
-#elif defined(__Fuchsia__)
-
-// Fuchsia OS — future egl_fuchsia.cpp backend
-#include <stdint.h>
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    khronos_uintptr_t window;
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    void* ctx;
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    void* display;
-} NativeLocalStorageContainer;
-
-typedef khronos_uintptr_t NativePbufferType;
-
-#elif defined(OHOS) || defined(__OHOS__)
-
-// HarmonyOS (OpenHarmony) — future egl_harmonyos.cpp backend
-#define CONTEXT_ATTRIB_LIST_SIZE 13
-
-typedef struct _NativeSurfaceContainer {
-    void* window;             // OHNativeWindow*
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer {
-    void* ctx;
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer {
-    void* display;
-} NativeLocalStorageContainer;
-
-typedef void* NativePbufferType;
-
 #else
-#error "Platform not recognized. Supported: _WIN32, __QNX__, __EMSCRIPTEN__, WL_EGL_PLATFORM, __GBM__, __ANDROID__, USE_X11, __unix__, __APPLE__, __Fuchsia__, OHOS"
+#error "Platform not recognized. Supported: _WIN32, WL_EGL_PLATFORM, USE_X11, __unix__"
 #endif
 
 #include <EGL/egl.h>

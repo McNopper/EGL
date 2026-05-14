@@ -45,13 +45,6 @@ across platforms remain unambiguous.
 | Linux — X11 | GLX | — | ❌ (X11 has no HDR signaling) | **Implemented** |
 | Linux — X11 + Vulkan | GLX | Vulkan (`-DLINUX_VK=ON`) | ⚠️ Driver/compositor dependent | **Implemented** |
 | Linux — Wayland | xdg-shell | Vulkan (`-DWL_EGL_PLATFORM=ON`) | ✅ on KDE Plasma 6+ / GNOME 47+ | **Implemented** |
-| macOS / iOS | CGL, EAGL, CAMetalLayer | — | — | Prepared |
-| Android | ANativeWindow | — | — | Prepared |
-| Linux — DRM/KMS | GBM, libdrm | — | — | Prepared |
-| QNX | Screen API | — | — | Prepared |
-| HarmonyOS (OHOS) | OHNativeWindow | — | — | Prepared |
-| Fuchsia | Scenic / Flatland | — | — | Prepared |
-| WebAssembly | Emscripten | — | — | Prepared |
 
 ## EGL 1.5 API Coverage
 
@@ -88,7 +81,6 @@ platform can wire in whichever ES provider is appropriate:
 |---|---|---|
 | Windows | [ANGLE](https://github.com/google/angle) (D3D11) | implemented |
 | Linux (X11 / Wayland) | system `libGLESv2` (Mesa), ANGLE (Vulkan) | not yet wired |
-| Android, HarmonyOS | system `libGLESv2` from the OS | not yet wired |
 
 A platform with no ES backend simply returns `EGL_BAD_MATCH` from
 `eglCreateContext` after `eglBindAPI(EGL_OPENGL_ES_API)`; desktop GL keeps
@@ -303,19 +295,6 @@ For working HDR on Linux, this variant requires:
 - A Wayland HDR-capable compositor (KDE Plasma 6.1+ or GNOME 47+)
 - An HDR-capable GPU driver (NVIDIA 555+, Mesa RADV recent, etc.)
 - HDR enabled in the compositor's display settings
-
-### Other platforms (prepared)
-
-Cross-compile with the target toolchain. CMake selects the correct platform branch automatically
-based on `CMAKE_SYSTEM_NAME`. For Linux sub-platforms pass the appropriate define:
-
-```
-cmake .. -DGBM_PLATFORM=1     # GBM / DRM-KMS
-```
-
-Non-implemented Unix builds will compile until the link stage and then fail on the unimplemented
-`__` backend functions — this is intentional and indicates where the new backend code goes.
-
 
 ## Examples
 
