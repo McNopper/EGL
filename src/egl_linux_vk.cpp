@@ -182,21 +182,6 @@ bool _eglColorspaceToVk(EGLint eglCS, VkFormat* fmt, VkColorSpaceKHR* cs)
     }
 }
 
-static uint32_t _vkColorspaceToBit(VkColorSpaceKHR vkCS)
-{
-    switch (vkCS)
-    {
-        case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:    return EGL_HDR_CS_SCRGB_LINEAR_BIT;
-        case VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT: return EGL_HDR_CS_SCRGB_BIT;
-        case VK_COLOR_SPACE_HDR10_ST2084_EXT:            return EGL_HDR_CS_BT2020_PQ_BIT;
-        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:           return EGL_HDR_CS_BT2020_LINEAR_BIT;
-        case VK_COLOR_SPACE_HDR10_HLG_EXT:               return EGL_HDR_CS_BT2020_HLG_BIT;
-        case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:    return EGL_HDR_CS_DISPLAY_P3_BIT;
-        case VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT:       return EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT;
-        default: return 0;
-    }
-}
-
 // Forward declaration
 static EGLBoolean __vkRecreateSwapchain(NativeHDRSurfaceContainer* hdr, bool drainGLSemaphore);
 

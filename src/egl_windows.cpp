@@ -64,10 +64,6 @@ PFNWGLBINDTEXIMAGEARBPROC wglBindTexImageARB_PTR = NULL;
 PFNWGLRELEASETEXIMAGEARBPROC wglReleaseTexImageARB_PTR = NULL;
 
 
-static LRESULT CALLBACK __DummyWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-     return DefWindowProc(hwnd, uMsg, wParam, lParam);
-}
 
 EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* GL_max_supported, EGLint* ES_max_supported)
 {
@@ -322,8 +318,6 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
         DestroyWindow(nativeLocalStorageContainer->hwnd);
         nativeLocalStorageContainer->hwnd = 0;
     }
-
-    UnregisterClass("DummyWindow", NULL);
 
     __vkTerm();
 
@@ -1544,7 +1538,6 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const
     nativeContextContainer->backend  = EGL_BACKEND_WGL;
     nativeContextContainer->angleCtx = nullptr;
     nativeContextContainer->ctx = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, attribList);
-    DWORD err = GetLastError();
 
     return nativeContextContainer->ctx != 0;
 }

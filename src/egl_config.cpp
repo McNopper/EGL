@@ -67,69 +67,6 @@ static int _ChooseConfig_sort_predicate(const void* _lhs, const void* _rhs)
 extern "C"
 {
 
-static void _eglInternalSetDontCareConfig(EGLConfigImpl* config)
-{
-    if (!config)
-    {
-        return;
-    }
-
-    // Set default values
-
-    config->alphaSize = EGL_DONT_CARE;
-    config->alphaMaskSize = EGL_DONT_CARE;
-
-    config->bindToTextureRGB = EGL_DONT_CARE;
-    config->bindToTextureRGBA = EGL_DONT_CARE;
-    config->blueSize = EGL_DONT_CARE;
-    config->bufferSize = EGL_DONT_CARE;
-
-    config->colorBufferType = EGL_RGB_BUFFER;
-    config->configCaveat = EGL_DONT_CARE;
-    config->configId = EGL_DONT_CARE;
-    config->conformant = EGL_DONT_CARE;
-
-    config->depthSize = EGL_DONT_CARE;
-
-    config->greenSize = EGL_DONT_CARE;
-
-    config->level = EGL_DONT_CARE;
-    config->luminanceSize = EGL_DONT_CARE;
-
-    config->matchNativePixmap = EGL_DONT_CARE;
-    config->maxPBufferHeight = EGL_DONT_CARE;
-    config->maxPBufferPixels = EGL_DONT_CARE;
-    config->maxPBufferWidth = EGL_DONT_CARE;
-    config->maxSwapInterval = EGL_DONT_CARE;
-    config->minSwapInterval = EGL_DONT_CARE;
-
-    config->nativeRenderable = EGL_DONT_CARE;
-    config->nativeVisualId = EGL_DONT_CARE;
-    config->nativeVisualType = EGL_DONT_CARE;
-
-    config->redSize = EGL_DONT_CARE;
-    config->renderableType = EGL_DONT_CARE;
-
-    config->sampleBuffers = EGL_DONT_CARE;
-    config->samples = EGL_DONT_CARE;
-    config->stencilSize = EGL_DONT_CARE;
-    config->surfaceType = EGL_WINDOW_BIT;
-
-    config->transparentBlueValue = EGL_DONT_CARE;
-    config->transparentGreenValue = EGL_DONT_CARE;
-    config->transparentRedValue = EGL_DONT_CARE;
-    config->transparentType = EGL_DONT_CARE;
-
-    // Following parameters always do care.
-
-    config->drawToWindow = EGL_TRUE;
-    config->drawToPixmap = EGL_FALSE;
-    config->drawToPBuffer = EGL_FALSE;
-
-    config->doubleBuffer = EGL_TRUE;
-
-    config->next = 0;
-}
 
 EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig *configs, EGLint config_size, EGLint *num_config)
 {
@@ -520,10 +457,8 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
             EGLint configIndex = 0;
 
-            int itercount = 0;
             while (walkerConfig && configIndex < max_configs)
             {
-                ++itercount;
                 if (config.alphaMaskSize > walkerConfig->alphaMaskSize)
                 {
                     walkerConfig = walkerConfig->next;
