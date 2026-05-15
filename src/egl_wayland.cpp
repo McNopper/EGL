@@ -56,6 +56,8 @@ typedef GLXPbuffer   (*PFNGLXCREATEPBUFFERPROC)(Display*, GLXFBConfig, const int
 typedef void         (*PFNGLXDESTROYPBUFFERPROC)(Display*, GLXPbuffer);
 typedef const char*  (*PFNGLXQUERYEXTENSIONSSTRINGPROC)(Display*, int);
 typedef __GLXextFuncPtr (*PFNGLXGETPROCADDRESSARBPROC)(const GLubyte*);
+typedef void         (*PFNGLXBINDTEXIMAGEEXTPROC)(Display*, GLXDrawable, int, const int*);
+typedef void         (*PFNGLXRELEASETEXIMAGEEXTPROC)(Display*, GLXDrawable, int);
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 
@@ -87,6 +89,16 @@ static PFNGLXQUERYEXTENSIONSSTRINGPROC  s_glXQueryExtensionsString = nullptr;
 
 // GLX extensions
 static PFNGLXCREATECONTEXTATTRIBSARBPROC s_glXCreateContextAttribsARB = nullptr;
+static PFNGLXBINDTEXIMAGEEXTPROC         s_glXBindTexImageEXT          = nullptr;
+static PFNGLXRELEASETEXIMAGEEXTPROC      s_glXReleaseTexImageEXT       = nullptr;
+
+// GLX_EXT_texture_from_pixmap buffer enumerants (0x20DE / 0x20E2 from glxext.h)
+#ifndef GLX_FRONT_LEFT_EXT
+#define GLX_FRONT_LEFT_EXT 0x20DE
+#endif
+#ifndef GLX_BACK_LEFT_EXT
+#define GLX_BACK_LEFT_EXT  0x20E2
+#endif
 
 // ── X error handler (needed for GLX version probing) ─────────────────────────
 
@@ -234,6 +246,10 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
 
     s_glXCreateContextAttribsARB = reinterpret_cast<PFNGLXCREATECONTEXTATTRIBSARBPROC>(
         s_glXGetProcAddressARB((const GLubyte*)"glXCreateContextAttribsARB"));
+    s_glXBindTexImageEXT = reinterpret_cast<PFNGLXBINDTEXIMAGEEXTPROC>(
+        s_glXGetProcAddressARB((const GLubyte*)"glXBindTexImageEXT"));
+    s_glXReleaseTexImageEXT = reinterpret_cast<PFNGLXRELEASETEXIMAGEEXTPROC>(
+        s_glXGetProcAddressARB((const GLubyte*)"glXReleaseTexImageEXT"));
 
     // Create initial legacy GLX context for bootstrap
     c->ctx = s_glXCreateNewContext(s_x11Display, chosenFB, GLX_RGBA_TYPE, nullptr, True);
@@ -1147,18 +1163,40 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* /*walkerDpy*/, EGLint interval)
 
 // ── Texture binding ───────────────────────────────────────────────────────────
 
-EGLBoolean __bindTexImage(const EGLDisplayImpl* /*walkerDpy*/,
-                           const EGLSurfaceImpl* /*walkerSurface*/,
-                           EGLint /*buffer*/)
+EGLBoolean __bindTexImage(const EGLDisplayImpl* walkerDpy,
+                           const EGLSurfaceImpl* walkerSurface,
+                           EGLint buffer)
 {
-    return EGL_FALSE;  // Not supported on Wayland VK surfaces
+    if (!walkerDpy || !walkerSurface)
+        return EGL_FALSE;
+#ifdef EGL_WAYLAND_ENABLE_GLES
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+        return EGL_FALSE;
+#endif
+    if (!s_glXBindTexImageEXT)
+        return EGL_FALSE;
+
+    int glxBuffer = (buffer == EGL_BACK_BUFFER) ? GLX_BACK_LEFT_EXT : GLX_FRONT_LEFT_EXT;
+    s_glXBindTexImageEXT(s_x11Display, (GLXDrawable)walkerSurface->pbuf, glxBuffer, nullptr);
+    return EGL_TRUE;
 }
 
-EGLBoolean __releaseTexImage(const EGLDisplayImpl* /*walkerDpy*/,
-                              const EGLSurfaceImpl* /*walkerSurface*/,
-                              EGLint /*buffer*/)
+EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy,
+                              const EGLSurfaceImpl* walkerSurface,
+                              EGLint buffer)
 {
-    return EGL_FALSE;
+    if (!walkerDpy || !walkerSurface)
+        return EGL_FALSE;
+#ifdef EGL_WAYLAND_ENABLE_GLES
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+        return EGL_FALSE;
+#endif
+    if (!s_glXReleaseTexImageEXT)
+        return EGL_FALSE;
+
+    int glxBuffer = (buffer == EGL_BACK_BUFFER) ? GLX_BACK_LEFT_EXT : GLX_FRONT_LEFT_EXT;
+    s_glXReleaseTexImageEXT(s_x11Display, (GLXDrawable)walkerSurface->pbuf, glxBuffer);
+    return EGL_TRUE;
 }
 
 // ── Platform-dependent handle export ─────────────────────────────────────────

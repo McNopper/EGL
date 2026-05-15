@@ -6,6 +6,8 @@
 ### CMake build directories
 build/
 build-linux/
+build_clang/
+build_mingw/
 build_x11/
 build_x11vk/
 build_wl/
