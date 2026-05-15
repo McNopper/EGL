@@ -81,7 +81,7 @@ platform can wire in whichever ES provider is appropriate:
 |---|---|---|
 | Windows | [ANGLE](https://github.com/google/angle) (D3D11) | implemented |
 | Linux — X11 | system `libGLESv2` (Mesa / vendor) | **implemented** |
-| Linux — Wayland | system `libGLESv2` (Mesa / vendor) | not yet wired |
+| Linux — Wayland | system `libGLESv2` (Mesa / vendor) | **implemented** |
 
 A platform with no ES backend simply returns `EGL_BAD_MATCH` from
 `eglCreateContext` after `eglBindAPI(EGL_OPENGL_ES_API)`; desktop GL keeps
@@ -212,6 +212,30 @@ What gets built:
   compiled in.
 - `bin/<example>_GL_Linux_X11_GLX` — desktop GL examples (unchanged).
 - `bin/green_window_ES_Linux_X11_GLES` — ES proof example.
+
+### Linux Wayland ES backend: system libGLESv2 (option)
+
+On Linux/Wayland the ES backend likewise loads the **system** EGL and GLES
+libraries at runtime via `dlopen`.
+
+Prerequisites (Ubuntu / Debian):
+
+```
+sudo apt install libgles2-mesa-dev libwayland-dev wayland-protocols libvulkan-dev
+```
+
+Configure and build:
+
+```
+mkdir build_wl
+cd build_wl
+cmake .. -DWL_EGL_PLATFORM=ON -DEGL_WAYLAND_ENABLE_GLES=ON
+cmake --build .
+```
+
+Output suffix:
+
+- `_ES_Linux_Wayland_GLES`
 
 ### Why this exists (and why it is optional)
 
@@ -388,7 +412,7 @@ egl.c                     Public C API (thin shims, no logic)
   └── egl_windows_angle.cpp Windows — ANGLE ES backend (dlopen-style via LoadLibrary)
   └── egl_windows_vk.cpp   Windows — Vulkan HDR presentation
   └── egl_x11_glx.cpp      Linux / Unix — X11 + GLX (+ optional system GLES routing)
-  └── egl_linux_gles.cpp   Linux — system libEGL/libGLESv2 ES backend (dlopen)
+  └── egl_linux_gles.cpp   Linux — system libEGL/libGLESv2 ES backend (X11 and Wayland, dlopen)
   └── egl_wayland.cpp      Linux / Unix — Wayland + xdg-shell (paired with egl_linux_vk.cpp)
   └── egl_linux_vk.cpp     Linux — Vulkan HDR presentation (shared by X11+VK and Wayland)
   └── egl_<platform>.cpp   Future backends
@@ -399,6 +423,8 @@ egl.c                     Public C API (thin shims, no logic)
 
 
 ## Changelog
+
+14.05.2026 - Added Wayland OpenGL ES backend via system libEGL/libGLESv2. Enabled by default with `-DEGL_WAYLAND_ENABLE_GLES=ON` when `WL_EGL_PLATFORM=ON`. Removed legacy platform stubs (QNX, Emscripten, Symbian, GBM, Android, Ozone, Apple, Haiku, Fuchsia) from include/EGL/eglplatform.h and src/egl_internal.h.
 
 14.05.2026 - Added Linux OpenGL ES backend via system libEGL/libGLESv2 (Mesa/vendor). Enabled by default with `-DEGL_LINUX_ENABLE_GLES=ON`.
 

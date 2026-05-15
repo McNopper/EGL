@@ -1,0 +1,2 @@
+PlatformToolSet=ClangCL:VCToolArchitecture=Native64Bit:VCToolsVersion=14.50.35717:VCServicingVersionCompilers=14.50.35730:TargetPlatformVersion=10.0.26100.0:VcpkgTriplet=x64-windows:
+C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64|20.1.8|Debug|x64|C:\Development\GitHub\EGL\build_clang\|

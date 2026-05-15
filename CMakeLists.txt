@@ -68,6 +68,27 @@ elseif(UNIX)
             ${CMAKE_CURRENT_LIST_DIR}/src/egl_wayland.cpp
             ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
         set(EGL_BACKEND_SUFFIX "_GL_Linux_Wayland_VK")
+
+        # Optional: enable real OpenGL ES via the system libEGL / libGLESv2
+        # (Mesa / vendor driver). Libraries are loaded dynamically via dlopen.
+        option(EGL_WAYLAND_ENABLE_GLES "Enable OpenGL ES backend via system libEGL/libGLESv2 on Wayland" ON)
+        if(EGL_WAYLAND_ENABLE_GLES)
+            message(STATUS "EGL: Wayland GLES backend enabled (system libEGL.so + libGLESv2.so)")
+            set(EGL_HAS_GLES ON)
+            list(APPEND EGL_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_gles.cpp)
+            set(EGL_ES_BACKEND_SUFFIX "_ES_Linux_Wayland_GLES")
+        endif()
+
+        # Optional: enable real OpenGL ES via the system libEGL / libGLESv2
+        option(EGL_WAYLAND_ENABLE_GLES "Enable OpenGL ES backend via system libEGL/libGLESv2 on Wayland" ON)
+        if(EGL_WAYLAND_ENABLE_GLES)
+            message(STATUS "EGL: Wayland GLES backend enabled (system libEGL.so + libGLESv2.so)")
+            set(EGL_HAS_GLES ON)
+            list(APPEND EGL_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_gles.cpp)
+            set(EGL_ES_BACKEND_SUFFIX "_ES_Linux_Wayland_GLES")
+        endif()
     elseif(GBM_PLATFORM)
         message(FATAL_ERROR "EGL: GBM/DRM backend has been removed. Use WL_EGL_PLATFORM for Wayland or the default X11/GLX backend.")
     else()
@@ -150,6 +171,12 @@ elseif(UNIX AND WL_EGL_PLATFORM)
         ${X11_INCLUDE_DIR}
         ${WAYLAND_CLIENT_INCLUDE_DIRS}
         ${CMAKE_BINARY_DIR})
+    if(EGL_HAS_GLES)
+        target_compile_definitions(EGL PUBLIC EGL_WAYLAND_ENABLE_GLES)
+    endif()
+    if(EGL_HAS_GLES)
+        target_compile_definitions(EGL PUBLIC EGL_WAYLAND_ENABLE_GLES)
+    endif()
 elseif(UNIX AND NOT GBM_PLATFORM)
     target_link_libraries(EGL PUBLIC ${CMAKE_DL_LIBS} X11::X11 OpenGL::GL)
     if(LINUX_VK)

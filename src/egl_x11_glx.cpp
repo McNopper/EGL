@@ -720,7 +720,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
     if (g_localStorage.api == EGL_OPENGL_ES_API && gles_isAvailable())
     {
         void* surf = nullptr;
-        if (gles_createWindowSurface((Window)win, &surf) != EGL_TRUE)
+        if (gles_createWindowSurface(reinterpret_cast<void*>(static_cast<uintptr_t>(win)), &surf) != EGL_TRUE)
         {
             *error = EGL_BAD_ALLOC;
             return EGL_FALSE;

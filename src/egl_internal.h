@@ -110,15 +110,26 @@ struct wl_egl_window {
 // Forward declaration; full definition is in egl_linux_vk.h
 typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
+// Backend tag: GLX is the default desktop OpenGL path; GLES delegates to the
+// system libEGL (Mesa / vendor) when EGL_WAYLAND_ENABLE_GLES is set.
+typedef enum {
+    EGL_BACKEND_GLX  = 0,
+    EGL_BACKEND_GLES = 1
+} NativeBackend;
+
 typedef struct _NativeSurfaceContainer {
     GLXPbuffer             glxPbuffer;  // offscreen GL drawable (XWayland)
     GLXFBConfig            glxConfig;
     struct wl_egl_window*  eglWindow;   // Wayland window; eglWindow->surface used for VK
-    NativeHDRSurfaceContainer* vk;      // always non-NULL for Wayland surfaces
+    NativeHDRSurfaceContainer* vk;      // non-NULL for GLX-path Wayland surfaces (Vulkan present)
+    NativeBackend          backend;     // 0 = GLX (default), 1 = system GLES
+    void*                  glesSurface; // EGLSurface from system libEGL when backend == GLES
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
     GLXContext ctx;
+    NativeBackend backend;  // 0 = GLX (default), 1 = system GLES
+    void* glesCtx;          // EGLContext from system libEGL when backend == GLES
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
@@ -539,22 +550,6 @@ static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* na
     return EGL_FALSE;
 }
 
-#elif defined(__QNX__)
-
-static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
-    { return reinterpret_cast<EGLNativeDisplayType>(c->display); }
-
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
-    { return EGL_FALSE; }
-
-#elif defined(__EMSCRIPTEN__)
-
-static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-    { return reinterpret_cast<EGLNativeDisplayType>(0); }
-
-static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
-    { return EGL_FALSE; }
-
 #elif defined(WL_EGL_PLATFORM)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
@@ -564,30 +559,6 @@ static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* na
 {
     if (platform == EGL_PLATFORM_WAYLAND_EXT || platform == EGL_PLATFORM_WAYLAND_KHR)
         { *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display)); return EGL_TRUE; }
-    return EGL_FALSE;
-}
-
-#elif defined(__GBM__)
-
-static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-    { return reinterpret_cast<EGLNativeDisplayType>(0); }
-
-static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
-{
-    if (platform == EGL_PLATFORM_GBM_MESA || platform == EGL_PLATFORM_GBM_KHR)
-        { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
-    return EGL_FALSE;
-}
-
-#elif defined(__ANDROID__) || defined(ANDROID)
-
-static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-    { return reinterpret_cast<EGLNativeDisplayType>(0); }
-
-static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
-{
-    if (platform == EGL_PLATFORM_ANDROID_KHR)
-        { *out = reinterpret_cast<EGLNativeDisplayType>(native_display); return EGL_TRUE; }
     return EGL_FALSE;
 }
 

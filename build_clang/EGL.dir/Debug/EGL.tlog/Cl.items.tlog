@@ -1,0 +1,12 @@
+C:\Development\GitHub\EGL\src\egl.c;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl.obj
+C:\Development\GitHub\EGL\src\egl_globals.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_globals.obj
+C:\Development\GitHub\EGL\src\egl_config.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_config.obj
+C:\Development\GitHub\EGL\src\egl_display.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_display.obj
+C:\Development\GitHub\EGL\src\egl_context.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_context.obj
+C:\Development\GitHub\EGL\src\egl_surface.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_surface.obj
+C:\Development\GitHub\EGL\src\egl_sync.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_sync.obj
+C:\Development\GitHub\EGL\src\egl_image.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_image.obj
+C:\Development\GitHub\EGL\src\egl_api.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_api.obj
+C:\Development\GitHub\EGL\src\egl_windows.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_windows.obj
+C:\Development\GitHub\EGL\src\egl_windows_vk.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_windows_vk.obj
+C:\Development\GitHub\EGL\src\egl_windows_angle.cpp;C:\Development\GitHub\EGL\build_clang\EGL.dir\Debug\egl_windows_angle.obj

@@ -1,5 +1,5 @@
 /**
- * System libEGL/libGLESv2 backend for OpenGL ES on Linux/X11 — implementation.
+ * System libEGL/libGLESv2 backend for OpenGL ES on Linux/X11 and Wayland.
  *
  * The MIT License (MIT)
  * Copyright (c) since 2014 Norbert Nopper
@@ -8,11 +8,15 @@
 #include "egl_linux_gles.h"
 
 #include <dlfcn.h>
+#include <stdint.h>
 #include <stdio.h>
 
 // EGL constants — values are stable across implementations (Khronos EGL spec).
 #ifndef EGL_PLATFORM_X11_EXT
 #  define EGL_PLATFORM_X11_EXT 0x31D5
+#endif
+#ifndef EGL_PLATFORM_WAYLAND_EXT
+#  define EGL_PLATFORM_WAYLAND_EXT 0x31D6
 #endif
 
 // System EGL function pointer types.
@@ -24,7 +28,7 @@ typedef int       (*PFN_eglTerminate)(void* dpy);
 typedef int       (*PFN_eglChooseConfig)(void* dpy, const int* attrib_list, void** configs, int config_size, int* num_config);
 typedef int       (*PFN_eglBindAPI)(unsigned int api);
 typedef void*     (*PFN_eglCreateContext)(void* dpy, void* config, void* share, const int* attrib_list);
-typedef void*     (*PFN_eglCreateWindowSurface)(void* dpy, void* config, unsigned long win, const int* attrib_list);
+typedef void*     (*PFN_eglCreateWindowSurface)(void* dpy, void* config, void* win, const int* attrib_list);
 typedef int       (*PFN_eglMakeCurrent)(void* dpy, void* draw, void* read, void* ctx);
 typedef int       (*PFN_eglSwapBuffers)(void* dpy, void* surface);
 typedef int       (*PFN_eglSwapInterval)(void* dpy, int interval);
@@ -135,7 +139,7 @@ static bool chooseDefaultConfig(int* outVersion)
 
 extern "C" {
 
-EGLBoolean gles_init(Display* x11Display, EGLint* es_max_supported)
+static EGLBoolean gles_init_platform(unsigned int platform, void* nativeDisplay, EGLint* es_max_supported)
 {
     if (g.ready)
     {
@@ -181,20 +185,12 @@ EGLBoolean gles_init(Display* x11Display, EGLint* es_max_supported)
         return EGL_FALSE;
     }
 
-    // Optional: eglGetPlatformDisplayEXT for X11 platform selection
     resolveSym(g.libEGL, g.eglGetPlatformDisplayEXT, "eglGetPlatformDisplayEXT");
 
-    // Obtain an EGL display for the X11 connection
-    if (g.eglGetPlatformDisplayEXT && x11Display)
-    {
-        g.display = g.eglGetPlatformDisplayEXT(
-            EGL_PLATFORM_X11_EXT, static_cast<void*>(x11Display), nullptr);
-    }
+    if (g.eglGetPlatformDisplayEXT && nativeDisplay)
+        g.display = g.eglGetPlatformDisplayEXT(platform, nativeDisplay, nullptr);
     if (!g.display)
-    {
-        // Fall back to eglGetDisplay with the raw Display* cast to EGLNativeDisplayType
-        g.display = g.eglGetDisplay(static_cast<void*>(x11Display));
-    }
+        g.display = g.eglGetDisplay(nativeDisplay);
     if (!g.display)
     {
         gles_terminate();
@@ -226,6 +222,16 @@ EGLBoolean gles_init(Display* x11Display, EGLint* es_max_supported)
     return EGL_TRUE;
 }
 
+EGLBoolean gles_init(void* nativeDisplay, EGLint* es_max_supported)
+{
+    return gles_init_platform(EGL_PLATFORM_X11_EXT, nativeDisplay, es_max_supported);
+}
+
+EGLBoolean gles_init_wayland(void* wlDisplay, EGLint* es_max_supported)
+{
+    return gles_init_platform(EGL_PLATFORM_WAYLAND_EXT, wlDisplay, es_max_supported);
+}
+
 void gles_terminate(void)
 {
     if (g.display && g.eglTerminate)
@@ -243,14 +249,23 @@ EGLBoolean gles_isAvailable(void)
     return g.ready ? EGL_TRUE : EGL_FALSE;
 }
 
-EGLBoolean gles_createWindowSurface(Window win, void** out_surface)
+EGLBoolean gles_createWindowSurface(void* win, void** out_surface)
 {
     if (!g.ready || !out_surface)
         return EGL_FALSE;
 
     static const int surfaceAttribs[] = { SYSGL_EGL_NONE };
-    *out_surface = g.eglCreateWindowSurface(g.display, g.config,
-                                            (unsigned long)win, surfaceAttribs);
+    *out_surface = g.eglCreateWindowSurface(g.display, g.config, win, surfaceAttribs);
+    return *out_surface ? EGL_TRUE : EGL_FALSE;
+}
+
+EGLBoolean gles_createWindowSurfaceWayland(void* wlEglWin, void** out_surface)
+{
+    if (!g.ready || !out_surface)
+        return EGL_FALSE;
+
+    static const int surfaceAttribs[] = { SYSGL_EGL_NONE };
+    *out_surface = g.eglCreateWindowSurface(g.display, g.config, wlEglWin, surfaceAttribs);
     return *out_surface ? EGL_TRUE : EGL_FALSE;
 }
 

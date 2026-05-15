@@ -1,5 +1,5 @@
 /**
- * System libEGL/libGLESv2 backend for OpenGL ES on Linux/X11.
+ * System libEGL/libGLESv2 backend for OpenGL ES on Linux/X11 and Wayland.
  *
  * Loads the system EGL (libEGL.so.1) and GLES (libGLESv2.so.2) libraries
  * dynamically at runtime and delegates ES context/surface lifecycle to them.
@@ -12,7 +12,6 @@
 
 #pragma once
 
-#include <X11/Xlib.h>
 #include <EGL/egl.h>
 
 #ifdef __cplusplus
@@ -21,12 +20,19 @@ extern "C" {
 
 /**
  * Load libEGL.so.1 / libGLESv2.so.2 and create a system EGLDisplay backed
- * by the given X11 display. Reports the highest ES version accepted in
+ * by the given native display. Reports the highest ES version accepted in
  * es_max_supported (major, minor). Returns EGL_FALSE if the libraries are
  * not present or fail to initialise; in that case the ES path is silently
  * disabled and the desktop GL path continues to work normally.
  */
-EGLBoolean gles_init(Display* x11Display, EGLint* es_max_supported);
+EGLBoolean gles_init(void* nativeDisplay, EGLint* es_max_supported);
+
+/**
+ * Load libEGL.so.1 / libGLESv2.so.2 and create a system EGLDisplay backed
+ * by the given Wayland display. Same semantics as gles_init() but uses
+ * EGL_PLATFORM_WAYLAND_EXT. Returns EGL_FALSE if the libraries are absent.
+ */
+EGLBoolean gles_init_wayland(void* wlDisplay, EGLint* es_max_supported);
 
 /** Tear down the system EGL display and unload its libraries. */
 void gles_terminate(void);
@@ -35,10 +41,16 @@ void gles_terminate(void);
 EGLBoolean gles_isAvailable(void);
 
 /**
- * Create a system EGL window surface for the given X11 Window.
+ * Create a system EGL window surface for the given native window.
  * out_surface receives the opaque EGLSurface pointer.
  */
-EGLBoolean gles_createWindowSurface(Window win, void** out_surface);
+EGLBoolean gles_createWindowSurface(void* win, void** out_surface);
+
+/**
+ * Create a system EGL window surface for the given wl_egl_window*.
+ * out_surface receives the opaque EGLSurface pointer.
+ */
+EGLBoolean gles_createWindowSurfaceWayland(void* wlEglWin, void** out_surface);
 
 /**
  * Create a system EGL ES context. major/minor select the requested ES version.

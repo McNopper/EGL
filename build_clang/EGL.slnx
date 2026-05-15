@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Solution>
+	<Configurations>
+		<BuildType Name="Debug"/>
+		<BuildType Name="Release"/>
+		<BuildType Name="MinSizeRel"/>
+		<BuildType Name="RelWithDebInfo"/>
+		<Platform Name="x64"/>
+	</Configurations>
+	<Project Path="ALL_BUILD.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="461b8905-7c1e-3f2a-aa79-bef30cdd9f06" DefaultStartup="true">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="examples/bt2020_hlg.vcxproj"/>
+		<BuildDependency Project="examples/bt2020_linear.vcxproj"/>
+		<BuildDependency Project="examples/bt2020_pq.vcxproj"/>
+		<BuildDependency Project="examples/display_p3.vcxproj"/>
+		<BuildDependency Project="examples/display_p3_linear.vcxproj"/>
+		<BuildDependency Project="examples/display_p3_passthrough.vcxproj"/>
+		<BuildDependency Project="examples/green_window.vcxproj"/>
+		<BuildDependency Project="examples/green_window_es.vcxproj"/>
+		<BuildDependency Project="examples/linear.vcxproj"/>
+		<BuildDependency Project="examples/scrgb.vcxproj"/>
+		<BuildDependency Project="examples/scrgb_linear.vcxproj"/>
+		<BuildDependency Project="examples/srgb.vcxproj"/>
+		<Build Solution="Debug|*" Project="false"/>
+		<Build Solution="Release|*" Project="false"/>
+		<Build Solution="MinSizeRel|*" Project="false"/>
+		<Build Solution="RelWithDebInfo|*" Project="false"/>
+	</Project>
+	<Project Path="EGL.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="138001b1-92f8-3b8b-a894-89f3f2b00108">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="ZERO_CHECK.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="401faa63-e95a-3582-b2d1-5e95663fda56"/>
+	<Project Path="examples/bt2020_hlg.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="2c3186c1-1de7-3919-a0a1-bb17a1923270">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/bt2020_linear.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="727c5c5f-edea-37d6-ae0a-c4d8f9fd84bd">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/bt2020_pq.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="ae250f37-e7e5-3a99-9556-55b8d68dc2b7">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/display_p3.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="38dde53d-7f02-3205-b115-c40ae99c32a7">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/display_p3_linear.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="d9fe2d7e-0cdc-3a5c-a4f2-c7ebfbcd9f0a">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/display_p3_passthrough.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="a1604e84-ee77-3d95-9837-0914bc1178fc">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/green_window.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="45185c3a-27a0-3ca5-8240-92046d46ad28">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/green_window_es.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="ca814dac-770a-3f08-8194-9f3b971d3e85">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/linear.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="e076985f-1fad-3143-8463-142a9a200fcb">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/scrgb.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="61b3c0a2-1258-39f4-8568-0c2d9da123bf">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/scrgb_linear.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="bafc046d-b140-39b3-b566-b8fe18ba5c3c">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="examples/srgb.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="9c8af2b0-3148-37e1-936a-aacec295686a">
+		<BuildDependency Project="EGL.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+</Solution>
