@@ -559,10 +559,20 @@ EGLSurface _eglCreatePlatformWindowSurface(EGLDisplay dpy, EGLConfig config, voi
 
 EGLSurface _eglCreatePlatformPixmapSurface(EGLDisplay dpy, EGLConfig config, void *native_pixmap, const EGLAttrib *attrib_list)
 {
-    (void)dpy; (void)config; (void)native_pixmap; (void)attrib_list;
-    // Pixmap surfaces are not yet implemented.
-    g_localStorage.error = EGL_BAD_NATIVE_PIXMAP;
-    return EGL_NO_SURFACE;
+    // Convert EGLAttrib* (intptr_t) to EGLint* via a temporary buffer.
+    EGLint converted[64];
+    EGLint count = 0;
+    if (attrib_list)
+    {
+        for (const EGLAttrib* p = attrib_list; *p != EGL_NONE && count + 2 < 63; p += 2, count += 2)
+        {
+            converted[count]     = (EGLint)p[0];
+            converted[count + 1] = (EGLint)p[1];
+        }
+    }
+    converted[count] = EGL_NONE;
+
+    return _eglCreatePixmapSurface(dpy, config, reinterpret_cast<EGLNativePixmapType>(native_pixmap), converted);
 }
 
 EGLBoolean _eglBindTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer)
