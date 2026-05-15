@@ -354,6 +354,8 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
+14.05.2026 - Removed all non-Windows/Linux platforms (Emscripten, QNX, Fuchsia, OHOS, Apple, Android, DRM/GBM). Fixed unused-code warnings found by Clang and GCC.
+
 03.05.2026 - Fixed OpenGL and Vulkan coordinate. v1.0.4.
 
 03.05.2026 - Added OpenGL ES support via ANGLE on Windows. Documentation fixes. v1.0.3.
