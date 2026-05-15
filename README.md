@@ -79,7 +79,7 @@ platform can wire in whichever ES provider is appropriate:
 
 | Platform | Available ES backends | Status |
 |---|---|---|
-| Windows | [ANGLE](https://github.com/google/angle) (D3D11) | implemented |
+| Windows | [ANGLE](https://github.com/google/angle) (D3D11) | **implemented** |
 | Linux — X11 | system `libGLESv2` (Mesa / vendor) | **implemented** |
 | Linux — Wayland | system `libGLESv2` (Mesa / vendor) | **implemented** |
 
@@ -418,23 +418,9 @@ egl.c                     Public C API (thin shims, no logic)
   └── egl_<platform>.cpp   Future backends
 ```
 
-
-## Yours Norbert Nopper
-
-
 ## Changelog
 
-14.05.2026 - EGL 1.5 implementation is now feature-complete on Windows, X11, and Wayland. All standard surface, context, image, and sync entry points are wired. Remaining gaps are platform-inherent: `eglCopyBuffers` on Wayland (no `EGLNativePixmapType`) and `glIsTexture` validation inside `eglCreateImage` (requires an active GL context).
-
-14.05.2026 - Wired `eglCreatePlatformPixmapSurface` (EGL 1.5) to forward to `eglCreatePixmapSurface`; pixmap surfaces now work on Windows (GDI `HBITMAP`) and X11 (GLX pixmap) via both the legacy and platform-specific entry points.
-
-14.05.2026 - Wired `eglBindTexImage`/`eglReleaseTexImage` for the Wayland GLX path via `glXBindTexImageEXT`/`glXReleaseTexImageEXT`. Added `build_clang/` and `build_mingw/` to `.gitignore`.
-
-14.05.2026 - Added Wayland OpenGL ES backend via system libEGL/libGLESv2. Enabled by default with `-DEGL_WAYLAND_ENABLE_GLES=ON` when `WL_EGL_PLATFORM=ON`. Removed legacy platform stubs (QNX, Emscripten, Symbian, GBM, Android, Ozone, Apple, Haiku, Fuchsia) from include/EGL/eglplatform.h and src/egl_internal.h.
-
-14.05.2026 - Added Linux OpenGL ES backend via system libEGL/libGLESv2 (Mesa/vendor). Enabled by default with `-DEGL_LINUX_ENABLE_GLES=ON`.
-
-14.05.2026 - Removed all non-Windows/Linux platforms (Emscripten, QNX, Fuchsia, OHOS, Apple, Android, DRM/GBM). Fixed unused-code warnings found by Clang and GCC.
+14.05.2026 - Almost full EGL implementation for Linux and Windows. v1.0.5.
 
 03.05.2026 - Fixed OpenGL and Vulkan coordinate. v1.0.4.
 
