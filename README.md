@@ -424,6 +424,8 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
+14.05.2026 - EGL 1.5 implementation is now feature-complete on Windows, X11, and Wayland. All standard surface, context, image, and sync entry points are wired. Remaining gaps are platform-inherent: `eglCopyBuffers` on Wayland (no `EGLNativePixmapType`) and `glIsTexture` validation inside `eglCreateImage` (requires an active GL context).
+
 14.05.2026 - Wired `eglCreatePlatformPixmapSurface` (EGL 1.5) to forward to `eglCreatePixmapSurface`; pixmap surfaces now work on Windows (GDI `HBITMAP`) and X11 (GLX pixmap) via both the legacy and platform-specific entry points.
 
 14.05.2026 - Wired `eglBindTexImage`/`eglReleaseTexImage` for the Wayland GLX path via `glXBindTexImageEXT`/`glXReleaseTexImageEXT`. Added `build_clang/` and `build_mingw/` to `.gitignore`.
