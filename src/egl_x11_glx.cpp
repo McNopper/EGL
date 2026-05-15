@@ -35,6 +35,10 @@
 #include <string.h>
 #include <stdlib.h>
 
+#ifdef EGL_LINUX_ENABLE_GLES
+#  include "egl_linux_gles.h"
+#endif
+
 // ── Function pointer type declarations ────────────────────────────────────────
 // Core GLX functions (not in glxext.h)
 typedef GLXContext   (*PFNGLXCREATENEWCONTEXTPROC)(Display*, GLXFBConfig, int, GLXContext, Bool);
@@ -381,6 +385,22 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     __vkInit();  // non-fatal — HDR features simply disabled if Vulkan unavailable
 #endif
 
+#ifdef EGL_LINUX_ENABLE_GLES
+    {
+        EGLint glesMax[2] = { 0, 0 };
+        if (gles_init(c->display, glesMax) == EGL_TRUE)
+        {
+            // Prefer system GLES version over GLX ES emulation
+            if (glesMax[0] > ES_max[0] ||
+                (glesMax[0] == ES_max[0] && glesMax[1] > ES_max[1]))
+            {
+                ES_max[0] = glesMax[0];
+                ES_max[1] = glesMax[1];
+            }
+        }
+    }
+#endif
+
     return EGL_TRUE;
 }
 
@@ -421,6 +441,10 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* c)
     __vkTerm();
 #endif
 
+#ifdef EGL_LINUX_ENABLE_GLES
+    gles_terminate();
+#endif
+
     return EGL_TRUE;
 }
 
@@ -432,6 +456,10 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
         return EGL_FALSE;
 
     Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
+#ifdef EGL_LINUX_ENABLE_GLES
+    if (nativeContextContainer->backend == EGL_BACKEND_GLES)
+        return gles_destroyContext(nativeContextContainer->glesCtx);
+#endif
     s_glXDestroyContext(dpy, nativeContextContainer->ctx);
     return EGL_TRUE;
 }
@@ -539,6 +567,42 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer,
     Display* dpy   = reinterpret_cast<Display*>(walkerDpy->display_id);
     GLXContext share = sharedNativeContextContainer ? sharedNativeContextContainer->ctx : nullptr;
 
+#ifdef EGL_LINUX_ENABLE_GLES
+    if (g_localStorage.api == EGL_OPENGL_ES_API && gles_isAvailable())
+    {
+        EGLint major = 2, minor = 0;
+        if (attribList)
+        {
+            for (EGLint i = 0; attribList[i] != 0; i += 2)
+            {
+                if (attribList[i] == GLX_CONTEXT_MAJOR_VERSION_ARB)
+                    major = attribList[i + 1];
+                else if (attribList[i] == GLX_CONTEXT_MINOR_VERSION_ARB)
+                    minor = attribList[i + 1];
+            }
+        }
+        void* shareCtx = nullptr;
+        if (sharedNativeContextContainer)
+        {
+            if (sharedNativeContextContainer->backend != EGL_BACKEND_GLES)
+                return EGL_FALSE;  // Cannot share a GLX context with a GLES context
+            shareCtx = sharedNativeContextContainer->glesCtx;
+        }
+
+        void* ctx = nullptr;
+        if (gles_createContext(major, minor, shareCtx, &ctx) != EGL_TRUE)
+            return EGL_FALSE;
+
+        nativeContextContainer->backend = EGL_BACKEND_GLES;
+        nativeContextContainer->glesCtx = ctx;
+        nativeContextContainer->ctx     = nullptr;
+        return EGL_TRUE;
+    }
+#endif
+
+    nativeContextContainer->backend = EGL_BACKEND_GLX;
+    nativeContextContainer->glesCtx = nullptr;
+
     auto* oldHandler = XSetErrorHandler(glxErrorHandler);
     s_glxErrorOccurred = 0;
 
@@ -563,6 +627,24 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy,
         return EGL_FALSE;
 
     Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
+
+#ifdef EGL_LINUX_ENABLE_GLES
+    if (nativeContextContainer && nativeContextContainer->backend == EGL_BACKEND_GLES)
+    {
+        if (!nativeSurfaceContainer || nativeSurfaceContainer->backend != EGL_BACKEND_GLES)
+            return EGL_FALSE;
+        return gles_makeCurrent(nativeSurfaceContainer->glesSurface,
+                                nativeContextContainer->glesCtx);
+    }
+    if (nativeContextContainer && nativeSurfaceContainer &&
+        nativeSurfaceContainer->backend == EGL_BACKEND_GLES)
+    {
+        // GLX context on GLES surface — mismatch
+        return EGL_FALSE;
+    }
+    if (!nativeContextContainer && gles_isAvailable())
+        gles_makeCurrent(nullptr, nullptr);
+#endif
 
     if (!nativeContextContainer)
         return (EGLBoolean)s_glXMakeContextCurrent(dpy, None, None, nullptr);
@@ -634,6 +716,48 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
         }
     }
 
+#ifdef EGL_LINUX_ENABLE_GLES
+    if (g_localStorage.api == EGL_OPENGL_ES_API && gles_isAvailable())
+    {
+        void* surf = nullptr;
+        if (gles_createWindowSurface((Window)win, &surf) != EGL_TRUE)
+        {
+            *error = EGL_BAD_ALLOC;
+            return EGL_FALSE;
+        }
+
+        Window root;
+        int x, y;
+        unsigned int w, h, bw, depth;
+        XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth);
+
+        newSurface->drawToWindow  = EGL_TRUE;
+        newSurface->drawToPixmap  = EGL_FALSE;
+        newSurface->drawToPBuffer = EGL_FALSE;
+        newSurface->doubleBuffer  = walkerConfig->doubleBuffer;
+        newSurface->configId      = walkerConfig->configId;
+        newSurface->width         = (EGLint)w;
+        newSurface->height        = (EGLint)h;
+        newSurface->swapBehavior         = EGL_BUFFER_DESTROYED;
+        newSurface->multisampleResolve   = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+        newSurface->mipmapLevel          = 0;
+        newSurface->mipmapTexture        = EGL_FALSE;
+        newSurface->largestPbuffer       = EGL_FALSE;
+        newSurface->textureFormat        = EGL_NO_TEXTURE;
+        newSurface->textureTarget        = EGL_NO_TEXTURE;
+        newSurface->glColorspace         = parsedColorspace;
+        newSurface->initialized          = EGL_TRUE;
+        newSurface->destroy              = EGL_FALSE;
+        newSurface->win                  = win;
+        newSurface->nativeSurfaceContainer.drawable    = 0;
+        newSurface->nativeSurfaceContainer.config      = nullptr;
+        newSurface->nativeSurfaceContainer.hdr         = nullptr;
+        newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLES;
+        newSurface->nativeSurfaceContainer.glesSurface = surf;
+        return EGL_TRUE;
+    }
+#endif
+
     // Query window geometry
     Window root;
     int x, y;
@@ -658,9 +782,11 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
     newSurface->initialized          = EGL_TRUE;
     newSurface->destroy              = EGL_FALSE;
     newSurface->win                  = win;
-    newSurface->nativeSurfaceContainer.drawable = (GLXDrawable)win;
-    newSurface->nativeSurfaceContainer.config   = fb;
-    newSurface->nativeSurfaceContainer.hdr      = nullptr;
+    newSurface->nativeSurfaceContainer.drawable    = (GLXDrawable)win;
+    newSurface->nativeSurfaceContainer.config      = fb;
+    newSurface->nativeSurfaceContainer.hdr         = nullptr;
+    newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLX;
+    newSurface->nativeSurfaceContainer.glesSurface = nullptr;
 
 #ifdef LINUX_VK
     {
@@ -780,8 +906,11 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface,
     newSurface->initialized          = EGL_TRUE;
     newSurface->destroy              = EGL_FALSE;
     newSurface->pbuf                 = (GLXPbuffer)pbuf;
-    newSurface->nativeSurfaceContainer.drawable = (GLXDrawable)pbuf;
-    newSurface->nativeSurfaceContainer.config   = fb;
+    newSurface->nativeSurfaceContainer.drawable    = (GLXDrawable)pbuf;
+    newSurface->nativeSurfaceContainer.config      = fb;
+    newSurface->nativeSurfaceContainer.hdr         = nullptr;
+    newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLX;
+    newSurface->nativeSurfaceContainer.glesSurface = nullptr;
 
     return EGL_TRUE;
 }
@@ -854,8 +983,11 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface,
     newSurface->initialized        = EGL_TRUE;
     newSurface->destroy            = EGL_FALSE;
     newSurface->pixmap             = pixmap;
-    newSurface->nativeSurfaceContainer.drawable = (GLXDrawable)glxPix;
-    newSurface->nativeSurfaceContainer.config   = fb;
+    newSurface->nativeSurfaceContainer.drawable    = (GLXDrawable)glxPix;
+    newSurface->nativeSurfaceContainer.config      = fb;
+    newSurface->nativeSurfaceContainer.hdr         = nullptr;
+    newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLX;
+    newSurface->nativeSurfaceContainer.glesSurface = nullptr;
 
     return EGL_TRUE;
 }
@@ -866,6 +998,11 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpyType, const EGLSurfaceImpl* 
         return EGL_FALSE;
 
     Display* dpy = reinterpret_cast<Display*>(dpyType);
+
+#ifdef EGL_LINUX_ENABLE_GLES
+    if (surface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+        return gles_destroySurface(surface->nativeSurfaceContainer.glesSurface);
+#endif
 
 #ifdef LINUX_VK
     if (surface->nativeSurfaceContainer.hdr)
@@ -973,7 +1110,11 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy,
     const char* glxExts = s_glXQueryExtensionsString ? s_glXQueryExtensionsString(dpy, screen) : "";
 
     const bool esSupported    = (strstr(glxExts, "GLX_EXT_create_context_es2_profile") != nullptr ||
-                                  strstr(glxExts, "GLX_EXT_create_context_es_profile")  != nullptr);
+                                  strstr(glxExts, "GLX_EXT_create_context_es_profile")  != nullptr)
+#ifdef EGL_LINUX_ENABLE_GLES
+                              || gles_isAvailable()
+#endif
+                              ;
     const EGLint esMask       = esSupported
         ? (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT)
         : 0;
@@ -1131,6 +1272,11 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
         return __vkPresent(walkerSurface->nativeSurfaceContainer.hdr);
 #endif
 
+#ifdef EGL_LINUX_ENABLE_GLES
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+        return gles_swapBuffers(walkerSurface->nativeSurfaceContainer.glesSurface);
+#endif
+
     Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
     s_glXSwapBuffers(dpy, walkerSurface->nativeSurfaceContainer.drawable);
     return EGL_TRUE;
@@ -1142,6 +1288,11 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
         return EGL_FALSE;
 
     Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
+
+#ifdef EGL_LINUX_ENABLE_GLES
+    if (g_localStorage.api == EGL_OPENGL_ES_API && gles_isAvailable())
+        return gles_swapInterval(interval);
+#endif
 
     if (s_glXSwapIntervalEXT && s_glXGetCurrentDrawable)
     {

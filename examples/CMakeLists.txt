@@ -64,3 +64,24 @@ if(WIN32 AND EGL_HAS_ANGLE)
             $<TARGET_FILE:unofficial::angle::libGLESv2>
             ${CMAKE_SOURCE_DIR}/bin)
 endif()
+
+# OpenGL ES variant of green_window (Linux + system GLES only).
+if(UNIX AND EGL_HAS_GLES)
+    set(es_name green_window)
+    set(es_target ${es_name}_es)
+    add_executable(${es_target}
+        ${CMAKE_CURRENT_SOURCE_DIR}/${es_name}/main.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/common_egl.cpp
+        ${PLATFORM_SOURCES})
+    set_target_properties(${es_target} PROPERTIES
+        OUTPUT_NAME                      "${es_name}${EGL_ES_BACKEND_SUFFIX}"
+        RUNTIME_OUTPUT_DIRECTORY         ${CMAKE_SOURCE_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG   ${CMAKE_SOURCE_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
+    target_compile_definitions(${es_target} PRIVATE
+        GREEN_WINDOW_API=EGL_OPENGL_ES_API
+        GREEN_WINDOW_RENDERABLE_BIT=EGL_OPENGL_ES2_BIT
+        "GREEN_WINDOW_TITLE=\"EGL Green Window (ES)\"")
+    # System GLES is loaded at runtime via dlopen; link libGLESv2 for glClear*.
+    target_link_libraries(${es_target} PRIVATE EGL GLESv2)
+endif()

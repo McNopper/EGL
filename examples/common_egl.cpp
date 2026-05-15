@@ -72,8 +72,13 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
     char full_title[256];
     if (api == EGL_OPENGL_ES_API)
     {
+#if defined(_WIN32)
         snprintf(full_title, sizeof(full_title), "%s [%s/%s/ANGLE]", title,
                  apiTag, __osName());
+#else
+        snprintf(full_title, sizeof(full_title), "%s [%s/%s/GLES]", title,
+                 apiTag, __osName());
+#endif
     }
     else
     {

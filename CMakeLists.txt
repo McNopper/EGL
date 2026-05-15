@@ -90,6 +90,18 @@ elseif(UNIX)
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp)
             set(EGL_BACKEND_SUFFIX "_GL_Linux_X11_GLX")
         endif()
+
+        # Optional: enable real OpenGL ES via the system libEGL / libGLESv2
+        # (Mesa / vendor driver).  The libraries are loaded dynamically at
+        # eglInitialize so no link-time dependency is added.
+        option(EGL_LINUX_ENABLE_GLES "Enable OpenGL ES backend via system libEGL/libGLESv2 on Linux" ON)
+        if(EGL_LINUX_ENABLE_GLES)
+            message(STATUS "EGL: Linux GLES backend enabled (system libEGL.so + libGLESv2.so)")
+            set(EGL_HAS_GLES ON)
+            list(APPEND EGL_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_gles.cpp)
+            set(EGL_ES_BACKEND_SUFFIX "_ES_Linux_X11_GLES")
+        endif()
     endif()
 
 else()
@@ -142,6 +154,9 @@ elseif(UNIX AND NOT GBM_PLATFORM)
     target_link_libraries(EGL PUBLIC ${CMAKE_DL_LIBS} X11::X11 OpenGL::GL)
     if(LINUX_VK)
         target_link_libraries(EGL PUBLIC Vulkan::Vulkan)
+    endif()
+    if(EGL_HAS_GLES)
+        target_compile_definitions(EGL PUBLIC EGL_LINUX_ENABLE_GLES)
     endif()
     target_include_directories(EGL PRIVATE ${X11_INCLUDE_DIR})
 endif()

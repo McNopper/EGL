@@ -80,7 +80,8 @@ platform can wire in whichever ES provider is appropriate:
 | Platform | Available ES backends | Status |
 |---|---|---|
 | Windows | [ANGLE](https://github.com/google/angle) (D3D11) | implemented |
-| Linux (X11 / Wayland) | system `libGLESv2` (Mesa), ANGLE (Vulkan) | not yet wired |
+| Linux — X11 | system `libGLESv2` (Mesa / vendor) | **implemented** |
+| Linux — Wayland | system `libGLESv2` (Mesa / vendor) | not yet wired |
 
 A platform with no ES backend simply returns `EGL_BAD_MATCH` from
 `eglCreateContext` after `eglBindAPI(EGL_OPENGL_ES_API)`; desktop GL keeps
@@ -172,6 +173,46 @@ What gets built:
   the ES executable by a post-build step. Ship these alongside any
   application that uses `EGL_OPENGL_ES_API`.
 
+### Linux ES backend: system libGLESv2 (option)
+
+On Linux/X11 the ES backend loads the **system** EGL and GLES libraries at
+runtime via `dlopen` — the same Mesa or vendor driver your application would
+normally use directly:
+
+```
+libEGL.so.1   (system — Mesa or vendor)
+libGLESv2.so.2
+```
+
+No source modifications are required. The library detects the system
+libraries at `eglInitialize` time and silently disables the GLES path if
+they are absent; desktop GL is unaffected.
+
+Build switches:
+
+- `-DEGL_LINUX_ENABLE_GLES=ON` (default) — compile the system GLES routing
+  code. If `libEGL.so.1` / `libGLESv2.so.2` are not present at runtime,
+  `eglCreateContext` with `EGL_OPENGL_ES_API` returns `EGL_BAD_MATCH` and
+  the desktop GL path continues normally.
+- `-DEGL_LINUX_ENABLE_GLES=OFF` — desktop-GL-only build, no GLES code
+  compiled.
+
+Prerequisites (Ubuntu / Debian):
+
+```
+sudo apt install libgles2-mesa-dev   # or equivalent for your distribution
+```
+
+The library links `libGLESv2` at build time (for the ES example's `glClear`
+calls) and loads `libEGL.so.1` dynamically at runtime.
+
+What gets built:
+
+- `lib/libEGL.a` — same static lib as before, with system GLES routing
+  compiled in.
+- `bin/<example>_GL_Linux_X11_GLX` — desktop GL examples (unchanged).
+- `bin/green_window_ES_Linux_X11_GLES` — ES proof example.
+
 ### Why this exists (and why it is optional)
 
 ANGLE alone already covers many ES + HDR scenarios on Windows (HDR10, scRGB,
@@ -206,7 +247,8 @@ The following colorspace extensions are probed at `eglInitialize` time and adver
 All build variants share one source tree. The CMake configuration sets a per-variant
 `EGL_BACKEND_SUFFIX` that's appended to every executable's filename, e.g. `linear` →
 `linear_GL_Windows_WGL_VK.exe`, `linear_GL_Linux_Wayland_VK`, etc. When
-`EGL_WIN_ENABLE_ANGLE` is on, ES variants use the suffix `_ES_Windows_ANGLE`.
+`EGL_WIN_ENABLE_ANGLE` is on, the Windows ES variant uses suffix `_ES_Windows_ANGLE`.
+When `EGL_LINUX_ENABLE_GLES` is on, the Linux ES variant uses suffix `_ES_Linux_X11_GLES`.
 
 ### Windows — WGL + Vulkan HDR (implemented)
 
@@ -337,12 +379,16 @@ egl.c                     Public C API (thin shims, no logic)
   └── egl_common.h         Shared internal types and helpers
   └── egl_windows_vk.h     Windows Vulkan HDR — internal declarations for egl_windows_vk.cpp
   └── egl_linux_vk.h       Linux Vulkan HDR — internal declarations for egl_linux_vk.cpp
+  └── egl_windows_angle.h  Windows ANGLE ES backend — runtime loader declarations
+  └── egl_linux_gles.h     Linux system GLES backend — runtime loader declarations
   └── wglext.h             WGL extension prototypes (Windows)
 
   Platform backends (implement the functions declared in egl_internal.h):
   └── egl_windows.cpp      Windows — WGL
+  └── egl_windows_angle.cpp Windows — ANGLE ES backend (dlopen-style via LoadLibrary)
   └── egl_windows_vk.cpp   Windows — Vulkan HDR presentation
-  └── egl_x11_glx.cpp      Linux / Unix — X11 + GLX
+  └── egl_x11_glx.cpp      Linux / Unix — X11 + GLX (+ optional system GLES routing)
+  └── egl_linux_gles.cpp   Linux — system libEGL/libGLESv2 ES backend (dlopen)
   └── egl_wayland.cpp      Linux / Unix — Wayland + xdg-shell (paired with egl_linux_vk.cpp)
   └── egl_linux_vk.cpp     Linux — Vulkan HDR presentation (shared by X11+VK and Wayland)
   └── egl_<platform>.cpp   Future backends
@@ -353,6 +399,8 @@ egl.c                     Public C API (thin shims, no logic)
 
 
 ## Changelog
+
+14.05.2026 - Added Linux OpenGL ES backend via system libEGL/libGLESv2 (Mesa/vendor). Enabled by default with `-DEGL_LINUX_ENABLE_GLES=ON`.
 
 14.05.2026 - Removed all non-Windows/Linux platforms (Emscripten, QNX, Fuchsia, OHOS, Apple, Android, DRM/GBM). Fixed unused-code warnings found by Clang and GCC.
 

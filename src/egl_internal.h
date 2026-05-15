@@ -139,14 +139,25 @@ typedef GLXPbuffer NativePbufferType;
 // Forward declaration; full definition is in egl_linux_vk.h (only with LINUX_VK)
 typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
+// Backend tag: GLX is the default desktop OpenGL path; GLES delegates to the
+// system libEGL (Mesa / vendor) when EGL_LINUX_ENABLE_GLES is set.
+typedef enum {
+    EGL_BACKEND_GLX  = 0,
+    EGL_BACKEND_GLES = 1
+} NativeBackend;
+
 typedef struct _NativeSurfaceContainer {
     GLXDrawable drawable;
     GLXFBConfig config;
     NativeHDRSurfaceContainer* hdr;  // NULL = SDR (GLX); non-NULL = Vulkan HDR
+    NativeBackend backend;           // 0 = GLX (default), 1 = system GLES
+    void* glesSurface;               // EGLSurface from system libEGL when backend == GLES
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
     GLXContext ctx;
+    NativeBackend backend;           // 0 = GLX (default), 1 = system GLES
+    void* glesCtx;                   // EGLContext from system libEGL when backend == GLES
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
@@ -167,14 +178,25 @@ typedef GLXPbuffer NativePbufferType;
 // Forward declaration; full definition is in egl_linux_vk.h (only with LINUX_VK)
 typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
+// Backend tag: GLX is the default desktop OpenGL path; GLES delegates to the
+// system libEGL (Mesa / vendor) when EGL_LINUX_ENABLE_GLES is set.
+typedef enum {
+    EGL_BACKEND_GLX  = 0,
+    EGL_BACKEND_GLES = 1
+} NativeBackend;
+
 typedef struct _NativeSurfaceContainer {
     GLXDrawable drawable;
     GLXFBConfig config;
     NativeHDRSurfaceContainer* hdr;  // NULL = SDR (GLX); non-NULL = Vulkan HDR
+    NativeBackend backend;           // 0 = GLX (default), 1 = system GLES
+    void* glesSurface;               // EGLSurface from system libEGL when backend == GLES
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer {
     GLXContext ctx;
+    NativeBackend backend;           // 0 = GLX (default), 1 = system GLES
+    void* glesCtx;                   // EGLContext from system libEGL when backend == GLES
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer {
