@@ -519,8 +519,10 @@ static EGLBoolean __vkRecreateSwapchain(NativeHDRSurfaceContainer* hdr, bool dra
         free(hdr->fences);
 
         hdr->cmdBuffers = reinterpret_cast<VkCommandBuffer*>(malloc(newImgCount * sizeof(VkCommandBuffer)));
-        hdr->fences     = reinterpret_cast<VkFence*>(malloc(newImgCount * sizeof(VkFence)));
-        if (!hdr->cmdBuffers || !hdr->fences) return EGL_FALSE;
+        if (!hdr->cmdBuffers) return EGL_FALSE;
+        hdr->fences = reinterpret_cast<VkFence*>(malloc(newImgCount * sizeof(VkFence)));
+        if (!hdr->fences) { free(hdr->cmdBuffers); hdr->cmdBuffers = nullptr; return EGL_FALSE; }
+        memset(hdr->fences, 0, newImgCount * sizeof(VkFence));
 
         VkCommandBufferAllocateInfo cbAI = {};
         cbAI.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;

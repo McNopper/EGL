@@ -266,7 +266,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglWaitGL (void)
 
     EGLenum api = _eglQueryAPI();
 
-    _eglBindAPI(EGL_OPENGL_ES_API);
+    _eglBindAPI(EGL_OPENGL_API);
 
     result = _eglWaitClient();
 

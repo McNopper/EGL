@@ -420,6 +420,8 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
+27.05.2026 - Fixed ReleaseDC resource leak on Windows. Fixed memory leak and uninitialized fence handles on Vulkan swapchain resize. Fixed eglWaitGL binding wrong API. Fixed duplicate CMake option blocks. v1.0.6.
+
 14.05.2026 - Almost full EGL implementation for Linux and Windows. v1.0.5.
 
 03.05.2026 - Fixed OpenGL and Vulkan coordinate. v1.0.4.

@@ -130,7 +130,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
     if (dummyPixelFormat == 0)
     {
-        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        ReleaseDC(nativeLocalStorageContainer->hwnd, nativeLocalStorageContainer->hdc);
         nativeLocalStorageContainer->hdc = 0;
 
         DestroyWindow(nativeLocalStorageContainer->hwnd);
@@ -141,7 +141,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
     if (!SetPixelFormat(nativeLocalStorageContainer->hdc, dummyPixelFormat, &dummyPfd))
     {
-        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        ReleaseDC(nativeLocalStorageContainer->hwnd, nativeLocalStorageContainer->hdc);
         nativeLocalStorageContainer->hdc = 0;
 
         DestroyWindow(nativeLocalStorageContainer->hwnd);
@@ -154,7 +154,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
     if (!nativeLocalStorageContainer->ctx)
     {
-        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        ReleaseDC(nativeLocalStorageContainer->hwnd, nativeLocalStorageContainer->hdc);
         nativeLocalStorageContainer->hdc = 0;
 
         DestroyWindow(nativeLocalStorageContainer->hwnd);
@@ -168,7 +168,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
         wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
         nativeLocalStorageContainer->ctx = 0;
 
-        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        ReleaseDC(nativeLocalStorageContainer->hwnd, nativeLocalStorageContainer->hdc);
         nativeLocalStorageContainer->hdc = 0;
 
         DestroyWindow(nativeLocalStorageContainer->hwnd);
@@ -309,7 +309,7 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
 
     if (nativeLocalStorageContainer->hdc)
     {
-        ReleaseDC(0, nativeLocalStorageContainer->hdc);
+        ReleaseDC(nativeLocalStorageContainer->hwnd, nativeLocalStorageContainer->hdc);
         nativeLocalStorageContainer->hdc = 0;
     }
 
