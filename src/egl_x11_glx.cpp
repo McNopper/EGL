@@ -28,7 +28,7 @@
 #include <EGL/eglctxinternals.h>
 
 #ifdef LINUX_VK
-#  include "egl_linux_vk.h"
+#include "egl_linux_vk.h"
 #endif
 
 #include <dlfcn.h>
@@ -36,57 +36,57 @@
 #include <stdlib.h>
 
 #ifdef EGL_LINUX_ENABLE_GLES
-#  include "egl_linux_gles.h"
+#include "egl_linux_gles.h"
 #endif
 
 // ── Function pointer type declarations ────────────────────────────────────────
 // Core GLX functions (not in glxext.h)
-typedef GLXContext   (*PFNGLXCREATENEWCONTEXTPROC)(Display*, GLXFBConfig, int, GLXContext, Bool);
-typedef Bool         (*PFNGLXMAKECONTEXTCURRENTPROC)(Display*, GLXDrawable, GLXDrawable, GLXContext);
-typedef void         (*PFNGLXDESTROYCONTEXTPROC)(Display*, GLXContext);
-typedef void         (*PFNGLXSWAPBUFFERSPROC)(Display*, GLXDrawable);
+typedef GLXContext (*PFNGLXCREATENEWCONTEXTPROC)(Display*, GLXFBConfig, int, GLXContext, Bool);
+typedef Bool (*PFNGLXMAKECONTEXTCURRENTPROC)(Display*, GLXDrawable, GLXDrawable, GLXContext);
+typedef void (*PFNGLXDESTROYCONTEXTPROC)(Display*, GLXContext);
+typedef void (*PFNGLXSWAPBUFFERSPROC)(Display*, GLXDrawable);
 typedef GLXFBConfig* (*PFNGLXCHOOSEFBCONFIGPROC)(Display*, int, const int*, int*);
 typedef GLXFBConfig* (*PFNGLXGETFBCONFIGSPROC)(Display*, int, int*);
-typedef int          (*PFNGLXGETFBCONFIGATTRIBPROC)(Display*, GLXFBConfig, int, int*);
+typedef int (*PFNGLXGETFBCONFIGATTRIBPROC)(Display*, GLXFBConfig, int, int*);
 typedef XVisualInfo* (*PFNGLXGETVISUALFROMFBCONFIGPROC)(Display*, GLXFBConfig);
-typedef GLXPbuffer   (*PFNGLXCREATEPBUFFERPROC)(Display*, GLXFBConfig, const int*);
-typedef void         (*PFNGLXDESTROYPBUFFERPROC)(Display*, GLXPbuffer);
-typedef GLXPixmap    (*PFNGLXCREATEPIXMAPPROC)(Display*, GLXFBConfig, Pixmap, const int*);
-typedef void         (*PFNGLXDESTROYPIXMAPPROC)(Display*, GLXPixmap);
-typedef GLXDrawable  (*PFNGLXGETCURRENTDRAWABLEPROC)(void);
-typedef const char*  (*PFNGLXQUERYEXTENSIONSSTRINGPROC)(Display*, int);
+typedef GLXPbuffer (*PFNGLXCREATEPBUFFERPROC)(Display*, GLXFBConfig, const int*);
+typedef void (*PFNGLXDESTROYPBUFFERPROC)(Display*, GLXPbuffer);
+typedef GLXPixmap (*PFNGLXCREATEPIXMAPPROC)(Display*, GLXFBConfig, Pixmap, const int*);
+typedef void (*PFNGLXDESTROYPIXMAPPROC)(Display*, GLXPixmap);
+typedef GLXDrawable (*PFNGLXGETCURRENTDRAWABLEPROC)(void);
+typedef const char* (*PFNGLXQUERYEXTENSIONSSTRINGPROC)(Display*, int);
 typedef __GLXextFuncPtr (*PFNGLXGETPROCADDRESSARBPROC)(const GLubyte*);
 // Extension function pointers — types provided by <GL/glxext.h> (included via <GL/glx.h>)
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 
-static void* s_libGL = nullptr;
+static void*    s_libGL         = nullptr;
 static Colormap s_dummyColormap = 0;
 
 // Core GL sync (defined extern in egl_common.h)
-__PFN_glFinish        glFinish_PTR          = nullptr;
-__PFN_glFenceSync     glFenceSync_PTR       = nullptr;
-__PFN_glDeleteSync    glDeleteSync_PTR      = nullptr;
+__PFN_glFinish         glFinish_PTR         = nullptr;
+__PFN_glFenceSync      glFenceSync_PTR      = nullptr;
+__PFN_glDeleteSync     glDeleteSync_PTR     = nullptr;
 __PFN_glClientWaitSync glClientWaitSync_PTR = nullptr;
-__PFN_glWaitSync      glWaitSync_PTR        = nullptr;
-__PFN_glGetSynciv     glGetSynciv_PTR       = nullptr;
+__PFN_glWaitSync       glWaitSync_PTR       = nullptr;
+__PFN_glGetSynciv      glGetSynciv_PTR      = nullptr;
 
 // Core GLX functions
-static PFNGLXGETPROCADDRESSARBPROC      s_glXGetProcAddressARB     = nullptr;
-static PFNGLXCREATENEWCONTEXTPROC       s_glXCreateNewContext      = nullptr;
-static PFNGLXMAKECONTEXTCURRENTPROC     s_glXMakeContextCurrent    = nullptr;
-static PFNGLXDESTROYCONTEXTPROC         s_glXDestroyContext        = nullptr;
-static PFNGLXSWAPBUFFERSPROC            s_glXSwapBuffers           = nullptr;
-static PFNGLXCHOOSEFBCONFIGPROC         s_glXChooseFBConfig        = nullptr;
-static PFNGLXGETFBCONFIGSPROC           s_glXGetFBConfigs          = nullptr;
-static PFNGLXGETFBCONFIGATTRIBPROC      s_glXGetFBConfigAttrib     = nullptr;
-static PFNGLXGETVISUALFROMFBCONFIGPROC  s_glXGetVisualFromFBConfig = nullptr;
-static PFNGLXCREATEPBUFFERPROC          s_glXCreatePbuffer         = nullptr;
-static PFNGLXDESTROYPBUFFERPROC         s_glXDestroyPbuffer        = nullptr;
-static PFNGLXCREATEPIXMAPPROC           s_glXCreatePixmap          = nullptr;
-static PFNGLXDESTROYPIXMAPPROC          s_glXDestroyPixmap         = nullptr;
-static PFNGLXGETCURRENTDRAWABLEPROC     s_glXGetCurrentDrawable    = nullptr;
-static PFNGLXQUERYEXTENSIONSSTRINGPROC  s_glXQueryExtensionsString = nullptr;
+static PFNGLXGETPROCADDRESSARBPROC     s_glXGetProcAddressARB     = nullptr;
+static PFNGLXCREATENEWCONTEXTPROC      s_glXCreateNewContext      = nullptr;
+static PFNGLXMAKECONTEXTCURRENTPROC    s_glXMakeContextCurrent    = nullptr;
+static PFNGLXDESTROYCONTEXTPROC        s_glXDestroyContext        = nullptr;
+static PFNGLXSWAPBUFFERSPROC           s_glXSwapBuffers           = nullptr;
+static PFNGLXCHOOSEFBCONFIGPROC        s_glXChooseFBConfig        = nullptr;
+static PFNGLXGETFBCONFIGSPROC          s_glXGetFBConfigs          = nullptr;
+static PFNGLXGETFBCONFIGATTRIBPROC     s_glXGetFBConfigAttrib     = nullptr;
+static PFNGLXGETVISUALFROMFBCONFIGPROC s_glXGetVisualFromFBConfig = nullptr;
+static PFNGLXCREATEPBUFFERPROC         s_glXCreatePbuffer         = nullptr;
+static PFNGLXDESTROYPBUFFERPROC        s_glXDestroyPbuffer        = nullptr;
+static PFNGLXCREATEPIXMAPPROC          s_glXCreatePixmap          = nullptr;
+static PFNGLXDESTROYPIXMAPPROC         s_glXDestroyPixmap         = nullptr;
+static PFNGLXGETCURRENTDRAWABLEPROC    s_glXGetCurrentDrawable    = nullptr;
+static PFNGLXQUERYEXTENSIONSSTRINGPROC s_glXQueryExtensionsString = nullptr;
 
 // GLX extensions
 static PFNGLXCREATECONTEXTATTRIBSARBPROC s_glXCreateContextAttribsARB = nullptr;
@@ -97,16 +97,20 @@ static PFNGLXRELEASETEXIMAGEEXTPROC      s_glXReleaseTexImageEXT      = nullptr;
 
 // ── X error handler (needed for GLX version probing) ─────────────────────────
 
-static int  s_glxErrorOccurred = 0;
-static int glxErrorHandler(Display*, XErrorEvent*) { s_glxErrorOccurred = 1; return 0; }
+static int s_glxErrorOccurred = 0;
+static int glxErrorHandler(Display*, XErrorEvent*)
+{
+    s_glxErrorOccurred = 1;
+    return 0;
+}
 
 // ── Helper: look up a GLXFBConfig by its GLX_FBCONFIG_ID ─────────────────────
 
 static GLXFBConfig __glxFBConfigById(Display* dpy, int screen, int id)
 {
-    const int attribs[] = { GLX_FBCONFIG_ID, id, None };
-    int n = 0;
-    GLXFBConfig* fbs = s_glXChooseFBConfig(dpy, screen, attribs, &n);
+    const int    attribs[] = {GLX_FBCONFIG_ID, id, None};
+    int          n         = 0;
+    GLXFBConfig* fbs       = s_glXChooseFBConfig(dpy, screen, attribs, &n);
     if (!fbs || n == 0)
         return nullptr;
     GLXFBConfig fb = fbs[0];
@@ -116,7 +120,7 @@ static GLXFBConfig __glxFBConfigById(Display* dpy, int screen, int id)
 
 // ── Helper: load a symbol from libGL via dlsym ────────────────────────────────
 
-template<typename T>
+template <typename T>
 static void loadSym(T& dst, const char* name)
 {
     dst = reinterpret_cast<T>(dlsym(s_libGL, name));
@@ -140,25 +144,25 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     if (!s_libGL)
         return EGL_FALSE;
 
-    loadSym(s_glXGetProcAddressARB,     "glXGetProcAddressARB");
-    loadSym(s_glXCreateNewContext,      "glXCreateNewContext");
-    loadSym(s_glXMakeContextCurrent,    "glXMakeContextCurrent");
-    loadSym(s_glXDestroyContext,        "glXDestroyContext");
-    loadSym(s_glXSwapBuffers,           "glXSwapBuffers");
-    loadSym(s_glXChooseFBConfig,        "glXChooseFBConfig");
-    loadSym(s_glXGetFBConfigs,          "glXGetFBConfigs");
-    loadSym(s_glXGetFBConfigAttrib,     "glXGetFBConfigAttrib");
+    loadSym(s_glXGetProcAddressARB, "glXGetProcAddressARB");
+    loadSym(s_glXCreateNewContext, "glXCreateNewContext");
+    loadSym(s_glXMakeContextCurrent, "glXMakeContextCurrent");
+    loadSym(s_glXDestroyContext, "glXDestroyContext");
+    loadSym(s_glXSwapBuffers, "glXSwapBuffers");
+    loadSym(s_glXChooseFBConfig, "glXChooseFBConfig");
+    loadSym(s_glXGetFBConfigs, "glXGetFBConfigs");
+    loadSym(s_glXGetFBConfigAttrib, "glXGetFBConfigAttrib");
     loadSym(s_glXGetVisualFromFBConfig, "glXGetVisualFromFBConfig");
-    loadSym(s_glXCreatePbuffer,         "glXCreatePbuffer");
-    loadSym(s_glXDestroyPbuffer,        "glXDestroyPbuffer");
-    loadSym(s_glXCreatePixmap,          "glXCreatePixmap");
-    loadSym(s_glXDestroyPixmap,         "glXDestroyPixmap");
-    loadSym(s_glXGetCurrentDrawable,    "glXGetCurrentDrawable");
+    loadSym(s_glXCreatePbuffer, "glXCreatePbuffer");
+    loadSym(s_glXDestroyPbuffer, "glXDestroyPbuffer");
+    loadSym(s_glXCreatePixmap, "glXCreatePixmap");
+    loadSym(s_glXDestroyPixmap, "glXDestroyPixmap");
+    loadSym(s_glXGetCurrentDrawable, "glXGetCurrentDrawable");
     loadSym(s_glXQueryExtensionsString, "glXQueryExtensionsString");
 
     if (!s_glXGetProcAddressARB || !s_glXChooseFBConfig ||
         !s_glXGetFBConfigAttrib || !s_glXGetVisualFromFBConfig ||
-        !s_glXCreateNewContext  || !s_glXMakeContextCurrent)
+        !s_glXCreateNewContext || !s_glXMakeContextCurrent)
     {
         dlclose(s_libGL);
         s_libGL = nullptr;
@@ -166,12 +170,12 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     }
 
     // GLX sync pointers (safe before a current context)
-    glFinish_PTR         = reinterpret_cast<__PFN_glFinish>        (s_glXGetProcAddressARB((const GLubyte*)"glFinish"));
-    glFenceSync_PTR      = reinterpret_cast<__PFN_glFenceSync>     (s_glXGetProcAddressARB((const GLubyte*)"glFenceSync"));
-    glDeleteSync_PTR     = reinterpret_cast<__PFN_glDeleteSync>    (s_glXGetProcAddressARB((const GLubyte*)"glDeleteSync"));
+    glFinish_PTR         = reinterpret_cast<__PFN_glFinish>(s_glXGetProcAddressARB((const GLubyte*)"glFinish"));
+    glFenceSync_PTR      = reinterpret_cast<__PFN_glFenceSync>(s_glXGetProcAddressARB((const GLubyte*)"glFenceSync"));
+    glDeleteSync_PTR     = reinterpret_cast<__PFN_glDeleteSync>(s_glXGetProcAddressARB((const GLubyte*)"glDeleteSync"));
     glClientWaitSync_PTR = reinterpret_cast<__PFN_glClientWaitSync>(s_glXGetProcAddressARB((const GLubyte*)"glClientWaitSync"));
-    glWaitSync_PTR       = reinterpret_cast<__PFN_glWaitSync>      (s_glXGetProcAddressARB((const GLubyte*)"glWaitSync"));
-    glGetSynciv_PTR      = reinterpret_cast<__PFN_glGetSynciv>     (s_glXGetProcAddressARB((const GLubyte*)"glGetSynciv"));
+    glWaitSync_PTR       = reinterpret_cast<__PFN_glWaitSync>(s_glXGetProcAddressARB((const GLubyte*)"glWaitSync"));
+    glGetSynciv_PTR      = reinterpret_cast<__PFN_glGetSynciv>(s_glXGetProcAddressARB((const GLubyte*)"glGetSynciv"));
 
     // Open X display
     c->display = XOpenDisplay(nullptr);
@@ -187,17 +191,16 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     // Choose a minimal FBConfig for the dummy context
     static const int kDummyFBAttribs[] = {
         GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
-        GLX_RENDER_TYPE,   GLX_RGBA_BIT,
-        GLX_DOUBLEBUFFER,  True,
-        GLX_RED_SIZE,      8,
-        GLX_GREEN_SIZE,    8,
-        GLX_BLUE_SIZE,     8,
-        GLX_ALPHA_SIZE,    8,
-        GLX_DEPTH_SIZE,    24,
-        None
-    };
+        GLX_RENDER_TYPE, GLX_RGBA_BIT,
+        GLX_DOUBLEBUFFER, True,
+        GLX_RED_SIZE, 8,
+        GLX_GREEN_SIZE, 8,
+        GLX_BLUE_SIZE, 8,
+        GLX_ALPHA_SIZE, 8,
+        GLX_DEPTH_SIZE, 24,
+        None};
 
-    int nfb = 0;
+    int          nfb = 0;
     GLXFBConfig* fbs = s_glXChooseFBConfig(c->display, screen, kDummyFBAttribs, &nfb);
     if (!fbs || nfb == 0)
     {
@@ -225,14 +228,14 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
                                       RootWindow(c->display, vi->screen),
                                       vi->visual, AllocNone);
     XSetWindowAttributes swa;
-    swa.colormap    = s_dummyColormap;
+    swa.colormap     = s_dummyColormap;
     swa.border_pixel = 0;
-    swa.event_mask  = 0;
-    c->window = XCreateWindow(c->display,
-                              RootWindow(c->display, vi->screen),
-                              0, 0, 1, 1, 0,
-                              vi->depth, InputOutput, vi->visual,
-                              CWBorderPixel | CWColormap | CWEventMask, &swa);
+    swa.event_mask   = 0;
+    c->window        = XCreateWindow(c->display,
+                                     RootWindow(c->display, vi->screen),
+                                     0, 0, 1, 1, 0,
+                                     vi->depth, InputOutput, vi->visual,
+                                     CWBorderPixel | CWColormap | CWEventMask, &swa);
     XFree(vi);
 
     if (!c->window)
@@ -295,30 +298,24 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     int attrib_list[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 1,
         GLX_CONTEXT_MINOR_VERSION_ARB, 0,
-        GLX_CONTEXT_PROFILE_MASK_ARB,  GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
-        0
-    };
+        GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0};
 
     // Known valid (major, minor) pairs in descending order
     static const int kGLVersions[][2] = {
-        {4,6},{4,5},{4,4},{4,3},{4,2},{4,1},{4,0},
-        {3,3},{3,2},{3,1},{3,0},
-        {2,1},{2,0},
-        {1,5},{1,4},{1,3},{1,2},{1,1},{1,0},
-        {0,0}
-    };
+        {4, 6}, {4, 5}, {4, 4}, {4, 3}, {4, 2}, {4, 1}, {4, 0}, {3, 3}, {3, 2}, {3, 1}, {3, 0}, {2, 1}, {2, 0}, {1, 5}, {1, 4}, {1, 3}, {1, 2}, {1, 1}, {1, 0}, {0, 0}};
 
     GLXContext testctx = nullptr;
-    GL_max[0] = 0;
-    GL_max[1] = 0;
+    GL_max[0]          = 0;
+    GL_max[1]          = 0;
 
     if (s_glXCreateContextAttribsARB)
     {
         for (int i = 0; kGLVersions[i][0] && !testctx; ++i)
         {
             s_glxErrorOccurred = 0;
-            attrib_list[1] = kGLVersions[i][0];
-            attrib_list[3] = kGLVersions[i][1];
+            attrib_list[1]     = kGLVersions[i][0];
+            attrib_list[3]     = kGLVersions[i][1];
             XSync(c->display, False);
             testctx = s_glXCreateContextAttribsARB(c->display, chosenFB, nullptr, True, attrib_list);
             XSync(c->display, False);
@@ -342,11 +339,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     attrib_list[5] = GLX_CONTEXT_ES2_PROFILE_BIT_EXT;
 
     static const int kESVersions[][2] = {
-        {3,2},{3,1},{3,0},
-        {2,0},
-        {1,1},{1,0},
-        {0,0}
-    };
+        {3, 2}, {3, 1}, {3, 0}, {2, 0}, {1, 1}, {1, 0}, {0, 0}};
 
     ES_max[0] = 0;
     ES_max[1] = 0;
@@ -356,8 +349,8 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
         for (int i = 0; kESVersions[i][0] && !testctx; ++i)
         {
             s_glxErrorOccurred = 0;
-            attrib_list[1] = kESVersions[i][0];
-            attrib_list[3] = kESVersions[i][1];
+            attrib_list[1]     = kESVersions[i][0];
+            attrib_list[3]     = kESVersions[i][1];
             XSync(c->display, False);
             testctx = s_glXCreateContextAttribsARB(c->display, chosenFB, nullptr, True, attrib_list);
             XSync(c->display, False);
@@ -382,12 +375,12 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     s_glXMakeContextCurrent(c->display, None, None, nullptr);
 
 #ifdef LINUX_VK
-    __vkInit();  // non-fatal — HDR features simply disabled if Vulkan unavailable
+    __vkInit(); // non-fatal — HDR features simply disabled if Vulkan unavailable
 #endif
 
 #ifdef EGL_LINUX_ENABLE_GLES
     {
-        EGLint glesMax[2] = { 0, 0 };
+        EGLint glesMax[2] = {0, 0};
         if (gles_init(c->display, glesMax) == EGL_TRUE)
         {
             // Prefer system GLES version over GLX ES emulation
@@ -470,17 +463,16 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
         return EGL_FALSE;
 
     const EGLint defaultProfile = (api == EGL_OPENGL_ES_API)
-        ? GLX_CONTEXT_ES2_PROFILE_BIT_EXT
-        : GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
+                                      ? GLX_CONTEXT_ES2_PROFILE_BIT_EXT
+                                      : GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
 
     EGLint tmpl[] = {
-        GLX_CONTEXT_MAJOR_VERSION_ARB,            1,
-        GLX_CONTEXT_MINOR_VERSION_ARB,            0,
-        GLX_CONTEXT_FLAGS_ARB,                    0,
-        GLX_CONTEXT_PROFILE_MASK_ARB,             defaultProfile,
+        GLX_CONTEXT_MAJOR_VERSION_ARB, 1,
+        GLX_CONTEXT_MINOR_VERSION_ARB, 0,
+        GLX_CONTEXT_FLAGS_ARB, 0,
+        GLX_CONTEXT_PROFILE_MASK_ARB, defaultProfile,
         GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_NO_RESET_NOTIFICATION_ARB,
-        0
-    };
+        0};
 
     EGLint idx = 0;
     while (attrib_list[idx] != EGL_NONE)
@@ -489,74 +481,106 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
 
         switch (attrib_list[idx])
         {
-            case EGL_CONTEXT_MAJOR_VERSION:
-                if (value < 1) { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                tmpl[1] = value;
-                break;
-
-            case EGL_CONTEXT_MINOR_VERSION:
-                if (value < 0) { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                tmpl[3] = value;
-                break;
-
-            case EGL_CONTEXT_OPENGL_PROFILE_MASK:
-                if (value == EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT)
-                    tmpl[7] = GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
-                else if (value == EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT)
-                    tmpl[7] = GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
-                else { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                break;
-
-            case EGL_CONTEXT_OPENGL_DEBUG:
-                if (value == EGL_TRUE)
-                    tmpl[5] |= GLX_CONTEXT_DEBUG_BIT_ARB;
-                else if (value == EGL_FALSE)
-                    tmpl[5] &= ~GLX_CONTEXT_DEBUG_BIT_ARB;
-                else { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                break;
-
-            case EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE:
-                if (value == EGL_TRUE)
-                    tmpl[5] |= GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
-                else if (value == EGL_FALSE)
-                    tmpl[5] &= ~GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
-                else { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                break;
-
-            case EGL_CONTEXT_OPENGL_ROBUST_ACCESS:
-                if (value == EGL_TRUE)
-                    tmpl[5] |= GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB;
-                else if (value == EGL_FALSE)
-                    tmpl[5] &= ~GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB;
-                else { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                break;
-
-            case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
-                if (value == EGL_NO_RESET_NOTIFICATION)
-                    tmpl[9] = GLX_NO_RESET_NOTIFICATION_ARB;
-                else if (value == EGL_LOSE_CONTEXT_ON_RESET)
-                    tmpl[9] = GLX_LOSE_CONTEXT_ON_RESET_ARB;
-                else { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                break;
-
-            default:
+        case EGL_CONTEXT_MAJOR_VERSION:
+            if (value < 1)
+            {
                 *error = EGL_BAD_ATTRIBUTE;
                 return EGL_FALSE;
+            }
+            tmpl[1] = value;
+            break;
+
+        case EGL_CONTEXT_MINOR_VERSION:
+            if (value < 0)
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+            tmpl[3] = value;
+            break;
+
+        case EGL_CONTEXT_OPENGL_PROFILE_MASK:
+            if (value == EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT)
+                tmpl[7] = GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
+            else if (value == EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT)
+                tmpl[7] = GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+            else
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+            break;
+
+        case EGL_CONTEXT_OPENGL_DEBUG:
+            if (value == EGL_TRUE)
+                tmpl[5] |= GLX_CONTEXT_DEBUG_BIT_ARB;
+            else if (value == EGL_FALSE)
+                tmpl[5] &= ~GLX_CONTEXT_DEBUG_BIT_ARB;
+            else
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+            break;
+
+        case EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE:
+            if (value == EGL_TRUE)
+                tmpl[5] |= GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+            else if (value == EGL_FALSE)
+                tmpl[5] &= ~GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+            else
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+            break;
+
+        case EGL_CONTEXT_OPENGL_ROBUST_ACCESS:
+            if (value == EGL_TRUE)
+                tmpl[5] |= GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB;
+            else if (value == EGL_FALSE)
+                tmpl[5] &= ~GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB;
+            else
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+            break;
+
+        case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY:
+            if (value == EGL_NO_RESET_NOTIFICATION)
+                tmpl[9] = GLX_NO_RESET_NOTIFICATION_ARB;
+            else if (value == EGL_LOSE_CONTEXT_ON_RESET)
+                tmpl[9] = GLX_LOSE_CONTEXT_ON_RESET_ARB;
+            else
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
+            break;
+
+        default:
+            *error = EGL_BAD_ATTRIBUTE;
+            return EGL_FALSE;
         }
 
         idx += 2;
-        if (idx >= 7 * 2) { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
+        if (idx >= 7 * 2)
+        {
+            *error = EGL_BAD_ATTRIBUTE;
+            return EGL_FALSE;
+        }
     }
 
     memcpy(target_attrib_list, tmpl, CONTEXT_ATTRIB_LIST_SIZE * sizeof(EGLint));
     return EGL_TRUE;
 }
 
-EGLBoolean __createContext(NativeContextContainer* nativeContextContainer,
-                            const EGLDisplayImpl* walkerDpy,
-                            const NativeSurfaceContainer* nativeSurfaceContainer,
-                            const NativeContextContainer* sharedNativeContextContainer,
-                            const EGLint* attribList)
+EGLBoolean __createContext(NativeContextContainer*       nativeContextContainer,
+                           const EGLDisplayImpl*         walkerDpy,
+                           const NativeSurfaceContainer* nativeSurfaceContainer,
+                           const NativeContextContainer* sharedNativeContextContainer,
+                           const EGLint*                 attribList)
 {
     if (!walkerDpy || !nativeContextContainer || !nativeSurfaceContainer)
         return EGL_FALSE;
@@ -564,7 +588,7 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer,
     if (!s_glXCreateContextAttribsARB)
         return EGL_FALSE;
 
-    Display* dpy   = reinterpret_cast<Display*>(walkerDpy->display_id);
+    Display*   dpy   = reinterpret_cast<Display*>(walkerDpy->display_id);
     GLXContext share = sharedNativeContextContainer ? sharedNativeContextContainer->ctx : nullptr;
 
 #ifdef EGL_LINUX_ENABLE_GLES
@@ -585,7 +609,7 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer,
         if (sharedNativeContextContainer)
         {
             if (sharedNativeContextContainer->backend != EGL_BACKEND_GLES)
-                return EGL_FALSE;  // Cannot share a GLX context with a GLES context
+                return EGL_FALSE; // Cannot share a GLX context with a GLES context
             shareCtx = sharedNativeContextContainer->glesCtx;
         }
 
@@ -603,7 +627,7 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer,
     nativeContextContainer->backend = EGL_BACKEND_GLX;
     nativeContextContainer->glesCtx = nullptr;
 
-    auto* oldHandler = XSetErrorHandler(glxErrorHandler);
+    auto* oldHandler   = XSetErrorHandler(glxErrorHandler);
     s_glxErrorOccurred = 0;
 
     XSync(dpy, False);
@@ -619,9 +643,9 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer,
     return nativeContextContainer->ctx != nullptr;
 }
 
-EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy,
-                          const NativeSurfaceContainer* nativeSurfaceContainer,
-                          const NativeContextContainer* nativeContextContainer)
+EGLBoolean __makeCurrent(const EGLDisplayImpl*         walkerDpy,
+                         const NativeSurfaceContainer* nativeSurfaceContainer,
+                         const NativeContextContainer* nativeContextContainer)
 {
     if (!walkerDpy)
         return EGL_FALSE;
@@ -650,28 +674,32 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy,
         return (EGLBoolean)s_glXMakeContextCurrent(dpy, None, None, nullptr);
 
     return (EGLBoolean)s_glXMakeContextCurrent(dpy,
-                                                nativeSurfaceContainer->drawable,
-                                                nativeSurfaceContainer->drawable,
-                                                nativeContextContainer->ctx);
+                                               nativeSurfaceContainer->drawable,
+                                               nativeSurfaceContainer->drawable,
+                                               nativeContextContainer->ctx);
 }
 
 // ── Surfaces ──────────────────────────────────────────────────────────────────
 
-EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
-                                  EGLNativeWindowType win,
-                                  const EGLint* attrib_list,
-                                  const EGLDisplayImpl* walkerDpy,
-                                  const EGLConfigImpl* walkerConfig,
-                                  EGLint* error)
+EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
+                                 EGLNativeWindowType   win,
+                                 const EGLint*         attrib_list,
+                                 const EGLDisplayImpl* walkerDpy,
+                                 const EGLConfigImpl*  walkerConfig,
+                                 EGLint*               error)
 {
     if (!newSurface || !walkerDpy || !walkerConfig || !error)
         return EGL_FALSE;
 
-    Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
-    int screen   = DefaultScreen(dpy);
+    Display* dpy    = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int      screen = DefaultScreen(dpy);
 
     GLXFBConfig fb = __glxFBConfigById(dpy, screen, walkerConfig->configId);
-    if (!fb) { *error = EGL_BAD_CONFIG; return EGL_FALSE; }
+    if (!fb)
+    {
+        *error = EGL_BAD_CONFIG;
+        return EGL_FALSE;
+    }
 
     EGLint parsedColorspace = EGL_GL_COLORSPACE_LINEAR;
 
@@ -683,36 +711,44 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
             EGLint value = attrib_list[i + 1];
             switch (attrib_list[i])
             {
-                case EGL_GL_COLORSPACE:
-                    if (value == EGL_GL_COLORSPACE_LINEAR ||
-                        value == EGL_GL_COLORSPACE_SRGB)
-                        parsedColorspace = value;
+            case EGL_GL_COLORSPACE:
+                if (value == EGL_GL_COLORSPACE_LINEAR ||
+                    value == EGL_GL_COLORSPACE_SRGB)
+                    parsedColorspace = value;
 #ifdef LINUX_VK
-                    else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT          ||
-                             value == EGL_GL_COLORSPACE_SCRGB_EXT                 ||
-                             value == EGL_GL_COLORSPACE_BT2020_PQ_EXT             ||
-                             value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT         ||
-                             value == EGL_GL_COLORSPACE_BT2020_HLG_EXT            ||
-                             value == EGL_GL_COLORSPACE_DISPLAY_P3_EXT            ||
-                             value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT||
-                             value == EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT)
-                        parsedColorspace = value;
+                else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT ||
+                         value == EGL_GL_COLORSPACE_SCRGB_EXT ||
+                         value == EGL_GL_COLORSPACE_BT2020_PQ_EXT ||
+                         value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
+                         value == EGL_GL_COLORSPACE_BT2020_HLG_EXT ||
+                         value == EGL_GL_COLORSPACE_DISPLAY_P3_EXT ||
+                         value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT ||
+                         value == EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT)
+                    parsedColorspace = value;
 #endif
-                    else { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                    break;
-                case EGL_RENDER_BUFFER:
-                    // GLX always double-buffers per FBConfig; ignore
-                    break;
-                case EGL_VG_ALPHA_FORMAT:
-                case EGL_VG_COLORSPACE:
-                    *error = EGL_BAD_MATCH;
-                    return EGL_FALSE;
-                default:
+                else
+                {
                     *error = EGL_BAD_ATTRIBUTE;
                     return EGL_FALSE;
+                }
+                break;
+            case EGL_RENDER_BUFFER:
+                // GLX always double-buffers per FBConfig; ignore
+                break;
+            case EGL_VG_ALPHA_FORMAT:
+            case EGL_VG_COLORSPACE:
+                *error = EGL_BAD_MATCH;
+                return EGL_FALSE;
+            default:
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
             }
             i += 2;
-            if (i >= 8 * 2) { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
+            if (i >= 8 * 2)
+            {
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
+            }
         }
     }
 
@@ -726,29 +762,29 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
             return EGL_FALSE;
         }
 
-        Window root;
-        int x, y;
+        Window       root;
+        int          x, y;
         unsigned int w, h, bw, depth;
         XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth);
 
-        newSurface->drawToWindow  = EGL_TRUE;
-        newSurface->drawToPixmap  = EGL_FALSE;
-        newSurface->drawToPBuffer = EGL_FALSE;
-        newSurface->doubleBuffer  = walkerConfig->doubleBuffer;
-        newSurface->configId      = walkerConfig->configId;
-        newSurface->width         = (EGLint)w;
-        newSurface->height        = (EGLint)h;
-        newSurface->swapBehavior         = EGL_BUFFER_DESTROYED;
-        newSurface->multisampleResolve   = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
-        newSurface->mipmapLevel          = 0;
-        newSurface->mipmapTexture        = EGL_FALSE;
-        newSurface->largestPbuffer       = EGL_FALSE;
-        newSurface->textureFormat        = EGL_NO_TEXTURE;
-        newSurface->textureTarget        = EGL_NO_TEXTURE;
-        newSurface->glColorspace         = parsedColorspace;
-        newSurface->initialized          = EGL_TRUE;
-        newSurface->destroy              = EGL_FALSE;
-        newSurface->win                  = win;
+        newSurface->drawToWindow                       = EGL_TRUE;
+        newSurface->drawToPixmap                       = EGL_FALSE;
+        newSurface->drawToPBuffer                      = EGL_FALSE;
+        newSurface->doubleBuffer                       = walkerConfig->doubleBuffer;
+        newSurface->configId                           = walkerConfig->configId;
+        newSurface->width                              = (EGLint)w;
+        newSurface->height                             = (EGLint)h;
+        newSurface->swapBehavior                       = EGL_BUFFER_DESTROYED;
+        newSurface->multisampleResolve                 = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+        newSurface->mipmapLevel                        = 0;
+        newSurface->mipmapTexture                      = EGL_FALSE;
+        newSurface->largestPbuffer                     = EGL_FALSE;
+        newSurface->textureFormat                      = EGL_NO_TEXTURE;
+        newSurface->textureTarget                      = EGL_NO_TEXTURE;
+        newSurface->glColorspace                       = parsedColorspace;
+        newSurface->initialized                        = EGL_TRUE;
+        newSurface->destroy                            = EGL_FALSE;
+        newSurface->win                                = win;
         newSurface->nativeSurfaceContainer.drawable    = 0;
         newSurface->nativeSurfaceContainer.config      = nullptr;
         newSurface->nativeSurfaceContainer.hdr         = nullptr;
@@ -759,29 +795,29 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
 #endif
 
     // Query window geometry
-    Window root;
-    int x, y;
+    Window       root;
+    int          x, y;
     unsigned int w, h, bw, depth;
     XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth);
 
-    newSurface->drawToWindow  = EGL_TRUE;
-    newSurface->drawToPixmap  = EGL_FALSE;
-    newSurface->drawToPBuffer = EGL_FALSE;
-    newSurface->doubleBuffer  = walkerConfig->doubleBuffer;
-    newSurface->configId      = walkerConfig->configId;
-    newSurface->width         = (EGLint)w;
-    newSurface->height        = (EGLint)h;
-    newSurface->swapBehavior         = EGL_BUFFER_DESTROYED;
-    newSurface->multisampleResolve   = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
-    newSurface->mipmapLevel          = 0;
-    newSurface->mipmapTexture        = EGL_FALSE;
-    newSurface->largestPbuffer       = EGL_FALSE;
-    newSurface->textureFormat        = EGL_NO_TEXTURE;
-    newSurface->textureTarget        = EGL_NO_TEXTURE;
-    newSurface->glColorspace         = parsedColorspace;
-    newSurface->initialized          = EGL_TRUE;
-    newSurface->destroy              = EGL_FALSE;
-    newSurface->win                  = win;
+    newSurface->drawToWindow                       = EGL_TRUE;
+    newSurface->drawToPixmap                       = EGL_FALSE;
+    newSurface->drawToPBuffer                      = EGL_FALSE;
+    newSurface->doubleBuffer                       = walkerConfig->doubleBuffer;
+    newSurface->configId                           = walkerConfig->configId;
+    newSurface->width                              = (EGLint)w;
+    newSurface->height                             = (EGLint)h;
+    newSurface->swapBehavior                       = EGL_BUFFER_DESTROYED;
+    newSurface->multisampleResolve                 = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+    newSurface->mipmapLevel                        = 0;
+    newSurface->mipmapTexture                      = EGL_FALSE;
+    newSurface->largestPbuffer                     = EGL_FALSE;
+    newSurface->textureFormat                      = EGL_NO_TEXTURE;
+    newSurface->textureTarget                      = EGL_NO_TEXTURE;
+    newSurface->glColorspace                       = parsedColorspace;
+    newSurface->initialized                        = EGL_TRUE;
+    newSurface->destroy                            = EGL_FALSE;
+    newSurface->win                                = win;
     newSurface->nativeSurfaceContainer.drawable    = (GLXDrawable)win;
     newSurface->nativeSurfaceContainer.config      = fb;
     newSurface->nativeSurfaceContainer.hdr         = nullptr;
@@ -790,15 +826,16 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
 
 #ifdef LINUX_VK
     {
-        VkFormat fmt; VkColorSpaceKHR cs;
+        VkFormat        fmt;
+        VkColorSpaceKHR cs;
         if (__vkIsReady() && _eglHDRColorspaceToVk(parsedColorspace, &fmt, &cs))
         {
             auto* hdr = static_cast<NativeHDRSurfaceContainer*>(
-                            malloc(sizeof(NativeHDRSurfaceContainer)));
+                malloc(sizeof(NativeHDRSurfaceContainer)));
             if (hdr)
             {
                 if (__vkCreateHDRSurface(hdr, win, walkerDpy->display_id,
-                                          parsedColorspace, w, h) == EGL_TRUE)
+                                         parsedColorspace, w, h) == EGL_TRUE)
                     newSurface->nativeSurfaceContainer.hdr = hdr;
                 else
                     free(hdr);
@@ -810,27 +847,31 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface,
     return EGL_TRUE;
 }
 
-EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface,
-                                   const EGLint* attrib_list,
-                                   const EGLDisplayImpl* walkerDpy,
-                                   const EGLConfigImpl* walkerConfig,
-                                   EGLint* error)
+EGLBoolean __createPbufferSurface(EGLSurfaceImpl*       newSurface,
+                                  const EGLint*         attrib_list,
+                                  const EGLDisplayImpl* walkerDpy,
+                                  const EGLConfigImpl*  walkerConfig,
+                                  EGLint*               error)
 {
     if (!newSurface || !walkerDpy || !walkerConfig || !error)
         return EGL_FALSE;
 
-    Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
-    int screen   = DefaultScreen(dpy);
+    Display* dpy    = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int      screen = DefaultScreen(dpy);
 
     GLXFBConfig fb = __glxFBConfigById(dpy, screen, walkerConfig->configId);
-    if (!fb) { *error = EGL_BAD_CONFIG; return EGL_FALSE; }
+    if (!fb)
+    {
+        *error = EGL_BAD_CONFIG;
+        return EGL_FALSE;
+    }
 
-    int width = 0, height = 0;
-    EGLBoolean largestPbuf = EGL_FALSE;
-    EGLBoolean mipmapTex   = EGL_FALSE;
-    EGLint texFormat = EGL_NO_TEXTURE;
-    EGLint texTarget = EGL_NO_TEXTURE;
-    EGLint pbufColorspace = EGL_GL_COLORSPACE_LINEAR;
+    int        width = 0, height = 0;
+    EGLBoolean largestPbuf    = EGL_FALSE;
+    EGLBoolean mipmapTex      = EGL_FALSE;
+    EGLint     texFormat      = EGL_NO_TEXTURE;
+    EGLint     texTarget      = EGL_NO_TEXTURE;
+    EGLint     pbufColorspace = EGL_GL_COLORSPACE_LINEAR;
 
     if (attrib_list)
     {
@@ -840,72 +881,85 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface,
             EGLint value = attrib_list[i + 1];
             switch (attrib_list[i])
             {
-                case EGL_WIDTH:          width  = value; break;
-                case EGL_HEIGHT:         height = value; break;
-                case EGL_LARGEST_PBUFFER: largestPbuf = (EGLBoolean)value; break;
-                case EGL_MIPMAP_TEXTURE:  mipmapTex   = (EGLBoolean)value; break;
-                case EGL_GL_COLORSPACE:
-                    if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB)
-                        pbufColorspace = value;
-                    else { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                    break;
-                case EGL_TEXTURE_FORMAT:
-                    if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_RGB && value != EGL_TEXTURE_RGBA)
-                    { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                    texFormat = value;
-                    break;
-                case EGL_TEXTURE_TARGET:
-                    if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_2D)
-                    { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                    texTarget = value;
-                    break;
-                case EGL_VG_ALPHA_FORMAT:
-                case EGL_VG_COLORSPACE:
-                    *error = EGL_BAD_MATCH;
-                    return EGL_FALSE;
-                default:
+            case EGL_WIDTH: width = value; break;
+            case EGL_HEIGHT: height = value; break;
+            case EGL_LARGEST_PBUFFER: largestPbuf = (EGLBoolean)value; break;
+            case EGL_MIPMAP_TEXTURE: mipmapTex = (EGLBoolean)value; break;
+            case EGL_GL_COLORSPACE:
+                if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB)
+                    pbufColorspace = value;
+                else
+                {
                     *error = EGL_BAD_ATTRIBUTE;
                     return EGL_FALSE;
+                }
+                break;
+            case EGL_TEXTURE_FORMAT:
+                if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_RGB && value != EGL_TEXTURE_RGBA)
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+                }
+                texFormat = value;
+                break;
+            case EGL_TEXTURE_TARGET:
+                if (value != EGL_NO_TEXTURE && value != EGL_TEXTURE_2D)
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+                }
+                texTarget = value;
+                break;
+            case EGL_VG_ALPHA_FORMAT:
+            case EGL_VG_COLORSPACE:
+                *error = EGL_BAD_MATCH;
+                return EGL_FALSE;
+            default:
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
             }
             i += 2;
         }
     }
 
     const int pbufAttribs[] = {
-        GLX_PBUFFER_WIDTH,    width,
-        GLX_PBUFFER_HEIGHT,   height,
-        GLX_LARGEST_PBUFFER,  largestPbuf ? True : False,
+        GLX_PBUFFER_WIDTH, width,
+        GLX_PBUFFER_HEIGHT, height,
+        GLX_LARGEST_PBUFFER, largestPbuf ? True : False,
         GLX_PRESERVED_CONTENTS, False,
-        None
-    };
+        None};
 
     GLXPbuffer pbuf = s_glXCreatePbuffer(dpy, fb, pbufAttribs);
-    if (!pbuf) { *error = EGL_BAD_ALLOC; return EGL_FALSE; }
+    if (!pbuf)
+    {
+        *error = EGL_BAD_ALLOC;
+        return EGL_FALSE;
+    }
 
     // Read back actual dimensions (driver may have clamped them)
     unsigned int actualW = (unsigned int)width;
     unsigned int actualH = (unsigned int)height;
-    glXQueryDrawable(dpy, pbuf, GLX_WIDTH,  &actualW);
+    glXQueryDrawable(dpy, pbuf, GLX_WIDTH, &actualW);
     glXQueryDrawable(dpy, pbuf, GLX_HEIGHT, &actualH);
 
-    newSurface->drawToWindow  = EGL_FALSE;
-    newSurface->drawToPixmap  = EGL_FALSE;
-    newSurface->drawToPBuffer = EGL_TRUE;
-    newSurface->doubleBuffer  = walkerConfig->doubleBuffer;
-    newSurface->configId      = walkerConfig->configId;
-    newSurface->width         = (EGLint)actualW;
-    newSurface->height        = (EGLint)actualH;
-    newSurface->swapBehavior         = EGL_BUFFER_DESTROYED;
-    newSurface->multisampleResolve   = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
-    newSurface->mipmapLevel          = 0;
-    newSurface->mipmapTexture        = mipmapTex;
-    newSurface->largestPbuffer       = largestPbuf;
-    newSurface->textureFormat        = texFormat;
-    newSurface->textureTarget        = texTarget;
-    newSurface->glColorspace         = pbufColorspace;
-    newSurface->initialized          = EGL_TRUE;
-    newSurface->destroy              = EGL_FALSE;
-    newSurface->pbuf                 = (GLXPbuffer)pbuf;
+    newSurface->drawToWindow                       = EGL_FALSE;
+    newSurface->drawToPixmap                       = EGL_FALSE;
+    newSurface->drawToPBuffer                      = EGL_TRUE;
+    newSurface->doubleBuffer                       = walkerConfig->doubleBuffer;
+    newSurface->configId                           = walkerConfig->configId;
+    newSurface->width                              = (EGLint)actualW;
+    newSurface->height                             = (EGLint)actualH;
+    newSurface->swapBehavior                       = EGL_BUFFER_DESTROYED;
+    newSurface->multisampleResolve                 = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+    newSurface->mipmapLevel                        = 0;
+    newSurface->mipmapTexture                      = mipmapTex;
+    newSurface->largestPbuffer                     = largestPbuf;
+    newSurface->textureFormat                      = texFormat;
+    newSurface->textureTarget                      = texTarget;
+    newSurface->glColorspace                       = pbufColorspace;
+    newSurface->initialized                        = EGL_TRUE;
+    newSurface->destroy                            = EGL_FALSE;
+    newSurface->pbuf                               = (GLXPbuffer)pbuf;
     newSurface->nativeSurfaceContainer.drawable    = (GLXDrawable)pbuf;
     newSurface->nativeSurfaceContainer.config      = fb;
     newSurface->nativeSurfaceContainer.hdr         = nullptr;
@@ -915,22 +969,30 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface,
     return EGL_TRUE;
 }
 
-EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface,
-                                  EGLNativePixmapType pixmap,
-                                  const EGLint* attrib_list,
-                                  const EGLDisplayImpl* walkerDpy,
-                                  const EGLConfigImpl* walkerConfig,
-                                  EGLint* error)
+EGLBoolean __createPixmapSurface(EGLSurfaceImpl*       newSurface,
+                                 EGLNativePixmapType   pixmap,
+                                 const EGLint*         attrib_list,
+                                 const EGLDisplayImpl* walkerDpy,
+                                 const EGLConfigImpl*  walkerConfig,
+                                 EGLint*               error)
 {
     if (!newSurface || !walkerDpy || !walkerConfig || !error)
         return EGL_FALSE;
-    if (!pixmap) { *error = EGL_BAD_NATIVE_PIXMAP; return EGL_FALSE; }
+    if (!pixmap)
+    {
+        *error = EGL_BAD_NATIVE_PIXMAP;
+        return EGL_FALSE;
+    }
 
-    Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
-    int screen   = DefaultScreen(dpy);
+    Display* dpy    = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int      screen = DefaultScreen(dpy);
 
     GLXFBConfig fb = __glxFBConfigById(dpy, screen, walkerConfig->configId);
-    if (!fb) { *error = EGL_BAD_CONFIG; return EGL_FALSE; }
+    if (!fb)
+    {
+        *error = EGL_BAD_CONFIG;
+        return EGL_FALSE;
+    }
 
     EGLint glColorspace = EGL_GL_COLORSPACE_LINEAR;
     if (attrib_list)
@@ -941,48 +1003,58 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface,
             EGLint value = attrib_list[i + 1];
             switch (attrib_list[i])
             {
-                case EGL_GL_COLORSPACE:
-                    if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB)
-                        glColorspace = value;
-                    else { *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE; }
-                    break;
-                case EGL_VG_ALPHA_FORMAT:
-                case EGL_VG_COLORSPACE:
-                    *error = EGL_BAD_MATCH; return EGL_FALSE;
-                default:
-                    *error = EGL_BAD_ATTRIBUTE; return EGL_FALSE;
+            case EGL_GL_COLORSPACE:
+                if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB)
+                    glColorspace = value;
+                else
+                {
+                    *error = EGL_BAD_ATTRIBUTE;
+                    return EGL_FALSE;
+                }
+                break;
+            case EGL_VG_ALPHA_FORMAT:
+            case EGL_VG_COLORSPACE:
+                *error = EGL_BAD_MATCH;
+                return EGL_FALSE;
+            default:
+                *error = EGL_BAD_ATTRIBUTE;
+                return EGL_FALSE;
             }
             i += 2;
         }
     }
 
     GLXPixmap glxPix = s_glXCreatePixmap(dpy, fb, (Pixmap)pixmap, nullptr);
-    if (!glxPix) { *error = EGL_BAD_NATIVE_PIXMAP; return EGL_FALSE; }
+    if (!glxPix)
+    {
+        *error = EGL_BAD_NATIVE_PIXMAP;
+        return EGL_FALSE;
+    }
 
     // Query pixmap dimensions via X
-    Window root;
-    int x, y;
+    Window       root;
+    int          x, y;
     unsigned int w, h, bw, depth;
     XGetGeometry(dpy, (Drawable)pixmap, &root, &x, &y, &w, &h, &bw, &depth);
 
-    newSurface->drawToWindow  = EGL_FALSE;
-    newSurface->drawToPixmap  = EGL_TRUE;
-    newSurface->drawToPBuffer = EGL_FALSE;
-    newSurface->doubleBuffer  = EGL_FALSE;
-    newSurface->configId      = walkerConfig->configId;
-    newSurface->width         = (EGLint)w;
-    newSurface->height        = (EGLint)h;
-    newSurface->swapBehavior       = EGL_BUFFER_DESTROYED;
-    newSurface->multisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
-    newSurface->mipmapLevel        = 0;
-    newSurface->mipmapTexture      = EGL_FALSE;
-    newSurface->largestPbuffer     = EGL_FALSE;
-    newSurface->textureFormat      = EGL_NO_TEXTURE;
-    newSurface->textureTarget      = EGL_NO_TEXTURE;
-    newSurface->glColorspace       = glColorspace;
-    newSurface->initialized        = EGL_TRUE;
-    newSurface->destroy            = EGL_FALSE;
-    newSurface->pixmap             = pixmap;
+    newSurface->drawToWindow                       = EGL_FALSE;
+    newSurface->drawToPixmap                       = EGL_TRUE;
+    newSurface->drawToPBuffer                      = EGL_FALSE;
+    newSurface->doubleBuffer                       = EGL_FALSE;
+    newSurface->configId                           = walkerConfig->configId;
+    newSurface->width                              = (EGLint)w;
+    newSurface->height                             = (EGLint)h;
+    newSurface->swapBehavior                       = EGL_BUFFER_DESTROYED;
+    newSurface->multisampleResolve                 = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+    newSurface->mipmapLevel                        = 0;
+    newSurface->mipmapTexture                      = EGL_FALSE;
+    newSurface->largestPbuffer                     = EGL_FALSE;
+    newSurface->textureFormat                      = EGL_NO_TEXTURE;
+    newSurface->textureTarget                      = EGL_NO_TEXTURE;
+    newSurface->glColorspace                       = glColorspace;
+    newSurface->initialized                        = EGL_TRUE;
+    newSurface->destroy                            = EGL_FALSE;
+    newSurface->pixmap                             = pixmap;
     newSurface->nativeSurfaceContainer.drawable    = (GLXDrawable)glxPix;
     newSurface->nativeSurfaceContainer.config      = fb;
     newSurface->nativeSurfaceContainer.hdr         = nullptr;
@@ -1022,8 +1094,8 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpyType, const EGLSurfaceImpl* 
 }
 
 EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy,
-                          const EGLSurfaceImpl* surface,
-                          EGLNativePixmapType target)
+                         const EGLSurfaceImpl* surface,
+                         EGLNativePixmapType   target)
 {
     (void)surface;
     if (!target)
@@ -1041,7 +1113,7 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy,
 
     // Read framebuffer pixels (BGRA, bottom-up)
     GLsizei stride = (width * 4 + 3) & ~3;
-    auto* pixels = static_cast<GLubyte*>(malloc((size_t)stride * (size_t)height));
+    auto*   pixels = static_cast<GLubyte*>(malloc((size_t)stride * (size_t)height));
     if (!pixels)
         return EGL_FALSE;
 
@@ -1050,16 +1122,20 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy,
 
     // Flip rows (GL is bottom-up, X is top-down)
     auto* flipped = static_cast<GLubyte*>(malloc((size_t)stride * (size_t)height));
-    if (!flipped) { free(pixels); return EGL_FALSE; }
+    if (!flipped)
+    {
+        free(pixels);
+        return EGL_FALSE;
+    }
     for (int row = 0; row < height; ++row)
         memcpy(flipped + (size_t)row * (size_t)stride,
-               pixels  + (size_t)(height - 1 - row) * (size_t)stride,
+               pixels + (size_t)(height - 1 - row) * (size_t)stride,
                (size_t)stride);
     free(pixels);
 
     // Query the pixmap's depth to create a matching XImage
-    Window root;
-    int px, py;
+    Window       root;
+    int          px, py;
     unsigned int pw, ph, pbw, pdepth;
     XGetGeometry(dpy, (Drawable)target, &root, &px, &py, &pw, &ph, &pbw, &pdepth);
 
@@ -1068,7 +1144,11 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy,
                                reinterpret_cast<char*>(flipped),
                                (unsigned)width, (unsigned)height,
                                32, stride);
-    if (!img) { free(flipped); return EGL_FALSE; }
+    if (!img)
+    {
+        free(flipped);
+        return EGL_FALSE;
+    }
 
     GC gc = XCreateGC(dpy, (Drawable)target, 0, nullptr);
     XPutImage(dpy, (Drawable)target, gc, img, 0, 0, 0, 0, (unsigned)width, (unsigned)height);
@@ -1096,44 +1176,45 @@ __eglMustCastToProperFunctionPointerType __getProcAddress(const char* procname)
 
 // ── Display initialisation: enumerate FBConfigs → EGL configs ─────────────────
 
-EGLBoolean __initialize(EGLDisplayImpl* walkerDpy,
-                         const NativeLocalStorageContainer* nativeLocalStorageContainer,
-                         EGLint* error)
+EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
+                        const NativeLocalStorageContainer* nativeLocalStorageContainer,
+                        EGLint*                            error)
 {
     if (!walkerDpy || !nativeLocalStorageContainer || !error)
         return EGL_FALSE;
 
-    Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
-    int screen   = DefaultScreen(dpy);
+    Display* dpy    = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int      screen = DefaultScreen(dpy);
 
     // Query extension support
     const char* glxExts = s_glXQueryExtensionsString ? s_glXQueryExtensionsString(dpy, screen) : "";
 
-    const bool esSupported    = (strstr(glxExts, "GLX_EXT_create_context_es2_profile") != nullptr ||
-                                  strstr(glxExts, "GLX_EXT_create_context_es_profile")  != nullptr)
+    const bool esSupported = (strstr(glxExts, "GLX_EXT_create_context_es2_profile") != nullptr ||
+                              strstr(glxExts, "GLX_EXT_create_context_es_profile") != nullptr)
 #ifdef EGL_LINUX_ENABLE_GLES
-                              || gles_isAvailable()
+                             || gles_isAvailable()
 #endif
-                              ;
-    const EGLint esMask       = esSupported
-        ? (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT)
-        : 0;
+        ;
+    const EGLint esMask = esSupported
+                              ? (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT)
+                              : 0;
 
     walkerDpy->srgbFramebufferSupported =
         (strstr(glxExts, "GLX_ARB_framebuffer_sRGB") != nullptr ||
          strstr(glxExts, "GLX_EXT_framebuffer_sRGB") != nullptr)
-        ? EGL_TRUE : EGL_FALSE;
+            ? EGL_TRUE
+            : EGL_FALSE;
 
     walkerDpy->supportedHDRColorspaces =
 #ifdef LINUX_VK
         __vkQueryHDRColorspaces(walkerDpy->display_id,
                                 (EGLNativeWindowType)(uintptr_t)nativeLocalStorageContainer->window);
 #else
-        0;  // X11/GLX has no HDR colorspace support without Vulkan
+        0; // X11/GLX has no HDR colorspace support without Vulkan
 #endif
 
     // Enumerate all FBConfigs
-    int nfb = 0;
+    int          nfb = 0;
     GLXFBConfig* fbs = s_glXGetFBConfigs(dpy, screen, &nfb);
     if (!fbs || nfb == 0)
     {
@@ -1158,7 +1239,12 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy,
             continue;
 
         EGLConfigImpl* newConfig = reinterpret_cast<EGLConfigImpl*>(malloc(sizeof(EGLConfigImpl)));
-        if (!newConfig) { *error = EGL_NOT_INITIALIZED; XFree(fbs); return EGL_FALSE; }
+        if (!newConfig)
+        {
+            *error = EGL_NOT_INITIALIZED;
+            XFree(fbs);
+            return EGL_FALSE;
+        }
         _eglInternalSetDefaultConfig(newConfig);
 
         newConfig->next = nullptr;
@@ -1169,17 +1255,20 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy,
         lastConfig = newConfig;
 
         // Surface type bitmask
-        newConfig->drawToWindow  = (drawableType & GLX_WINDOW_BIT)  ? EGL_TRUE : EGL_FALSE;
-        newConfig->drawToPixmap  = (drawableType & GLX_PIXMAP_BIT)  ? EGL_TRUE : EGL_FALSE;
+        newConfig->drawToWindow  = (drawableType & GLX_WINDOW_BIT) ? EGL_TRUE : EGL_FALSE;
+        newConfig->drawToPixmap  = (drawableType & GLX_PIXMAP_BIT) ? EGL_TRUE : EGL_FALSE;
         newConfig->drawToPBuffer = (drawableType & GLX_PBUFFER_BIT) ? EGL_TRUE : EGL_FALSE;
         newConfig->surfaceType   = 0;
-        if (newConfig->drawToWindow)  newConfig->surfaceType |= EGL_WINDOW_BIT;
-        if (newConfig->drawToPixmap)  newConfig->surfaceType |= EGL_PIXMAP_BIT;
-        if (newConfig->drawToPBuffer) newConfig->surfaceType |= EGL_PBUFFER_BIT;
+        if (newConfig->drawToWindow)
+            newConfig->surfaceType |= EGL_WINDOW_BIT;
+        if (newConfig->drawToPixmap)
+            newConfig->surfaceType |= EGL_PIXMAP_BIT;
+        if (newConfig->drawToPBuffer)
+            newConfig->surfaceType |= EGL_PBUFFER_BIT;
 
         // Renderable type
-        newConfig->conformant     = EGL_OPENGL_BIT | esMask;
-        newConfig->renderableType = EGL_OPENGL_BIT | esMask;
+        newConfig->conformant      = EGL_OPENGL_BIT | esMask;
+        newConfig->renderableType  = EGL_OPENGL_BIT | esMask;
         newConfig->colorBufferType = EGL_RGB_BUFFER;
 
         // FBConfig ID (used to retrieve the GLXFBConfig later)
@@ -1193,23 +1282,22 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy,
         newConfig->doubleBuffer = db ? EGL_TRUE : EGL_FALSE;
 
         // Color channel sizes
-        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_RED_SIZE,   &newConfig->redSize);
+        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_RED_SIZE, &newConfig->redSize);
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_GREEN_SIZE, &newConfig->greenSize);
-        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_BLUE_SIZE,  &newConfig->blueSize);
+        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_BLUE_SIZE, &newConfig->blueSize);
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_ALPHA_SIZE, &newConfig->alphaSize);
-        newConfig->bufferSize = newConfig->redSize + newConfig->greenSize
-                              + newConfig->blueSize + newConfig->alphaSize;
+        newConfig->bufferSize = newConfig->redSize + newConfig->greenSize + newConfig->blueSize + newConfig->alphaSize;
 
         // Depth / stencil
-        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_DEPTH_SIZE,   &newConfig->depthSize);
+        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_DEPTH_SIZE, &newConfig->depthSize);
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_STENCIL_SIZE, &newConfig->stencilSize);
 
         // Multisample
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_SAMPLE_BUFFERS, &newConfig->sampleBuffers);
-        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_SAMPLES,        &newConfig->samples);
+        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_SAMPLES, &newConfig->samples);
 
         // Max pbuffer dimensions
-        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_MAX_PBUFFER_WIDTH,  &newConfig->maxPBufferWidth);
+        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_MAX_PBUFFER_WIDTH, &newConfig->maxPBufferWidth);
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_MAX_PBUFFER_HEIGHT, &newConfig->maxPBufferHeight);
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_MAX_PBUFFER_PIXELS, &newConfig->maxPBufferPixels);
 
@@ -1219,9 +1307,9 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy,
         if (transType == GLX_TRANSPARENT_RGB)
         {
             newConfig->transparentType = EGL_TRANSPARENT_RGB;
-            s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_TRANSPARENT_RED_VALUE,   &newConfig->transparentRedValue);
+            s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_TRANSPARENT_RED_VALUE, &newConfig->transparentRedValue);
             s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_TRANSPARENT_GREEN_VALUE, &newConfig->transparentGreenValue);
-            s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_TRANSPARENT_BLUE_VALUE,  &newConfig->transparentBlueValue);
+            s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_TRANSPARENT_BLUE_VALUE, &newConfig->transparentBlueValue);
         }
         else
         {
@@ -1249,7 +1337,7 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy,
         newConfig->minSwapInterval = 0;
         newConfig->maxSwapInterval = 1;
 
-        newConfig->level = 0;
+        newConfig->level             = 0;
         newConfig->matchNativePixmap = EGL_NONE;
 
         // Bind-to-texture: GLX_EXT_texture_from_pixmap
@@ -1269,7 +1357,10 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 
 #ifdef LINUX_VK
     if (walkerSurface->nativeSurfaceContainer.hdr)
+    {
+        __vkUpdateHDRMetadata(walkerSurface->nativeSurfaceContainer.hdr, walkerSurface);
         return __vkPresent(walkerSurface->nativeSurfaceContainer.hdr);
+    }
 #endif
 
 #ifdef EGL_LINUX_ENABLE_GLES
@@ -1312,41 +1403,41 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 // ── Texture binding ───────────────────────────────────────────────────────────
 
 EGLBoolean __bindTexImage(const EGLDisplayImpl* walkerDpy,
-                           const EGLSurfaceImpl* walkerSurface,
-                           EGLint buffer)
+                          const EGLSurfaceImpl* walkerSurface,
+                          EGLint                buffer)
 {
     if (!walkerDpy || !walkerSurface)
         return EGL_FALSE;
     if (!s_glXBindTexImageEXT)
         return EGL_FALSE;
 
-    Display* dpy  = reinterpret_cast<Display*>(walkerDpy->display_id);
-    int glxBuffer = (buffer == EGL_BACK_BUFFER) ? GLX_BACK_LEFT_EXT : GLX_FRONT_LEFT_EXT;
+    Display* dpy       = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int      glxBuffer = (buffer == EGL_BACK_BUFFER) ? GLX_BACK_LEFT_EXT : GLX_FRONT_LEFT_EXT;
     s_glXBindTexImageEXT(dpy, (GLXDrawable)walkerSurface->pbuf, glxBuffer, nullptr);
     return EGL_TRUE;
 }
 
 EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy,
-                              const EGLSurfaceImpl* walkerSurface,
-                              EGLint buffer)
+                             const EGLSurfaceImpl* walkerSurface,
+                             EGLint                buffer)
 {
     if (!walkerDpy || !walkerSurface)
         return EGL_FALSE;
     if (!s_glXReleaseTexImageEXT)
         return EGL_FALSE;
 
-    Display* dpy  = reinterpret_cast<Display*>(walkerDpy->display_id);
-    int glxBuffer = (buffer == EGL_BACK_BUFFER) ? GLX_BACK_LEFT_EXT : GLX_FRONT_LEFT_EXT;
+    Display* dpy       = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int      glxBuffer = (buffer == EGL_BACK_BUFFER) ? GLX_BACK_LEFT_EXT : GLX_FRONT_LEFT_EXT;
     s_glXReleaseTexImageEXT(dpy, (GLXDrawable)walkerSurface->pbuf, glxBuffer);
     return EGL_TRUE;
 }
 
 // ── Platform-dependent handle export ─────────────────────────────────────────
 
-EGLBoolean __getPlatformDependentHandles(void* out,
-                                          const EGLDisplayImpl* walkerDpy,
-                                          const NativeSurfaceContainer* nativeSurfaceContainer,
-                                          const NativeContextContainer* nativeContextContainer)
+EGLBoolean __getPlatformDependentHandles(void*                         out,
+                                         const EGLDisplayImpl*         walkerDpy,
+                                         const NativeSurfaceContainer* nativeSurfaceContainer,
+                                         const NativeContextContainer* nativeContextContainer)
 {
     if (!nativeSurfaceContainer || !nativeContextContainer)
         return EGL_FALSE;

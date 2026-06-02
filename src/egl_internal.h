@@ -37,12 +37,12 @@
 #include <mutex>
 
 // HDR colorspace support bitmask flags (universal — value 0 on non-Windows platforms)
-#define EGL_HDR_CS_SCRGB_LINEAR_BIT      (1u << 0)
-#define EGL_HDR_CS_SCRGB_BIT             (1u << 1)
-#define EGL_HDR_CS_BT2020_PQ_BIT         (1u << 2)
-#define EGL_HDR_CS_BT2020_LINEAR_BIT     (1u << 3)
-#define EGL_HDR_CS_BT2020_HLG_BIT        (1u << 4)
-#define EGL_HDR_CS_DISPLAY_P3_BIT        (1u << 5)
+#define EGL_HDR_CS_SCRGB_LINEAR_BIT (1u << 0)
+#define EGL_HDR_CS_SCRGB_BIT (1u << 1)
+#define EGL_HDR_CS_BT2020_PQ_BIT (1u << 2)
+#define EGL_HDR_CS_BT2020_LINEAR_BIT (1u << 3)
+#define EGL_HDR_CS_BT2020_HLG_BIT (1u << 4)
+#define EGL_HDR_CS_DISPLAY_P3_BIT (1u << 5)
 #define EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT (1u << 6)
 
 #if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__) /* Win32 and WinCE */
@@ -61,27 +61,31 @@ typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 // Backend tag identifies which native subsystem owns a context/surface on
 // Windows. WGL is the default desktop OpenGL path; ANGLE is the OpenGL ES
 // path delegated to Google ANGLE's libEGL.dll / libGLESv2.dll.
-typedef enum {
+typedef enum
+{
     EGL_BACKEND_WGL   = 0,
     EGL_BACKEND_ANGLE = 1
 } NativeBackend;
 
-typedef struct _NativeSurfaceContainer {
-    HDC hdc;
-    NativeHDRSurfaceContainer* hdr;  // NULL for sRGB/linear; non-NULL for HDR Vulkan surfaces
-    NativeBackend backend;           // 0 = WGL (default), 1 = ANGLE
-    void* angleSurface;              // EGLSurface from ANGLE when backend == ANGLE
+typedef struct _NativeSurfaceContainer
+{
+    HDC                        hdc;
+    NativeHDRSurfaceContainer* hdr;          // NULL for sRGB/linear; non-NULL for HDR Vulkan surfaces
+    NativeBackend              backend;      // 0 = WGL (default), 1 = ANGLE
+    void*                      angleSurface; // EGLSurface from ANGLE when backend == ANGLE
 } NativeSurfaceContainer;
 
-typedef struct _NativeContextContainer {
-    HGLRC ctx;
-    NativeBackend backend;           // 0 = WGL (default), 1 = ANGLE
-    void* angleCtx;                  // EGLContext from ANGLE when backend == ANGLE
+typedef struct _NativeContextContainer
+{
+    HGLRC         ctx;
+    NativeBackend backend;  // 0 = WGL (default), 1 = ANGLE
+    void*         angleCtx; // EGLContext from ANGLE when backend == ANGLE
 } NativeContextContainer;
 
-typedef struct _NativeLocalStorageContainer {
-    HWND hwnd;
-    HDC  hdc;
+typedef struct _NativeLocalStorageContainer
+{
+    HWND  hwnd;
+    HDC   hdc;
     HGLRC ctx;
     void* placeholder;
 } NativeLocalStorageContainer;
@@ -101,7 +105,8 @@ struct wl_compositor;
 struct wl_surface;
 
 // Our native wl_egl_window (matches EGLNativeWindowType from eglplatform.h)
-struct wl_egl_window {
+struct wl_egl_window
+{
     struct wl_surface* surface;
     int                width;
     int                height;
@@ -112,29 +117,33 @@ typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
 // Backend tag: GLX is the default desktop OpenGL path; GLES delegates to the
 // system libEGL (Mesa / vendor) when EGL_WAYLAND_ENABLE_GLES is set.
-typedef enum {
+typedef enum
+{
     EGL_BACKEND_GLX  = 0,
     EGL_BACKEND_GLES = 1
 } NativeBackend;
 
-typedef struct _NativeSurfaceContainer {
-    GLXPbuffer             glxPbuffer;  // offscreen GL drawable (XWayland)
-    GLXFBConfig            glxConfig;
-    struct wl_egl_window*  eglWindow;   // Wayland window; eglWindow->surface used for VK
-    NativeHDRSurfaceContainer* vk;      // non-NULL for GLX-path Wayland surfaces (Vulkan present)
-    NativeBackend          backend;     // 0 = GLX (default), 1 = system GLES
-    void*                  glesSurface; // EGLSurface from system libEGL when backend == GLES
+typedef struct _NativeSurfaceContainer
+{
+    GLXPbuffer                 glxPbuffer; // offscreen GL drawable (XWayland)
+    GLXFBConfig                glxConfig;
+    struct wl_egl_window*      eglWindow;   // Wayland window; eglWindow->surface used for VK
+    NativeHDRSurfaceContainer* vk;          // non-NULL for GLX-path Wayland surfaces (Vulkan present)
+    NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
+    void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
 } NativeSurfaceContainer;
 
-typedef struct _NativeContextContainer {
-    GLXContext ctx;
-    NativeBackend backend;  // 0 = GLX (default), 1 = system GLES
-    void* glesCtx;          // EGLContext from system libEGL when backend == GLES
+typedef struct _NativeContextContainer
+{
+    GLXContext    ctx;
+    NativeBackend backend; // 0 = GLX (default), 1 = system GLES
+    void*         glesCtx; // EGLContext from system libEGL when backend == GLES
 } NativeContextContainer;
 
-typedef struct _NativeLocalStorageContainer {
-    Display*   x11Display;  // XWayland display (for GLX)
-    Window     x11Window;   // dummy X11 window (for bootstrap)
+typedef struct _NativeLocalStorageContainer
+{
+    Display*   x11Display; // XWayland display (for GLX)
+    Window     x11Window;  // dummy X11 window (for bootstrap)
     GLXContext ctx;
 } NativeLocalStorageContainer;
 
@@ -152,26 +161,30 @@ typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
 // Backend tag: GLX is the default desktop OpenGL path; GLES delegates to the
 // system libEGL (Mesa / vendor) when EGL_LINUX_ENABLE_GLES is set.
-typedef enum {
+typedef enum
+{
     EGL_BACKEND_GLX  = 0,
     EGL_BACKEND_GLES = 1
 } NativeBackend;
 
-typedef struct _NativeSurfaceContainer {
-    GLXDrawable drawable;
-    GLXFBConfig config;
-    NativeHDRSurfaceContainer* hdr;  // NULL = SDR (GLX); non-NULL = Vulkan HDR
-    NativeBackend backend;           // 0 = GLX (default), 1 = system GLES
-    void* glesSurface;               // EGLSurface from system libEGL when backend == GLES
+typedef struct _NativeSurfaceContainer
+{
+    GLXDrawable                drawable;
+    GLXFBConfig                config;
+    NativeHDRSurfaceContainer* hdr;         // NULL = SDR (GLX); non-NULL = Vulkan HDR
+    NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
+    void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
 } NativeSurfaceContainer;
 
-typedef struct _NativeContextContainer {
-    GLXContext ctx;
-    NativeBackend backend;           // 0 = GLX (default), 1 = system GLES
-    void* glesCtx;                   // EGLContext from system libEGL when backend == GLES
+typedef struct _NativeContextContainer
+{
+    GLXContext    ctx;
+    NativeBackend backend; // 0 = GLX (default), 1 = system GLES
+    void*         glesCtx; // EGLContext from system libEGL when backend == GLES
 } NativeContextContainer;
 
-typedef struct _NativeLocalStorageContainer {
+typedef struct _NativeLocalStorageContainer
+{
     Display*   display;
     Window     window;
     GLXContext ctx;
@@ -191,26 +204,30 @@ typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
 // Backend tag: GLX is the default desktop OpenGL path; GLES delegates to the
 // system libEGL (Mesa / vendor) when EGL_LINUX_ENABLE_GLES is set.
-typedef enum {
+typedef enum
+{
     EGL_BACKEND_GLX  = 0,
     EGL_BACKEND_GLES = 1
 } NativeBackend;
 
-typedef struct _NativeSurfaceContainer {
-    GLXDrawable drawable;
-    GLXFBConfig config;
-    NativeHDRSurfaceContainer* hdr;  // NULL = SDR (GLX); non-NULL = Vulkan HDR
-    NativeBackend backend;           // 0 = GLX (default), 1 = system GLES
-    void* glesSurface;               // EGLSurface from system libEGL when backend == GLES
+typedef struct _NativeSurfaceContainer
+{
+    GLXDrawable                drawable;
+    GLXFBConfig                config;
+    NativeHDRSurfaceContainer* hdr;         // NULL = SDR (GLX); non-NULL = Vulkan HDR
+    NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
+    void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
 } NativeSurfaceContainer;
 
-typedef struct _NativeContextContainer {
-    GLXContext ctx;
-    NativeBackend backend;           // 0 = GLX (default), 1 = system GLES
-    void* glesCtx;                   // EGLContext from system libEGL when backend == GLES
+typedef struct _NativeContextContainer
+{
+    GLXContext    ctx;
+    NativeBackend backend; // 0 = GLX (default), 1 = system GLES
+    void*         glesCtx; // EGLContext from system libEGL when backend == GLES
 } NativeContextContainer;
 
-typedef struct _NativeLocalStorageContainer {
+typedef struct _NativeLocalStorageContainer
+{
     Display*   display;
     Window     window;
     GLXContext ctx;
@@ -349,18 +366,18 @@ typedef struct _EGLSurfaceImpl
     EGLBoolean drawToPixmap;
     EGLBoolean drawToPBuffer;
     EGLBoolean doubleBuffer;
-    EGLint configId;
+    EGLint     configId;
 
     EGLint width;
     EGLint height;
 
-    EGLint swapBehavior;
-    EGLint multisampleResolve;
-    EGLint mipmapLevel;
+    EGLint     swapBehavior;
+    EGLint     multisampleResolve;
+    EGLint     mipmapLevel;
     EGLBoolean mipmapTexture;
     EGLBoolean largestPbuffer;
-    EGLint textureFormat;
-    EGLint textureTarget;
+    EGLint     textureFormat;
+    EGLint     textureTarget;
 
     // EGL_KHR_gl_colorspace / EGL_EXT_gl_colorspace_*: EGL_GL_COLORSPACE_SRGB, EGL_GL_COLORSPACE_LINEAR, or an HDR colorspace (EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT, etc.)
     EGLint glColorspace;
@@ -381,9 +398,10 @@ typedef struct _EGLSurfaceImpl
     EGLint cta861MaxContentLightLevel;
     EGLint cta861MaxFrameAverageLightLevel;
 
-    union {
+    union
+    {
         EGLNativeWindowType win;
-        NativePbufferType pbuf;
+        NativePbufferType   pbuf;
         EGLNativePixmapType pixmap;
     };
 
@@ -410,7 +428,7 @@ typedef struct _EGLContextImpl
     EGLBoolean initialized;
     EGLBoolean destroy;
 
-    EGLint configId;
+    EGLint  configId;
     EGLenum clientAPI;
 
     struct _EGLContextImpl* sharedCtx;
@@ -456,13 +474,13 @@ typedef struct _EGLDisplayImpl
 
     EGLSurfaceImpl* rootSurface;
     EGLContextImpl* rootCtx;
-    EGLConfigImpl* rootConfig;
-    EGLSyncImpl* rootSync;
-    EGLImageImpl* rootImage;
+    EGLConfigImpl*  rootConfig;
+    EGLSyncImpl*    rootSync;
+    EGLImageImpl*   rootImage;
 
     EGLBoolean srgbFramebufferSupported;
 
-    uint32_t supportedHDRColorspaces;  // bitmask of EGL_HDR_CS_*_BIT flags
+    uint32_t supportedHDRColorspaces; // bitmask of EGL_HDR_CS_*_BIT flags
 
     EGLSurfaceImpl* currentDraw;
     EGLSurfaceImpl* currentRead;
@@ -483,9 +501,10 @@ typedef struct _LocalStorage
 
 //
 #if __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
-void _eglInternalSetDefaultConfig(EGLConfigImpl* config);
+    void _eglInternalSetDefaultConfig(EGLConfigImpl* config);
 #if __cplusplus
 }
 #endif
@@ -500,17 +519,17 @@ EGLBoolean __deleteContext(const EGLDisplayImpl* walkerDpy, const NativeContextC
 
 EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EGLint* attrib_list, EGLint* error);
 
-EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
+EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType win, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 
 EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 
-EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType pixmap, const EGLint *attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
+EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType pixmap, const EGLint* attrib_list, const EGLDisplayImpl* walkerDpy, const EGLConfigImpl* walkerConfig, EGLint* error);
 
 EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surface);
 
 EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* surface, EGLNativePixmapType target);
 
-__eglMustCastToProperFunctionPointerType __getProcAddress(const char *procname);
+__eglMustCastToProperFunctionPointerType __getProcAddress(const char* procname);
 
 EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* error);
 
@@ -541,46 +560,65 @@ EGLBoolean __getPlatformDependentHandles(void* out, const EGLDisplayImpl* walker
 #if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
-    { return reinterpret_cast<EGLNativeDisplayType>(c->hdc); }
+{
+    return reinterpret_cast<EGLNativeDisplayType>(c->hdc);
+}
 
 static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
     if (platform == EGL_PLATFORM_DEVICE_EXT && !native_display)
-        { *out = EGL_DEFAULT_DISPLAY; return EGL_TRUE; }
+    {
+        *out = EGL_DEFAULT_DISPLAY;
+        return EGL_TRUE;
+    }
     return EGL_FALSE;
 }
 
 #elif defined(WL_EGL_PLATFORM)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-    { return reinterpret_cast<EGLNativeDisplayType>(0); }
+{
+    return reinterpret_cast<EGLNativeDisplayType>(0);
+}
 
 static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
     if (platform == EGL_PLATFORM_WAYLAND_EXT || platform == EGL_PLATFORM_WAYLAND_KHR)
-        { *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display)); return EGL_TRUE; }
+    {
+        *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display));
+        return EGL_TRUE;
+    }
     return EGL_FALSE;
 }
 
 #elif defined(USE_X11) || defined(__unix__)
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer* c)
-    { return reinterpret_cast<EGLNativeDisplayType>(c->display); }
+{
+    return reinterpret_cast<EGLNativeDisplayType>(c->display);
+}
 
 static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* native_display, EGLNativeDisplayType* out)
 {
     if (platform == EGL_PLATFORM_X11_EXT || platform == EGL_PLATFORM_X11_KHR)
-        { *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display)); return EGL_TRUE; }
+    {
+        *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display));
+        return EGL_TRUE;
+    }
     return EGL_FALSE;
 }
 
 #else
 
 static inline EGLNativeDisplayType __getDefaultNativeDisplay(const NativeLocalStorageContainer*)
-    { return reinterpret_cast<EGLNativeDisplayType>(0); }
+{
+    return reinterpret_cast<EGLNativeDisplayType>(0);
+}
 
 static inline EGLBoolean __matchPlatformDisplay(EGLenum, const void*, EGLNativeDisplayType*)
-    { return EGL_FALSE; }
+{
+    return EGL_FALSE;
+}
 
 #endif
 #endif // __cplusplus

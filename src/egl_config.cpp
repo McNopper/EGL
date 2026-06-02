@@ -10,7 +10,7 @@ static int _ChooseConfig_sort_predicate(const void* _lhs, const void* _rhs)
     {
         if (lhs->colorBufferType == rhs->colorBufferType)
         {
-            EGLint color_bits[2] = { 0, 0 };
+            EGLint color_bits[2] = {0, 0};
             switch (lhs->colorBufferType)
             {
             case EGL_RGB_BUFFER:
@@ -45,71 +45,79 @@ static int _ChooseConfig_sort_predicate(const void* _lhs, const void* _rhs)
                                         // 11. Smaller EGL_CONFIG_ID (guarantees a unique ordering)
                                         return (lhs->configId - rhs->configId);
                                     }
-                                    else return (lhs->alphaMaskSize - rhs->alphaMaskSize); // 9. Smaller EGL_ALPHA_MASK_SIZE
+                                    else
+                                        return (lhs->alphaMaskSize - rhs->alphaMaskSize); // 9. Smaller EGL_ALPHA_MASK_SIZE
                                 }
-                                else return (lhs->stencilSize - rhs->stencilSize); // 8. Smaller EGL_STENCIL_SIZE
+                                else
+                                    return (lhs->stencilSize - rhs->stencilSize); // 8. Smaller EGL_STENCIL_SIZE
                             }
-                            else return (lhs->depthSize - rhs->depthSize); // 7. Smaller EGL_DEPTH_SIZE
+                            else
+                                return (lhs->depthSize - rhs->depthSize); // 7. Smaller EGL_DEPTH_SIZE
                         }
-                        else return (lhs->samples - rhs->samples); // 6. Smaller EGL_SAMPLES
+                        else
+                            return (lhs->samples - rhs->samples); // 6. Smaller EGL_SAMPLES
                     }
-                    else return (lhs->sampleBuffers - rhs->sampleBuffers); // 5. Smaller EGL_SAMPLE_BUFFERS
+                    else
+                        return (lhs->sampleBuffers - rhs->sampleBuffers); // 5. Smaller EGL_SAMPLE_BUFFERS
                 }
-                else return (lhs->bufferSize - rhs->bufferSize); // 4. Smaller EGL_BUFFER_SIZE
+                else
+                    return (lhs->bufferSize - rhs->bufferSize); // 4. Smaller EGL_BUFFER_SIZE
             }
-            else return color_bits[1] - color_bits[0]; // 3. by larger total number of color bits
+            else
+                return color_bits[1] - color_bits[0]; // 3. by larger total number of color bits
         }
-        else return (lhs->colorBufferType - rhs->colorBufferType); // 2. by EGL_COLOR_BUFFER_TYPE
+        else
+            return (lhs->colorBufferType - rhs->colorBufferType); // 2. by EGL_COLOR_BUFFER_TYPE
     }
-    else return (lhs->configCaveat - rhs->configCaveat); // 1. by EGL_CONFIG_CAVEAT
+    else
+        return (lhs->configCaveat - rhs->configCaveat); // 1. by EGL_CONFIG_CAVEAT
 }
 
 extern "C"
 {
 
-
-EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig *configs, EGLint config_size, EGLint *num_config)
-{
-    static const EGLint emptyList[] = { EGL_NONE };
-    if (!attrib_list)
-        attrib_list = emptyList;
-
-    if (!num_config)
+    EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint* attrib_list, EGLConfig* configs, EGLint config_size, EGLint* num_config)
     {
-        g_localStorage.error = EGL_BAD_PARAMETER;
+        static const EGLint emptyList[] = {EGL_NONE};
+        if (!attrib_list)
+            attrib_list = emptyList;
 
-        return EGL_FALSE;
-    }
-
-    auto _rl = g_globalStorage.placeRootDpy_readlock();
-    EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-    while (walkerDpy)
-    {
-        if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
+        if (!num_config)
         {
-            guard_t _{ walkerDpy->mutex };
+            g_localStorage.error = EGL_BAD_PARAMETER;
 
-            if (!walkerDpy->initialized || walkerDpy->destroy)
+            return EGL_FALSE;
+        }
+
+        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+        while (walkerDpy)
+        {
+            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
             {
-                g_localStorage.error = EGL_NOT_INITIALIZED;
+                guard_t _{walkerDpy->mutex};
 
-                return EGL_FALSE;
-            }
-
-            EGLint attribListIndex = 0;
-
-            EGLConfigImpl config;
-
-            _eglInternalSetDefaultConfig(&config);
-            config.configCaveat = EGL_DONT_CARE; // dont care for this attribute since it cant be queried on both WGL and GLX
-
-            while (attrib_list[attribListIndex] != EGL_NONE)
-            {
-                EGLint value = attrib_list[attribListIndex + 1];
-
-                switch (attrib_list[attribListIndex])
+                if (!walkerDpy->initialized || walkerDpy->destroy)
                 {
+                    g_localStorage.error = EGL_NOT_INITIALIZED;
+
+                    return EGL_FALSE;
+                }
+
+                EGLint attribListIndex = 0;
+
+                EGLConfigImpl config;
+
+                _eglInternalSetDefaultConfig(&config);
+                config.configCaveat = EGL_DONT_CARE; // dont care for this attribute since it cant be queried on both WGL and GLX
+
+                while (attrib_list[attribListIndex] != EGL_NONE)
+                {
+                    EGLint value = attrib_list[attribListIndex + 1];
+
+                    switch (attrib_list[attribListIndex])
+                    {
                     case EGL_ALPHA_MASK_SIZE:
                     {
                         if (value != EGL_DONT_CARE && value < 0)
@@ -431,333 +439,332 @@ EGLBoolean _eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig
 
                         return EGL_FALSE;
                     }
+                    }
+
+                    attribListIndex += 2;
+
+                    // More than 28 entries can not exist.
+                    if (attribListIndex >= 28 * 2)
+                    {
+                        g_localStorage.error = EGL_BAD_ATTRIBUTE;
+
+                        return EGL_FALSE;
+                    }
                 }
+                config.drawToWindow  = (config.surfaceType & EGL_WINDOW_BIT) ? EGL_TRUE : EGL_FALSE;
+                config.drawToPixmap  = (config.surfaceType & EGL_PIXMAP_BIT) ? EGL_TRUE : EGL_FALSE;
+                config.drawToPBuffer = (config.surfaceType & EGL_PBUFFER_BIT) ? EGL_TRUE : EGL_FALSE;
 
-                attribListIndex += 2;
+                // Check, if this configuration exists.
+                EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
 
-                // More than 28 entries can not exist.
-                if (attribListIndex >= 28 * 2)
+#define stack_mem_sz (1ull << 13) // 8k
+                char         stack_mem[stack_mem_sz];
+                const EGLint max_configs    = stack_mem_sz / sizeof(EGLConfig);
+                EGLConfig*   configsOnStack = reinterpret_cast<EGLConfig*>(stack_mem);
+
+                EGLint configIndex = 0;
+
+                while (walkerConfig && configIndex < max_configs)
                 {
-                    g_localStorage.error = EGL_BAD_ATTRIBUTE;
+                    if (config.alphaMaskSize > walkerConfig->alphaMaskSize)
+                    {
+                        walkerConfig = walkerConfig->next;
 
-                    return EGL_FALSE;
+                        continue;
+                    }
+                    if (config.alphaSize > walkerConfig->alphaSize)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.bindToTextureRGB != EGL_DONT_CARE && config.bindToTextureRGB != walkerConfig->bindToTextureRGB)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.bindToTextureRGBA != EGL_DONT_CARE && config.bindToTextureRGBA != walkerConfig->bindToTextureRGBA)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.blueSize > walkerConfig->blueSize)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.bufferSize > walkerConfig->bufferSize)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.colorBufferType != EGL_DONT_CARE && config.colorBufferType != walkerConfig->colorBufferType)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.configCaveat != EGL_DONT_CARE && config.configCaveat != walkerConfig->configCaveat)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.configId != EGL_DONT_CARE && config.configId != walkerConfig->configId)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if ((config.conformant & walkerConfig->conformant) != config.conformant)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.depthSize > walkerConfig->depthSize)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.greenSize > walkerConfig->greenSize)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.level != walkerConfig->level)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.luminanceSize > walkerConfig->luminanceSize)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.matchNativePixmap != EGL_NONE && config.matchNativePixmap != walkerConfig->matchNativePixmap)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.nativeRenderable != EGL_DONT_CARE && config.nativeRenderable != walkerConfig->nativeRenderable)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.maxSwapInterval != EGL_DONT_CARE && config.maxSwapInterval != walkerConfig->maxSwapInterval)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.minSwapInterval != EGL_DONT_CARE && config.minSwapInterval != walkerConfig->minSwapInterval)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.redSize > walkerConfig->redSize)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.sampleBuffers > walkerConfig->sampleBuffers)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.samples > walkerConfig->samples)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.stencilSize > walkerConfig->stencilSize)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if ((config.renderableType & walkerConfig->renderableType) != config.renderableType)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if ((config.surfaceType & walkerConfig->surfaceType) != config.surfaceType)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (config.transparentType != walkerConfig->transparentType)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+                    if (walkerConfig->transparentType == EGL_TRANSPARENT_RGB)
+                    {
+                        if (config.transparentRedValue != EGL_DONT_CARE && config.transparentRedValue != walkerConfig->transparentRedValue)
+                        {
+                            walkerConfig = walkerConfig->next;
+
+                            continue;
+                        }
+                        if (config.transparentGreenValue != EGL_DONT_CARE && config.transparentGreenValue != walkerConfig->transparentGreenValue)
+                        {
+                            walkerConfig = walkerConfig->next;
+
+                            continue;
+                        }
+                        if (config.transparentBlueValue != EGL_DONT_CARE && config.transparentBlueValue != walkerConfig->transparentBlueValue)
+                        {
+                            walkerConfig = walkerConfig->next;
+
+                            continue;
+                        }
+                    }
+
+                    if (config.doubleBuffer != EGL_DONT_CARE && config.doubleBuffer != walkerConfig->doubleBuffer)
+                    {
+                        walkerConfig = walkerConfig->next;
+
+                        continue;
+                    }
+
+                    //
+
+                    configsOnStack[configIndex] = walkerConfig;
+
+                    walkerConfig = walkerConfig->next;
+
+                    configIndex++;
                 }
+
+                if (configIndex)
+                    qsort(configsOnStack, configIndex, sizeof(*configs), &_ChooseConfig_sort_predicate);
+
+                *num_config = configIndex;
+                if (configs)
+                    memcpy(configs, configsOnStack, (std::min)(configIndex, config_size) * sizeof(EGLConfig));
+
+                return EGL_TRUE;
             }
-            config.drawToWindow = (config.surfaceType & EGL_WINDOW_BIT) ? EGL_TRUE : EGL_FALSE;
-            config.drawToPixmap = (config.surfaceType & EGL_PIXMAP_BIT) ? EGL_TRUE : EGL_FALSE;
-            config.drawToPBuffer = (config.surfaceType & EGL_PBUFFER_BIT) ? EGL_TRUE : EGL_FALSE;
 
-            // Check, if this configuration exists.
-            EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
-
-            #define stack_mem_sz (1ull << 13) // 8k
-            char stack_mem[stack_mem_sz];
-            const EGLint max_configs = stack_mem_sz / sizeof(EGLConfig);
-            EGLConfig* configsOnStack = reinterpret_cast<EGLConfig*>(stack_mem);
-
-            EGLint configIndex = 0;
-
-            while (walkerConfig && configIndex < max_configs)
-            {
-                if (config.alphaMaskSize > walkerConfig->alphaMaskSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.alphaSize > walkerConfig->alphaSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.bindToTextureRGB != EGL_DONT_CARE && config.bindToTextureRGB != walkerConfig->bindToTextureRGB)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.bindToTextureRGBA != EGL_DONT_CARE && config.bindToTextureRGBA != walkerConfig->bindToTextureRGBA)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.blueSize > walkerConfig->blueSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.bufferSize > walkerConfig->bufferSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.colorBufferType != EGL_DONT_CARE && config.colorBufferType != walkerConfig->colorBufferType)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.configCaveat != EGL_DONT_CARE && config.configCaveat != walkerConfig->configCaveat)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.configId != EGL_DONT_CARE && config.configId != walkerConfig->configId)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if ((config.conformant & walkerConfig->conformant) != config.conformant)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.depthSize > walkerConfig->depthSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.greenSize > walkerConfig->greenSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.level != walkerConfig->level)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.luminanceSize > walkerConfig->luminanceSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.matchNativePixmap != EGL_NONE && config.matchNativePixmap != walkerConfig->matchNativePixmap)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.nativeRenderable != EGL_DONT_CARE && config.nativeRenderable != walkerConfig->nativeRenderable)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.maxSwapInterval != EGL_DONT_CARE && config.maxSwapInterval != walkerConfig->maxSwapInterval)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.minSwapInterval != EGL_DONT_CARE && config.minSwapInterval != walkerConfig->minSwapInterval)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.redSize > walkerConfig->redSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.sampleBuffers > walkerConfig->sampleBuffers)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.samples > walkerConfig->samples)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.stencilSize > walkerConfig->stencilSize)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if ((config.renderableType & walkerConfig->renderableType) != config.renderableType)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if ((config.surfaceType & walkerConfig->surfaceType) != config.surfaceType)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (config.transparentType != walkerConfig->transparentType)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-                if (walkerConfig->transparentType == EGL_TRANSPARENT_RGB)
-                {
-                    if (config.transparentRedValue != EGL_DONT_CARE && config.transparentRedValue != walkerConfig->transparentRedValue)
-                    {
-                        walkerConfig = walkerConfig->next;
-
-                        continue;
-                    }
-                    if (config.transparentGreenValue != EGL_DONT_CARE && config.transparentGreenValue != walkerConfig->transparentGreenValue)
-                    {
-                        walkerConfig = walkerConfig->next;
-
-                        continue;
-                    }
-                    if (config.transparentBlueValue != EGL_DONT_CARE && config.transparentBlueValue != walkerConfig->transparentBlueValue)
-                    {
-                        walkerConfig = walkerConfig->next;
-
-                        continue;
-                    }
-                }
-
-                if (config.doubleBuffer != EGL_DONT_CARE && config.doubleBuffer != walkerConfig->doubleBuffer)
-                {
-                    walkerConfig = walkerConfig->next;
-
-                    continue;
-                }
-
-                //
-
-                configsOnStack[configIndex] = walkerConfig;
-
-                walkerConfig = walkerConfig->next;
-
-                configIndex++;
-            }
-
-            if (configIndex)
-                qsort(configsOnStack, configIndex, sizeof(*configs), &_ChooseConfig_sort_predicate);
-
-            *num_config = configIndex;
-            if (configs)
-                memcpy(configs, configsOnStack, (std::min)(configIndex, config_size)*sizeof(EGLConfig));
-
-            return EGL_TRUE;
+            walkerDpy = walkerDpy->next;
         }
 
-        walkerDpy = walkerDpy->next;
-    }
-    
-
-    g_localStorage.error = EGL_BAD_DISPLAY;
-
-    return EGL_FALSE;
-}
-
-EGLBoolean _eglGetConfigs(EGLDisplay dpy, EGLConfig *configs, EGLint config_size, EGLint *num_config)
-{
-    if (!num_config)
-    {
-        g_localStorage.error = EGL_BAD_PARAMETER;
+        g_localStorage.error = EGL_BAD_DISPLAY;
 
         return EGL_FALSE;
     }
 
-    auto _rl = g_globalStorage.placeRootDpy_readlock();
-    EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-    while (walkerDpy)
+    EGLBoolean _eglGetConfigs(EGLDisplay dpy, EGLConfig* configs, EGLint config_size, EGLint* num_config)
     {
-        if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
+        if (!num_config)
         {
-            guard_t _{ walkerDpy->mutex };
+            g_localStorage.error = EGL_BAD_PARAMETER;
 
-            if (!walkerDpy->initialized || walkerDpy->destroy)
-            {
-                g_localStorage.error = EGL_NOT_INITIALIZED;
-
-                return EGL_FALSE;
-            }
-
-            EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
-
-            EGLint configIndex = 0;
-
-            while (walkerConfig)
-            {
-                if (configs && configIndex < config_size)
-                    configs[configIndex] = walkerConfig;
-
-                walkerConfig = walkerConfig->next;
-
-                configIndex++;
-            }
-
-            *num_config = configIndex;
-
-            return EGL_TRUE;
+            return EGL_FALSE;
         }
 
-        walkerDpy = walkerDpy->next;
-    }
+        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
-    g_localStorage.error = EGL_BAD_DISPLAY;
-
-    return EGL_FALSE;
-}
-
-EGLBoolean _eglGetConfigAttrib(EGLDisplay dpy, EGLConfig config, EGLint attribute, EGLint *value)
-{
-    auto _rl = g_globalStorage.placeRootDpy_readlock();
-
-    EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-    while (walkerDpy)
-    {
-        if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
+        while (walkerDpy)
         {
-            guard_t _{ walkerDpy->mutex };
-
-            if (!walkerDpy->initialized || walkerDpy->destroy)
+            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
             {
-                g_localStorage.error = EGL_NOT_INITIALIZED;
+                guard_t _{walkerDpy->mutex};
 
-                return EGL_FALSE;
-            }
-
-            EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
-
-            while (walkerConfig)
-            {
-                if (reinterpret_cast<EGLConfig>(walkerConfig) == config)
+                if (!walkerDpy->initialized || walkerDpy->destroy)
                 {
-                    break;
+                    g_localStorage.error = EGL_NOT_INITIALIZED;
+
+                    return EGL_FALSE;
                 }
 
-                walkerConfig = walkerConfig->next;
+                EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
+
+                EGLint configIndex = 0;
+
+                while (walkerConfig)
+                {
+                    if (configs && configIndex < config_size)
+                        configs[configIndex] = walkerConfig;
+
+                    walkerConfig = walkerConfig->next;
+
+                    configIndex++;
+                }
+
+                *num_config = configIndex;
+
+                return EGL_TRUE;
             }
 
-            if (!walkerConfig)
-            {
-                g_localStorage.error = EGL_BAD_CONFIG;
+            walkerDpy = walkerDpy->next;
+        }
 
-                return EGL_FALSE;
-            }
+        g_localStorage.error = EGL_BAD_DISPLAY;
 
-            switch (attribute)
+        return EGL_FALSE;
+    }
+
+    EGLBoolean _eglGetConfigAttrib(EGLDisplay dpy, EGLConfig config, EGLint attribute, EGLint* value)
+    {
+        auto _rl = g_globalStorage.placeRootDpy_readlock();
+
+        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+        while (walkerDpy)
+        {
+            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
             {
+                guard_t _{walkerDpy->mutex};
+
+                if (!walkerDpy->initialized || walkerDpy->destroy)
+                {
+                    g_localStorage.error = EGL_NOT_INITIALIZED;
+
+                    return EGL_FALSE;
+                }
+
+                EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
+
+                while (walkerConfig)
+                {
+                    if (reinterpret_cast<EGLConfig>(walkerConfig) == config)
+                    {
+                        break;
+                    }
+
+                    walkerConfig = walkerConfig->next;
+                }
+
+                if (!walkerConfig)
+                {
+                    g_localStorage.error = EGL_BAD_CONFIG;
+
+                    return EGL_FALSE;
+                }
+
+                switch (attribute)
+                {
                 case EGL_ALPHA_SIZE:
                 {
                     if (value)
@@ -1020,19 +1027,17 @@ EGLBoolean _eglGetConfigAttrib(EGLDisplay dpy, EGLConfig config, EGLint attribut
 
                     return EGL_FALSE;
                 }
+                }
+
+                return EGL_TRUE;
             }
 
-            return EGL_TRUE;
+            walkerDpy = walkerDpy->next;
         }
 
-        walkerDpy = walkerDpy->next;
+        g_localStorage.error = EGL_BAD_DISPLAY;
+
+        return EGL_FALSE;
     }
-
-    
-
-    g_localStorage.error = EGL_BAD_DISPLAY;
-
-    return EGL_FALSE;
-}
 
 } // extern "C"

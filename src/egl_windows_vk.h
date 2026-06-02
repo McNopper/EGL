@@ -5,7 +5,8 @@
 #include <GL/gl.h>
 
 // Full definition of the HDR surface container (forward-declared in egl_internal.h)
-struct _NativeHDRSurfaceContainer {
+struct _NativeHDRSurfaceContainer
+{
     VkSurfaceKHR     vkSurface;
     VkSwapchainKHR   vkSwapchain;
     VkFormat         vkFormat;
@@ -16,25 +17,31 @@ struct _NativeHDRSurfaceContainer {
     VkCommandBuffer* cmdBuffers;
     VkFence*         fences;
 
-    VkImage          renderImage;
-    VkDeviceMemory   renderMemory;
-    GLuint           glTexture;
-    GLuint           glMemoryObject;
-    GLuint           blitFbo;
+    VkImage        renderImage;
+    VkDeviceMemory renderMemory;
+    GLuint         glTexture;
+    GLuint         glMemoryObject;
+    GLuint         blitFbo;
 
-    VkSemaphore      acquireSemaphore;
-    VkSemaphore      glDoneSemaphore;
-    VkSemaphore      blitDoneSemaphore;
-    GLuint           glDoneSemObj;
+    VkSemaphore acquireSemaphore;
+    VkSemaphore glDoneSemaphore;
+    VkSemaphore blitDoneSemaphore;
+    GLuint      glDoneSemObj;
 
-    uint32_t         width;
-    uint32_t         height;
-    VkDeviceSize     renderMemorySize;
-    HWND             hwnd;
+    uint32_t     width;
+    uint32_t     height;
+    VkDeviceSize renderMemorySize;
+    HWND         hwnd;
 
-    bool             glInteropReady;
-    HANDLE           pendingMemHandle;
-    HANDLE           pendingSemHandle;
+    bool   glInteropReady;
+    HANDLE pendingMemHandle;
+    HANDLE pendingSemHandle;
+
+    // HDR mastering/content-light metadata (EGL_EXT_surface_SMPTE2086/CTA861_3),
+    // applied to the swapchain via vkSetHdrMetadataEXT when present and changed.
+    VkHdrMetadataEXT hdrMetadata;
+    bool             hasHdrMetadata;
+    bool             hdrMetadataDirty;
 };
 
 // Vulkan HDR backend interface
@@ -46,3 +53,7 @@ EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr, HWND win, EGLint
 void       __vkDestroyHDRSurface(NativeHDRSurfaceContainer* hdr);
 EGLBoolean __vkPresent(NativeHDRSurfaceContainer* hdr);
 uint32_t   __vkQueryHDRColorspaces(HWND hwnd);
+// Copy the surface's SMPTE2086/CTA861 metadata into the HDR container. Only flags
+// it for submission when the colorspace actually consumes it (HDR10 PQ / HLG) and
+// the application supplied non-zero values.
+void __vkUpdateHDRMetadata(NativeHDRSurfaceContainer* hdr, const EGLSurfaceImpl* surf);

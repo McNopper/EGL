@@ -5,194 +5,196 @@
 extern "C"
 {
 
-EGLint _eglGetError(void)
-{
-    EGLint currentError = g_localStorage.error;
-
-    g_localStorage.error = EGL_SUCCESS;
-
-    return currentError;
-}
-
-EGLDisplay _eglGetDisplay(EGLNativeDisplayType display_id)
-{
-    if (!_eglInternalInit())
+    EGLint _eglGetError(void)
     {
-        return EGL_NO_DISPLAY;
+        EGLint currentError = g_localStorage.error;
+
+        g_localStorage.error = EGL_SUCCESS;
+
+        return currentError;
     }
 
-    //
+    EGLDisplay _eglGetDisplay(EGLNativeDisplayType display_id)
     {
-        auto _rl = g_globalStorage.placeRootDpy_readlock();
-
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-        while (walkerDpy)
+        if (!_eglInternalInit())
         {
-            if (walkerDpy->display_id == display_id)
-            {
-                return reinterpret_cast<EGLDisplay>(walkerDpy);
-            }
-
-            walkerDpy = walkerDpy->next;
+            return EGL_NO_DISPLAY;
         }
-    }
 
-    EGLDisplayImpl* newDpy = new EGLDisplayImpl();
-
-    if (!newDpy)
-    {
-        return EGL_NO_DISPLAY;
-    }
-
-    newDpy->initialized = EGL_FALSE;
-    newDpy->destroy = EGL_FALSE;
-    {
-        auto dummy = g_globalStorage.dummy_read();
-        newDpy->display_id = display_id ? display_id : __getDefaultNativeDisplay(&dummy);
-    }
-    newDpy->rootSurface = 0;
-    newDpy->rootCtx = 0;
-    newDpy->rootConfig = 0;
-    newDpy->rootSync = nullptr;
-    newDpy->rootImage = nullptr;
-    newDpy->currentDraw = EGL_NO_SURFACE_IMPL;
-    newDpy->currentRead = EGL_NO_SURFACE_IMPL;
-    newDpy->currentCtx = EGL_NO_CONTEXT_IMPL;
-    newDpy->next = g_globalStorage.rootDpy;
-
-    auto _wl = g_globalStorage.placeRootDpy_writelock();
-    g_globalStorage.rootDpy = newDpy;
-
-    return newDpy;
-}
-
-EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
-{
-    auto _rl = g_globalStorage.placeRootDpy_readlock();
-    EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-    while (walkerDpy)
-    {
-        if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
+        //
         {
-            guard_t _{ walkerDpy->mutex };
+            auto _rl = g_globalStorage.placeRootDpy_readlock();
 
-            if (walkerDpy->destroy)
-            {
-                // Allow re-initialization after eglTerminate (EGL 1.5 §3.2).
-                walkerDpy->destroy = EGL_FALSE;
-            }
+            EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
+            while (walkerDpy)
             {
-                auto dummy = g_globalStorage.dummy_read();
-                EGLBoolean fail = (!walkerDpy->initialized && !__initialize(walkerDpy, &dummy, &g_localStorage.error));
-                g_globalStorage.dummy_write(dummy);
-                if (fail)
+                if (walkerDpy->display_id == display_id)
                 {
-                    return EGL_FALSE;
+                    return reinterpret_cast<EGLDisplay>(walkerDpy);
                 }
+
+                walkerDpy = walkerDpy->next;
             }
-
-            walkerDpy->initialized = EGL_TRUE;
-
-
-            //
-
-            if (major)
-            {
-                *major = 1;
-            }
-
-            if (minor)
-            {
-                *minor = 5;
-            }
-
-            return EGL_TRUE;
         }
 
-        walkerDpy = walkerDpy->next;
+        EGLDisplayImpl* newDpy = new EGLDisplayImpl();
+
+        if (!newDpy)
+        {
+            return EGL_NO_DISPLAY;
+        }
+
+        newDpy->initialized = EGL_FALSE;
+        newDpy->destroy     = EGL_FALSE;
+        {
+            auto dummy         = g_globalStorage.dummy_read();
+            newDpy->display_id = display_id ? display_id : __getDefaultNativeDisplay(&dummy);
+        }
+        newDpy->rootSurface = 0;
+        newDpy->rootCtx     = 0;
+        newDpy->rootConfig  = 0;
+        newDpy->rootSync    = nullptr;
+        newDpy->rootImage   = nullptr;
+        newDpy->currentDraw = EGL_NO_SURFACE_IMPL;
+        newDpy->currentRead = EGL_NO_SURFACE_IMPL;
+        newDpy->currentCtx  = EGL_NO_CONTEXT_IMPL;
+        newDpy->next        = g_globalStorage.rootDpy;
+
+        auto _wl                = g_globalStorage.placeRootDpy_writelock();
+        g_globalStorage.rootDpy = newDpy;
+
+        return newDpy;
     }
 
-    g_localStorage.error = EGL_BAD_DISPLAY;
-
-    return EGL_FALSE;
-}
-
-EGLBoolean _eglTerminate(EGLDisplay dpy)
-{
-    EGLBoolean success = EGL_FALSE;
+    EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint* major, EGLint* minor)
     {
-        auto _rl = g_globalStorage.placeRootDpy_readlock();
+        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
         EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
         while (walkerDpy)
         {
             if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
             {
-                guard_t _{ walkerDpy->mutex };
+                guard_t _{walkerDpy->mutex};
 
-                if (!walkerDpy->initialized || walkerDpy->destroy)
+                if (walkerDpy->destroy)
                 {
-                    return EGL_TRUE;
+                    // Allow re-initialization after eglTerminate (EGL 1.5 §3.2).
+                    walkerDpy->destroy = EGL_FALSE;
                 }
 
-                walkerDpy->initialized = EGL_FALSE;
-                walkerDpy->destroy = EGL_TRUE;
+                {
+                    auto       dummy = g_globalStorage.dummy_read();
+                    EGLBoolean fail  = (!walkerDpy->initialized && !__initialize(walkerDpy, &dummy, &g_localStorage.error));
+                    g_globalStorage.dummy_write(dummy);
+                    if (fail)
+                    {
+                        return EGL_FALSE;
+                    }
+                }
 
-                success = EGL_TRUE;
+                walkerDpy->initialized = EGL_TRUE;
+
+                //
+
+                if (major)
+                {
+                    *major = 1;
+                }
+
+                if (minor)
+                {
+                    *minor = 5;
+                }
+
+                return EGL_TRUE;
             }
 
             walkerDpy = walkerDpy->next;
         }
-    }
 
-    if (success)
-    {
-        _eglInternalCleanup();
-        return EGL_TRUE;
-    }
-
-    g_localStorage.error = EGL_BAD_DISPLAY;
-    return EGL_FALSE;
-}
-
-const char *_eglQueryString(EGLDisplay dpy, EGLint name)
-{
-    if (dpy == EGL_NO_DISPLAY)
-    {
-        if (name == EGL_EXTENSIONS)
-            return "EGL_EXT_client_extensions EGL_EXT_platform_device";
         g_localStorage.error = EGL_BAD_DISPLAY;
-        return nullptr;
+
+        return EGL_FALSE;
     }
 
-    auto _rl = g_globalStorage.placeRootDpy_readlock();
-    EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-    while (walkerDpy)
+    EGLBoolean _eglTerminate(EGLDisplay dpy)
     {
-        if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
+        EGLBoolean success = EGL_FALSE;
         {
-            guard_t _{ walkerDpy->mutex };
+            auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+            EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
-            if (!walkerDpy->initialized || walkerDpy->destroy)
+            while (walkerDpy)
             {
-                g_localStorage.error = EGL_NOT_INITIALIZED;
+                if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
+                {
+                    guard_t _{walkerDpy->mutex};
 
-                return 0;
+                    if (!walkerDpy->initialized || walkerDpy->destroy)
+                    {
+                        return EGL_TRUE;
+                    }
+
+                    walkerDpy->initialized = EGL_FALSE;
+                    walkerDpy->destroy     = EGL_TRUE;
+
+                    success = EGL_TRUE;
+                }
+
+                walkerDpy = walkerDpy->next;
             }
+        }
 
-            switch (name)
+        if (success)
+        {
+            _eglInternalCleanup();
+            return EGL_TRUE;
+        }
+
+        g_localStorage.error = EGL_BAD_DISPLAY;
+        return EGL_FALSE;
+    }
+
+    const char* _eglQueryString(EGLDisplay dpy, EGLint name)
+    {
+        if (dpy == EGL_NO_DISPLAY)
+        {
+            if (name == EGL_EXTENSIONS)
+                return "EGL_EXT_client_extensions EGL_EXT_platform_device";
+            g_localStorage.error = EGL_BAD_DISPLAY;
+            return nullptr;
+        }
+
+        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+        while (walkerDpy)
+        {
+            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
             {
+                guard_t _{walkerDpy->mutex};
+
+                if (!walkerDpy->initialized || walkerDpy->destroy)
+                {
+                    g_localStorage.error = EGL_NOT_INITIALIZED;
+
+                    return 0;
+                }
+
+                switch (name)
+                {
                 case EGL_CLIENT_APIS:
                 {
                     bool glOK = (g_GL_max_supported_version[0] > 0);
                     bool esOK = (g_ES_max_supported_version[0] > 0);
-                    if (glOK && esOK) return "OpenGL OpenGL_ES";
-                    if (glOK)         return "OpenGL";
-                    if (esOK)         return "OpenGL_ES";
+                    if (glOK && esOK)
+                        return "OpenGL OpenGL_ES";
+                    if (glOK)
+                        return "OpenGL";
+                    if (esOK)
+                        return "OpenGL_ES";
                     return "";
                 }
                 case EGL_VENDOR:
@@ -206,23 +208,32 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
                 case EGL_EXTENSIONS:
                 {
                     static thread_local char extBuf[2048];
-                    extBuf[0] = '\0';
-                    uint32_t hdr = walkerDpy->supportedHDRColorspaces;
-                    auto appendExt = [&](const char* s) {
+                    extBuf[0]          = '\0';
+                    uint32_t hdr       = walkerDpy->supportedHDRColorspaces;
+                    auto     appendExt = [&](const char* s)
+                    {
                         size_t len = strlen(extBuf);
                         snprintf(extBuf + len, sizeof(extBuf) - len, "%s%s", len ? " " : "", s);
                     };
                     appendExt("EGL_KHR_gl_colorspace");
                     appendExt("EGL_KHR_create_context");
                     appendExt("EGL_EXT_client_extensions");
-                    if (hdr & EGL_HDR_CS_SCRGB_LINEAR_BIT)      appendExt("EGL_EXT_gl_colorspace_scrgb_linear");
-                    if (hdr & EGL_HDR_CS_SCRGB_BIT)             appendExt("EGL_EXT_gl_colorspace_scrgb");
-                    if (hdr & EGL_HDR_CS_BT2020_PQ_BIT)         appendExt("EGL_EXT_gl_colorspace_bt2020_pq");
-                    if (hdr & EGL_HDR_CS_BT2020_LINEAR_BIT)     appendExt("EGL_EXT_gl_colorspace_bt2020_linear");
-                    if (hdr & EGL_HDR_CS_BT2020_HLG_BIT)        appendExt("EGL_EXT_gl_colorspace_bt2020_hlg");
-                    if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)        appendExt("EGL_EXT_gl_colorspace_display_p3");
-                    if (hdr & EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT) appendExt("EGL_EXT_gl_colorspace_display_p3_linear");
-                    if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)        appendExt("EGL_EXT_gl_colorspace_p3_passthrough");
+                    if (hdr & EGL_HDR_CS_SCRGB_LINEAR_BIT)
+                        appendExt("EGL_EXT_gl_colorspace_scrgb_linear");
+                    if (hdr & EGL_HDR_CS_SCRGB_BIT)
+                        appendExt("EGL_EXT_gl_colorspace_scrgb");
+                    if (hdr & EGL_HDR_CS_BT2020_PQ_BIT)
+                        appendExt("EGL_EXT_gl_colorspace_bt2020_pq");
+                    if (hdr & EGL_HDR_CS_BT2020_LINEAR_BIT)
+                        appendExt("EGL_EXT_gl_colorspace_bt2020_linear");
+                    if (hdr & EGL_HDR_CS_BT2020_HLG_BIT)
+                        appendExt("EGL_EXT_gl_colorspace_bt2020_hlg");
+                    if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)
+                        appendExt("EGL_EXT_gl_colorspace_display_p3");
+                    if (hdr & EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT)
+                        appendExt("EGL_EXT_gl_colorspace_display_p3_linear");
+                    if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)
+                        appendExt("EGL_EXT_gl_colorspace_p3_passthrough");
                     if (hdr)
                     {
                         appendExt("EGL_EXT_surface_SMPTE2086_metadata");
@@ -230,60 +241,62 @@ const char *_eglQueryString(EGLDisplay dpy, EGLint name)
                     }
                     return extBuf;
                 }
-            }
+                }
 
-            g_localStorage.error = EGL_BAD_PARAMETER;
+                g_localStorage.error = EGL_BAD_PARAMETER;
 
-            return 0;
-        }
-
-        walkerDpy = walkerDpy->next;
-    }
-
-    g_localStorage.error = EGL_BAD_DISPLAY;
-
-    return 0;
-}
-
-EGLDisplay _eglGetPlatformDisplay(EGLenum platform, const void *native_display, const EGLAttrib *attrib_list)
-{
-    (void)attrib_list;
-    EGLNativeDisplayType nativeDisplay = EGL_DEFAULT_DISPLAY;
-    if (!__matchPlatformDisplay(platform, native_display, &nativeDisplay))
-    {
-        g_localStorage.error = EGL_BAD_PARAMETER;
-        return EGL_NO_DISPLAY;
-    }
-    return _eglGetDisplay(nativeDisplay);
-}
-
-EGLBoolean _eglReleaseThread(void)
-{
-    if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
-    {
-        auto _rl = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-        while (walkerDpy)
-        {
-            guard_t _{ walkerDpy->mutex };
-
-            if (walkerDpy->currentCtx == g_localStorage.currentCtx)
-            {
-                __makeCurrent(walkerDpy, nullptr, nullptr);
-                walkerDpy->currentDraw = EGL_NO_SURFACE_IMPL;
-                walkerDpy->currentRead = EGL_NO_SURFACE_IMPL;
-                walkerDpy->currentCtx = EGL_NO_CONTEXT_IMPL;
-                break;
+                return 0;
             }
 
             walkerDpy = walkerDpy->next;
         }
+
+        g_localStorage.error = EGL_BAD_DISPLAY;
+
+        return 0;
     }
 
-    g_localStorage = { EGL_SUCCESS, EGL_NONE, EGL_NO_CONTEXT_IMPL };
+    EGLDisplay _eglGetPlatformDisplay(EGLenum platform, const void* native_display, const EGLAttrib* attrib_list)
+    {
+        (void)attrib_list;
+        EGLNativeDisplayType nativeDisplay = EGL_DEFAULT_DISPLAY;
+        if (!__matchPlatformDisplay(platform, native_display, &nativeDisplay))
+        {
+            g_localStorage.error = EGL_BAD_PARAMETER;
+            return EGL_NO_DISPLAY;
+        }
+        return _eglGetDisplay(nativeDisplay);
+    }
 
-    return EGL_TRUE;
-}
+    EGLBoolean _eglReleaseThread(void)
+    {
+        if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
+        {
+            auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+            EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+            while (walkerDpy)
+            {
+                guard_t _{walkerDpy->mutex};
+
+                if (walkerDpy->currentCtx == g_localStorage.currentCtx)
+                {
+                    __makeCurrent(walkerDpy, nullptr, nullptr);
+                    walkerDpy->currentDraw = EGL_NO_SURFACE_IMPL;
+                    walkerDpy->currentRead = EGL_NO_SURFACE_IMPL;
+                    walkerDpy->currentCtx  = EGL_NO_CONTEXT_IMPL;
+                    break;
+                }
+
+                walkerDpy = walkerDpy->next;
+            }
+        }
+
+        // Reset per-thread state to the same defaults a freshly created thread has;
+        // the rendering API resets to EGL_OPENGL_ES_API per EGL 1.5 (3.7).
+        g_localStorage = {EGL_SUCCESS, EGL_OPENGL_ES_API, EGL_NO_CONTEXT_IMPL};
+
+        return EGL_TRUE;
+    }
 
 } // extern "C"

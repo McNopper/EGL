@@ -33,7 +33,7 @@ Practical workflow this enables:
    the application
 
 The naming convention encodes the variant in the executable filename and window title
-(`bt2020_pq_Windows_WGL_VK.exe` vs `bt2020_pq_Linux_Wayland_VK`) so that screenshot comparisons
+(`bt2020_pq_GL_Windows_WGL_VK.exe` vs `bt2020_pq_GL_Linux_Wayland_VK`) so that screenshot comparisons
 across platforms remain unambiguous.
 
 
@@ -55,12 +55,13 @@ The full EGL 1.5 API surface is implemented in the platform-agnostic core:
 - Context management: `eglCreateContext`, `eglDestroyContext`, `eglMakeCurrent`,
   `eglGetCurrentContext`, `eglGetCurrentDisplay`, `eglGetCurrentSurface`, `eglQueryContext`
 - Surface management: `eglCreateWindowSurface`, `eglCreatePbufferSurface`,
-  `eglCreatePixmapSurface`, `eglCreatePlatformWindowSurface`, `eglCreatePlatformPixmapSurface`,
+  `eglCreatePixmapSurface`, `eglCreatePbufferFromClientBuffer`,
+  `eglCreatePlatformWindowSurface`, `eglCreatePlatformPixmapSurface`,
   `eglDestroySurface`, `eglQuerySurface`, `eglSurfaceAttrib`
 - Rendering: `eglSwapBuffers`, `eglSwapInterval`, `eglCopyBuffers`,
-  `eglBindTexImage`, `eglReleaseTexImage`, `eglWaitClient`, `eglWaitNative`
+  `eglBindTexImage`, `eglReleaseTexImage`, `eglWaitClient`, `eglWaitNative`, `eglWaitGL`
 - Sync objects (EGL 1.5 / GL_ARB_sync): `eglCreateSync`, `eglDestroySync`,
-  `eglClientWaitSync`, `eglWaitSync`, `eglGetSyncAttrib`, `eglSignalSync`
+  `eglClientWaitSync`, `eglWaitSync`, `eglGetSyncAttrib`
 - Image objects: `eglCreateImage`, `eglDestroyImage`
 - Threading: `eglBindAPI`, `eglQueryAPI`, `eglReleaseThread` (per-thread state via `thread_local`)
 - Utilities: `eglGetError`, `eglGetProcAddress`, `eglQueryString`
@@ -136,7 +137,7 @@ there is no global `vcpkg install` step.
 
 Requirements:
 
-- CMake 3.15+, MSVC (Visual Studio 2019 or newer)
+- CMake 3.10+, MSVC (Visual Studio 2019 or newer)
 - Vulkan SDK
 - vcpkg (any recent checkout). If you do not have it:
   ```
@@ -243,9 +244,10 @@ ANGLE alone already covers many ES + HDR scenarios on Windows (HDR10, scRGB,
 Display P3). If your application only needs ES with those colorspaces, you
 can use ANGLE directly without this library. This library focuses on what
 ANGLE does **not** provide: full HDR signaling for desktop GL and Vulkan,
-including BT.2020 HLG, BT.2020 linear, `IDXGISwapChain4::SetHDRMetaData`
-(mastering display, MaxCLL / MaxFALL), and Wayland `wp_color_management_v1`.
-Bundling ES routing through the same `libEGL` lets a single application
+including BT.2020 HLG, BT.2020 linear, mastering-display / content-light
+metadata via Vulkan `vkSetHdrMetadataEXT` (`VK_EXT_hdr_metadata`: SMPTE2086
+primaries + luminance, CTA861.3 MaxCLL / MaxFALL), and Wayland
+`wp_color_management_v1`. Bundling ES routing through the same `libEGL` lets a single application
 codebase reach both worlds — but the ES side stays opt-in so projects that
 only want desktop GL pay nothing for it.
 
@@ -264,6 +266,16 @@ The following colorspace extensions are probed at `eglInitialize` time and adver
 | `EGL_EXT_gl_colorspace_display_p3` | Display P3 (sRGB EOTF) | R8G8B8A8_UNORM |
 | `EGL_EXT_gl_colorspace_display_p3_linear` | Display P3 linear | R16G16B16A16_SFLOAT |
 | `EGL_EXT_gl_colorspace_p3_passthrough` | Display P3 passthrough | R8G8B8A8_UNORM |
+
+`EGL_EXT_gl_colorspace_display_p3` and `EGL_EXT_gl_colorspace_p3_passthrough` share a single
+Display-P3 capability bit, so they are advertised together. When any HDR/wide-gamut colorspace
+is available the library additionally advertises `EGL_EXT_surface_SMPTE2086_metadata` and
+`EGL_EXT_surface_CTA861_3_metadata` for supplying mastering-display and content-light metadata.
+
+Mastering/content-light metadata set via `eglSurfaceAttrib` is forwarded to the swapchain with
+Vulkan `vkSetHdrMetadataEXT` (`VK_EXT_hdr_metadata`) on both Windows and Linux. It is only
+submitted for the colorspaces that actually consume it — HDR10 PQ (`bt2020_pq`) and HLG
+(`bt2020_hlg`) — and only when the application has supplied values.
 
 
 ## Building
@@ -287,7 +299,7 @@ cmake --build .
 
 Outputs:
 - `lib/libEGL.lib`
-- `bin/linear_Windows_WGL_VK.exe`, `bin/bt2020_pq_Windows_WGL_VK.exe`, etc. (all 10 examples)
+- `bin/linear_GL_Windows_WGL_VK.exe`, `bin/bt2020_pq_GL_Windows_WGL_VK.exe`, etc. (all 10 colorspace examples)
 
 If CMake cannot find the Vulkan SDK, ensure `VULKAN_SDK` is set in your environment.
 
@@ -311,7 +323,7 @@ cmake --build .
 
 Outputs:
 - `lib/libEGL.a`
-- `bin/linear_Linux_X11_GLX`, `bin/srgb_Linux_X11_GLX`, etc. (all 10 examples)
+- `bin/linear_GL_Linux_X11_GLX`, `bin/srgb_GL_Linux_X11_GLX`, etc. (all 10 colorspace examples)
 
 X11 has no HDR signaling protocol, so HDR examples will exit gracefully with
 "colorspace not supported" — only `linear` and `srgb` produce visible output.
@@ -332,7 +344,7 @@ cmake --build .
 ```
 
 Outputs:
-- `bin/linear_Linux_X11_GLX_VK`, `bin/bt2020_pq_Linux_X11_GLX_VK`, etc.
+- `bin/linear_GL_Linux_X11_GLX_VK`, `bin/bt2020_pq_GL_Linux_X11_GLX_VK`, etc.
 
 HDR availability depends on whether the running compositor and driver expose HDR colorspaces
 on a Vulkan X11 surface. Most X11 compositors do not, so this variant is mainly useful for
@@ -354,7 +366,7 @@ cmake --build .
 ```
 
 Outputs:
-- `bin/linear_Linux_Wayland_VK`, `bin/bt2020_pq_Linux_Wayland_VK`, etc.
+- `bin/linear_GL_Linux_Wayland_VK`, `bin/bt2020_pq_GL_Linux_Wayland_VK`, etc.
 
 For working HDR on Linux, this variant requires:
 - A native Linux session (not WSL2 — WSLg cannot pass HDR signals through)
@@ -377,8 +389,8 @@ For working HDR on Linux, this variant requires:
 | `display_p3_linear` | Display P3 linear | Wide-gamut SDR |
 | `display_p3_passthrough` | Display P3 passthrough | Wide-gamut SDR |
 
-The full filename includes the build variant suffix, e.g. `bt2020_pq_Windows_WGL_VK.exe`,
-`bt2020_pq_Linux_Wayland_VK`. The window title likewise shows the variant in
+The full filename includes the build variant suffix, e.g. `bt2020_pq_GL_Windows_WGL_VK.exe`,
+`bt2020_pq_GL_Linux_Wayland_VK`. The window title likewise shows the variant in
 `[OS/Windowing/Backend]` form (e.g. `EGL BT.2020 PQ [Linux/Wayland/VK]`).
 
 Each example checks at runtime whether its colorspace is supported on the current
@@ -419,6 +431,8 @@ egl.c                     Public C API (thin shims, no logic)
 ```
 
 ## Changelog
+
+02.06.2026 - Correctness pass, including fixes and documentation alignment. v1.0.7.
 
 27.05.2026 - Fixed ReleaseDC resource leak on Windows. Fixed memory leak and uninitialized fence handles on Vulkan swapchain resize. Fixed eglWaitGL binding wrong API. Fixed duplicate CMake option blocks. v1.0.6.
 

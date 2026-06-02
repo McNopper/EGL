@@ -85,6 +85,8 @@ if(UNIX AND EGL_HAS_GLES)
     # System GLES is loaded at runtime via dlopen; link libGLESv2 for glClear*.
     target_link_libraries(${es_target} PRIVATE EGL GLESv2)
     if(WL_EGL_PLATFORM AND EGL_HAS_GLES)
-        target_link_libraries(${es_target} PRIVATE ${WAYLAND_CLIENT_LIBRARIES})
+        # common_wayland.cpp needs the generated xdg-shell client header + protocol
+        # code, carried by the xdg_shell_protocol target (PUBLIC include dir).
+        target_link_libraries(${es_target} PRIVATE xdg_shell_protocol ${WAYLAND_CLIENT_LIBRARIES})
     endif()
 endif()

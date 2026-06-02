@@ -28,11 +28,11 @@
 #define __egl_linux_vk_h_
 
 #if defined(USE_X11)
-#  define VK_USE_PLATFORM_XLIB_KHR
-#  include <X11/Xlib.h>
+#define VK_USE_PLATFORM_XLIB_KHR
+#include <X11/Xlib.h>
 #elif defined(WL_EGL_PLATFORM)
-#  define VK_USE_PLATFORM_WAYLAND_KHR
-#  include <wayland-client.h>
+#define VK_USE_PLATFORM_WAYLAND_KHR
+#include <wayland-client.h>
 #endif
 
 #include <vulkan/vulkan.h>
@@ -40,7 +40,8 @@
 #include <GL/gl.h>
 
 // Full definition of the HDR surface container (forward-declared in egl_internal.h)
-struct _NativeHDRSurfaceContainer {
+struct _NativeHDRSurfaceContainer
+{
     VkSurfaceKHR     vkSurface;
     VkSwapchainKHR   vkSwapchain;
     VkFormat         vkFormat;
@@ -51,28 +52,34 @@ struct _NativeHDRSurfaceContainer {
     VkCommandBuffer* cmdBuffers;
     VkFence*         fences;
 
-    VkImage          renderImage;
-    VkDeviceMemory   renderMemory;
-    GLuint           glTexture;
-    GLuint           glMemoryObject;
-    GLuint           blitFbo;
+    VkImage        renderImage;
+    VkDeviceMemory renderMemory;
+    GLuint         glTexture;
+    GLuint         glMemoryObject;
+    GLuint         blitFbo;
 
-    VkSemaphore      acquireSemaphore;
-    VkSemaphore      glDoneSemaphore;
-    VkSemaphore      blitDoneSemaphore;
-    GLuint           glDoneSemObj;
+    VkSemaphore acquireSemaphore;
+    VkSemaphore glDoneSemaphore;
+    VkSemaphore blitDoneSemaphore;
+    GLuint      glDoneSemObj;
 
-    uint32_t         width;
-    uint32_t         height;
-    VkDeviceSize     renderMemorySize;
+    uint32_t     width;
+    uint32_t     height;
+    VkDeviceSize renderMemorySize;
 
-    bool             glInteropReady;
-    int              pendingMemFd;   // -1 = not yet consumed by GL
-    int              pendingSemFd;   // -1 = not yet consumed by GL
+    bool glInteropReady;
+    int  pendingMemFd; // -1 = not yet consumed by GL
+    int  pendingSemFd; // -1 = not yet consumed by GL
+
+    // HDR mastering/content-light metadata (EGL_EXT_surface_SMPTE2086/CTA861_3),
+    // applied to the swapchain via vkSetHdrMetadataEXT when present and changed.
+    VkHdrMetadataEXT hdrMetadata;
+    bool             hasHdrMetadata;
+    bool             hdrMetadataDirty;
 
 #if defined(USE_X11)
-    Display*         x11Display;
-    Window           x11Window;
+    Display* x11Display;
+    Window   x11Window;
 #elif defined(WL_EGL_PLATFORM)
     struct wl_display* wlDisplay;
     struct wl_surface* wlSurface;
@@ -82,11 +89,11 @@ struct _NativeHDRSurfaceContainer {
 // Vulkan HDR backend interface
 
 // Map an HDR EGL colorspace to Vulkan format + colorspace.  Returns false for SDR.
-bool       _eglHDRColorspaceToVk(EGLint eglCS, VkFormat* fmt, VkColorSpaceKHR* cs);
+bool _eglHDRColorspaceToVk(EGLint eglCS, VkFormat* fmt, VkColorSpaceKHR* cs);
 
 // Map any EGL colorspace (SDR or HDR) to Vulkan format + colorspace.
 // Used by Wayland backend where all surfaces are VK-backed.
-bool       _eglColorspaceToVk(EGLint eglCS, VkFormat* fmt, VkColorSpaceKHR* cs);
+bool _eglColorspaceToVk(EGLint eglCS, VkFormat* fmt, VkColorSpaceKHR* cs);
 
 bool       __vkIsReady();
 EGLBoolean __vkInit();
@@ -96,15 +103,20 @@ void       __vkTerm();
 // nativeDisplay = EGLNativeDisplayType  (Display* on X11, wl_display* on Wayland)
 // nativeWindow  = EGLNativeWindowType   (Window on X11, wl_egl_window* on Wayland)
 EGLBoolean __vkCreateHDRSurface(NativeHDRSurfaceContainer* hdr,
-                                  EGLNativeWindowType nativeWindow,
-                                  EGLNativeDisplayType nativeDisplay,
-                                  EGLint eglCS, uint32_t w, uint32_t h);
+                                EGLNativeWindowType        nativeWindow,
+                                EGLNativeDisplayType       nativeDisplay,
+                                EGLint eglCS, uint32_t w, uint32_t h);
 
 void       __vkDestroyHDRSurface(NativeHDRSurfaceContainer* hdr);
 EGLBoolean __vkPresent(NativeHDRSurfaceContainer* hdr);
 
+// Copy the surface's SMPTE2086/CTA861 metadata into the HDR container. Only flags
+// it for submission when the colorspace actually consumes it (HDR10 PQ / HLG) and
+// the application supplied non-zero values.
+void __vkUpdateHDRMetadata(NativeHDRSurfaceContainer* hdr, const EGLSurfaceImpl* surf);
+
 // Query which HDR colorspaces are usable on a given native display + window.
 // Returns a bitmask of EGL_HDR_CS_*_BIT values; 0 = none / Vulkan unavailable.
-uint32_t   __vkQueryHDRColorspaces(EGLNativeDisplayType display, EGLNativeWindowType window);
+uint32_t __vkQueryHDRColorspaces(EGLNativeDisplayType display, EGLNativeWindowType window);
 
-#endif  /* __egl_linux_vk_h_ */
+#endif /* __egl_linux_vk_h_ */

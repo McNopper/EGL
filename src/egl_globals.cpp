@@ -1,17 +1,17 @@
 ﻿#include "egl_common.h"
 
 thread_local LocalStorage g_localStorage =
-    { EGL_SUCCESS, EGL_OPENGL_ES_API, EGL_NO_CONTEXT_IMPL };
+    {EGL_SUCCESS, EGL_OPENGL_ES_API, EGL_NO_CONTEXT_IMPL};
 
 GlobalStorage g_globalStorage;
 
-EGLint g_GL_max_supported_version[2] = { 0, 0 };
-EGLint g_ES_max_supported_version[2] = { 0, 0 };
+EGLint g_GL_max_supported_version[2] = {0, 0};
+EGLint g_ES_max_supported_version[2] = {0, 0};
 
 EGLBoolean _eglInternalInit()
 {
-    auto dummy = g_globalStorage.dummy_read();
-    EGLBoolean r = __internalInit(&dummy, g_GL_max_supported_version, g_ES_max_supported_version);
+    auto       dummy = g_globalStorage.dummy_read();
+    EGLBoolean r     = __internalInit(&dummy, g_GL_max_supported_version, g_ES_max_supported_version);
     g_globalStorage.dummy_write(dummy);
 
     return r;
@@ -29,7 +29,7 @@ void _eglInternalCleanup()
     EGLDisplayImpl* tempDpy = 0;
 
     {
-        auto _wl = g_globalStorage.placeRootDpy_writelock();
+        auto            _wl       = g_globalStorage.placeRootDpy_writelock();
         EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
         while (walkerDpy)
@@ -133,7 +133,7 @@ void _eglInternalCleanup()
                     while (walkerSync)
                     {
                         EGLSyncImpl* del = walkerSync;
-                        walkerSync = walkerSync->next;
+                        walkerSync       = walkerSync->next;
                         if (glDeleteSync_PTR && del->glSync)
                             glDeleteSync_PTR(del->glSync);
                         delete del;
@@ -145,7 +145,7 @@ void _eglInternalCleanup()
                     while (walkerImage)
                     {
                         EGLImageImpl* del = walkerImage;
-                        walkerImage = walkerImage->next;
+                        walkerImage       = walkerImage->next;
                         delete del;
                     }
                     walkerDpy->rootImage = nullptr;
@@ -189,65 +189,65 @@ void _eglInternalCleanup()
 extern "C"
 {
 
-void _eglInternalSetDefaultConfig(EGLConfigImpl* config)
-{
-    if (!config)
+    void _eglInternalSetDefaultConfig(EGLConfigImpl* config)
     {
-        return;
+        if (!config)
+        {
+            return;
+        }
+
+        config->alphaSize     = 0;
+        config->alphaMaskSize = 0;
+
+        config->bindToTextureRGB  = EGL_DONT_CARE;
+        config->bindToTextureRGBA = EGL_DONT_CARE;
+        config->blueSize          = 0;
+        config->bufferSize        = 0;
+
+        config->colorBufferType = EGL_RGB_BUFFER; // EGL 1.5 Table 3.4 default
+        config->configCaveat    = EGL_DONT_CARE;
+        config->configId        = EGL_DONT_CARE;
+        config->conformant      = 0;
+
+        config->depthSize = 0;
+
+        config->greenSize = 0;
+
+        config->level         = 0;
+        config->luminanceSize = 0;
+
+        config->matchNativePixmap = EGL_NONE;
+        config->maxPBufferHeight  = EGL_DONT_CARE;
+        config->maxPBufferPixels  = EGL_DONT_CARE;
+        config->maxPBufferWidth   = EGL_DONT_CARE;
+        config->maxSwapInterval   = EGL_DONT_CARE;
+        config->minSwapInterval   = EGL_DONT_CARE;
+
+        config->nativeRenderable = EGL_DONT_CARE;
+        config->nativeVisualId   = 0;
+        config->nativeVisualType = EGL_NONE;
+
+        config->redSize        = 0;
+        config->renderableType = EGL_OPENGL_ES_BIT;
+
+        config->sampleBuffers = 0;
+        config->samples       = 0;
+        config->stencilSize   = 0;
+        config->surfaceType   = EGL_WINDOW_BIT;
+
+        config->transparentBlueValue  = EGL_DONT_CARE;
+        config->transparentGreenValue = EGL_DONT_CARE;
+        config->transparentRedValue   = EGL_DONT_CARE;
+        config->transparentType       = EGL_NONE;
+
+        //
+
+        config->drawToWindow  = EGL_TRUE;
+        config->drawToPixmap  = EGL_FALSE;
+        config->drawToPBuffer = EGL_FALSE;
+        config->doubleBuffer  = EGL_TRUE;
+
+        config->next = 0;
     }
-
-    config->alphaSize = 0;
-    config->alphaMaskSize = 0;
-
-    config->bindToTextureRGB = EGL_DONT_CARE;
-    config->bindToTextureRGBA = EGL_DONT_CARE;
-    config->blueSize = 0;
-    config->bufferSize = 0;
-
-    config->colorBufferType = EGL_DONT_CARE;
-    config->configCaveat = EGL_DONT_CARE;
-    config->configId = EGL_DONT_CARE;
-    config->conformant = 0;
-
-    config->depthSize = 0;
-
-    config->greenSize = 0;
-
-    config->level = 0;
-    config->luminanceSize = 0;
-
-    config->matchNativePixmap = EGL_NONE;
-    config->maxPBufferHeight = EGL_DONT_CARE;
-    config->maxPBufferPixels = EGL_DONT_CARE;
-    config->maxPBufferWidth = EGL_DONT_CARE;
-    config->maxSwapInterval = EGL_DONT_CARE;
-    config->minSwapInterval = EGL_DONT_CARE;
-
-    config->nativeRenderable = EGL_DONT_CARE;
-    config->nativeVisualId = 0;
-    config->nativeVisualType = EGL_NONE;
-
-    config->redSize = 0;
-    config->renderableType = EGL_OPENGL_ES_BIT;
-
-    config->sampleBuffers = 0;
-    config->samples = 0;
-    config->stencilSize = 0;
-    config->surfaceType = EGL_WINDOW_BIT;
-
-    config->transparentBlueValue = EGL_DONT_CARE;
-    config->transparentGreenValue = EGL_DONT_CARE;
-    config->transparentRedValue = EGL_DONT_CARE;
-    config->transparentType = EGL_NONE;
-
-    //
-
-    config->drawToWindow = EGL_TRUE;
-    config->drawToPixmap = EGL_FALSE;
-    config->drawToPBuffer = EGL_FALSE;
-    config->doubleBuffer = EGL_TRUE;
-
-    config->next = 0;
-}
 
 } // extern "C"
