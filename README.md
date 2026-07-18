@@ -8,6 +8,17 @@ applications can share a single EGL-based rendering path regardless of the under
 The Khronos headers bundled with the library are the official, unmodified ones from the
 [EGL Registry](https://github.com/KhronosGroup/EGL-Registry) (commit e80a2e0050, 2026-03-19).
 
+## License
+
+The project is distributed under the **MIT License** — see [`LICENSE`](LICENSE).
+
+The only third-party dependency is **ANGLE** (BSD-3-Clause, Google ANGLE Project
+Authors), used only on Windows as the optional OpenGL ES backend and loaded at
+runtime (not bundled in source). Its full license text and the permissive
+licenses of ANGLE's own bundled components are documented in
+[`THIRD-PARTY.md`](THIRD-PARTY.md). Non-Windows builds have no third-party
+dependencies.
+
 ## Purpose
 
 The primary goal is **portable HDR rendering**: write your application against EGL 1.5 once,
