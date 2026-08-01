@@ -116,8 +116,14 @@ static GLXFBConfig __glxFBConfigById(int screen, int id)
     const int    attribs[] = {GLX_FBCONFIG_ID, id, None};
     int          n         = 0;
     GLXFBConfig* fbs       = s_glXChooseFBConfig(s_x11Display, screen, attribs, &n);
-    if (!fbs || n == 0)
+    if (!fbs)
         return nullptr;
+    if (n == 0)
+    {
+        // A non-NULL array with no entries still has to be released.
+        XFree(fbs);
+        return nullptr;
+    }
     GLXFBConfig fb = fbs[0];
     XFree(fbs);
     return fb;
@@ -379,24 +385,38 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* c)
     if (!c)
         return EGL_FALSE;
 
-    s_glXMakeContextCurrent(s_x11Display, None, None, nullptr);
+    // This is reachable after a FAILED __internalInit, in which case neither the
+    // GLX entry points nor the X11 Display were ever set up.
+    if (s_glXMakeContextCurrent && s_x11Display)
+        s_glXMakeContextCurrent(s_x11Display, None, None, nullptr);
 
     if (c->ctx)
     {
-        s_glXDestroyContext(s_x11Display, c->ctx);
+        if (s_glXDestroyContext && s_x11Display)
+            s_glXDestroyContext(s_x11Display, c->ctx);
         c->ctx = nullptr;
     }
-    if (s_dummyWindow)
+    if (s_dummyWindow && s_x11Display)
     {
         XDestroyWindow(s_x11Display, s_dummyWindow);
         s_dummyWindow = 0;
         c->x11Window  = 0;
     }
-    if (s_dummyColormap)
+    if (s_dummyColormap && s_x11Display)
     {
         XFreeColormap(s_x11Display, s_dummyColormap);
         s_dummyColormap = 0;
     }
+
+    // Tear the backends down BEFORE the Display is closed and libGL is unloaded:
+    // the Vulkan/GL interop entry points still point into libGL, and the system EGL
+    // was handed this exact Display*.
+    __vkTerm();
+
+#ifdef EGL_WAYLAND_ENABLE_GLES
+    gles_terminate();
+#endif
+
     if (s_x11Display)
     {
         XCloseDisplay(s_x11Display);
@@ -408,12 +428,6 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* c)
         dlclose(s_libGL);
         s_libGL = nullptr;
     }
-
-    __vkTerm();
-
-#ifdef EGL_WAYLAND_ENABLE_GLES
-    gles_terminate();
-#endif
 
     return EGL_TRUE;
 }
@@ -1074,37 +1088,59 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
             // global_remove
             [](void*, wl_registry*, uint32_t) {}};
 
-        RegistryCtx  ctx = {};
-        wl_registry* reg = wl_display_get_registry(wlDpy);
-        wl_registry_add_listener(reg, &regListener, &ctx);
-        wl_display_roundtrip(wlDpy);
-        compositor = ctx.compositor;
-        wl_registry_destroy(reg);
+        RegistryCtx ctx = {};
 
-        if (compositor)
-        {
-            tmpSurface = wl_compositor_create_surface(compositor);
-            wl_display_roundtrip(wlDpy);
-        }
-
-        if (tmpSurface)
-        {
-            struct wl_egl_window tmpWin;
-            tmpWin.surface = tmpSurface;
-            tmpWin.width   = 256;
-            tmpWin.height  = 256;
-            walkerDpy->supportedHDRColorspaces =
-                __vkQueryHDRColorspaces(walkerDpy->display_id,
-                                        reinterpret_cast<EGLNativeWindowType>(&tmpWin));
-            wl_surface_destroy(tmpSurface);
-        }
-        else
+        // Never dispatch the application's default event queue from inside
+        // eglInitialize: wl_display_roundtrip would re-entrantly deliver the app's
+        // own xdg_toplevel.configure / pointer / ping events to its listeners, and it
+        // races with an app dispatching on another thread. Everything below runs on a
+        // private queue instead; proxies created from a proxy inherit its queue, but
+        // set it explicitly so the ownership is obvious.
+        struct wl_event_queue* queue = wl_display_create_queue(wlDpy);
+        if (!queue)
         {
             walkerDpy->supportedHDRColorspaces = 0;
         }
+        else
+        {
+            wl_registry* reg = wl_display_get_registry(wlDpy);
+            wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(reg), queue);
+            wl_registry_add_listener(reg, &regListener, &ctx);
+            wl_display_roundtrip_queue(wlDpy, queue);
+            compositor = ctx.compositor;
+            wl_registry_destroy(reg);
 
-        if (compositor)
-            wl_compositor_destroy(compositor);
+            if (compositor)
+            {
+                wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(compositor), queue);
+                tmpSurface = wl_compositor_create_surface(compositor);
+                if (tmpSurface)
+                    wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(tmpSurface), queue);
+                wl_display_roundtrip_queue(wlDpy, queue);
+            }
+
+            if (tmpSurface)
+            {
+                struct wl_egl_window tmpWin;
+                tmpWin.surface = tmpSurface;
+                tmpWin.width   = 256;
+                tmpWin.height  = 256;
+                walkerDpy->supportedHDRColorspaces =
+                    __vkQueryHDRColorspaces(walkerDpy->display_id,
+                                            reinterpret_cast<EGLNativeWindowType>(&tmpWin));
+                wl_surface_destroy(tmpSurface);
+            }
+            else
+            {
+                walkerDpy->supportedHDRColorspaces = 0;
+            }
+
+            if (compositor)
+                wl_compositor_destroy(compositor);
+
+            // Only safe once every proxy that was attached to it is gone.
+            wl_event_queue_destroy(queue);
+        }
     }
 
     // Enumerate FBConfigs — same as X11 backend
@@ -1298,12 +1334,12 @@ EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy,
 
 // ── Platform-dependent handle export ─────────────────────────────────────────
 
-EGLBoolean __getPlatformDependentHandles(void* out,
-                                         const EGLDisplayImpl* /*walkerDpy*/,
+EGLBoolean __getPlatformDependentHandles(void*                         out,
+                                         const EGLDisplayImpl*         walkerDpy,
                                          const NativeSurfaceContainer* nativeSurfaceContainer,
                                          const NativeContextContainer* nativeContextContainer)
 {
-    if (!nativeSurfaceContainer || !nativeContextContainer)
+    if (!out || !walkerDpy || !nativeSurfaceContainer || !nativeContextContainer)
         return EGL_FALSE;
 
 #ifdef EGL_WAYLAND_ENABLE_GLES

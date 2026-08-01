@@ -29,7 +29,7 @@
 
 #define _EGL_VENDOR "Norbert Nopper"
 
-#define _EGL_VERSION "1.5 Version 1.0.6"
+#define _EGL_VERSION "1.5 Version 1.0.8"
 
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +44,11 @@
 #define EGL_HDR_CS_BT2020_HLG_BIT (1u << 4)
 #define EGL_HDR_CS_DISPLAY_P3_BIT (1u << 5)
 #define EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT (1u << 6)
+// EGL_EXT_gl_colorspace_display_p3_passthrough is a colorspace of its own (no
+// implicit sRGB encode/decode), so it needs its own bit. The backends must set
+// this bit to advertise the passthrough extension; until they do, only
+// EGL_EXT_gl_colorspace_display_p3 is reported.
+#define EGL_HDR_CS_DISPLAY_P3_PASSTHROUGH_BIT (1u << 7)
 
 #if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__) /* Win32 and WinCE */
 
@@ -345,6 +350,12 @@ typedef struct _EGLConfigImpl
     // Returns the type of supported transparency. Possible transparency values are: EGL_NONE, and EGL_TRANSPARENT_RGB.
     EGLint transparentType;
 
+    // EGL_TRUE if this config can present an sRGB encoded framebuffer, EGL_FALSE otherwise.
+    // sRGB capability is a per config property: drivers commonly expose it on 8 bit per
+    // component formats only, so EGL_GL_COLORSPACE_SRGB must be validated against this and
+    // not against a display wide flag.
+    EGLint srgbCapable;
+
     // Own data.
 
     EGLint drawToWindow;
@@ -409,6 +420,11 @@ typedef struct _EGLSurfaceImpl
 
     struct _EGLSurfaceImpl* next;
 
+    // Number of thread bindings (eglMakeCurrent) currently holding this surface.
+    // The struct and the native drawable are only released once this drops to
+    // zero, even if the surface has already been marked for destruction.
+    EGLint refCount;
+
 } EGLSurfaceImpl;
 
 typedef struct _EGLContextListImpl
@@ -438,6 +454,15 @@ typedef struct _EGLContextImpl
     EGLint attribList[CONTEXT_ATTRIB_LIST_SIZE];
 
     struct _EGLContextImpl* next;
+
+    // Requested client API version, kept because attribList holds the PROCESSED
+    // NATIVE list (WGL_/GLX_ tokens, terminated with 0) which no longer carries
+    // EGL_CONTEXT_MAJOR_VERSION. Queried by eglQueryContext.
+    EGLint majorVersion;
+    EGLint minorVersion;
+
+    // Number of thread bindings (eglMakeCurrent) currently holding this context.
+    EGLint refCount;
 
 } EGLContextImpl;
 
@@ -497,6 +522,13 @@ typedef struct _LocalStorage
     EGLenum api;
 
     EGLContextImpl* currentCtx;
+
+    // Per-thread current binding. EGL bindings are per thread, not per display,
+    // so these — and not the EGLDisplayImpl::current* fields — are what tells
+    // whether an object is still in use (EGL 1.5 3.7.3).
+    EGLDisplayImpl* currentDpy;
+    EGLSurfaceImpl* currentDraw;
+    EGLSurfaceImpl* currentRead;
 } LocalStorage;
 
 //

@@ -78,11 +78,20 @@ extern "C"
                     {
                         EGLint target_attrib_list[CONTEXT_ATTRIB_LIST_SIZE];
 
+                        // EGL 1.5 §3.7.1: the config has to be capable of the
+                        // requested client API. EGL_CONFORMANT only advertises
+                        // conformance, capability is EGL_RENDERABLE_TYPE — which is
+                        // also what eglChooseConfig filters on.
                         const EGLint esBit = (requested_version[0] == 1) ? EGL_OPENGL_ES_BIT : (requested_version[0] == 2) ? EGL_OPENGL_ES2_BIT
                                                                                                                            : EGL_OPENGL_ES3_BIT;
-                        if (g_localStorage.api == EGL_OPENGL_ES_API && (walkerConfig->conformant & esBit) == 0)
+                        if (g_localStorage.api == EGL_OPENGL_ES_API && (walkerConfig->renderableType & esBit) == 0)
                         {
-                            g_localStorage.error = EGL_BAD_MATCH;
+                            g_localStorage.error = EGL_BAD_CONFIG;
+                            return EGL_NO_CONTEXT;
+                        }
+                        if (g_localStorage.api == EGL_OPENGL_API && (walkerConfig->renderableType & EGL_OPENGL_BIT) == 0)
+                        {
+                            g_localStorage.error = EGL_BAD_CONFIG;
                             return EGL_NO_CONTEXT;
                         }
                         if (!__processAttribList(g_localStorage.api, target_attrib_list, attrib_list, &g_localStorage.error))
@@ -144,8 +153,18 @@ extern "C"
                         newCtx->sharedCtx   = sharedCtx;
                         newCtx->rootCtxList = 0;
 
+                        // attribList holds the processed NATIVE list, which no longer
+                        // carries the EGL version tokens; keep the request itself for
+                        // eglQueryContext.
+                        newCtx->majorVersion = requested_version[0];
+                        newCtx->minorVersion = requested_version[1];
+
+                        newCtx->refCount = 0;
+
                         newCtx->next       = walkerDpy->rootCtx;
                         walkerDpy->rootCtx = newCtx;
+
+                        g_localStorage.error = EGL_SUCCESS;
 
                         return reinterpret_cast<EGLContext>(newCtx);
                     }
@@ -223,6 +242,9 @@ extern "C"
         if (success)
         {
             _eglInternalCleanup();
+
+            g_localStorage.error = EGL_SUCCESS;
+
             return EGL_TRUE;
         }
 
@@ -232,63 +254,46 @@ extern "C"
 
     EGLContext _eglGetCurrentContext(void)
     {
+        g_localStorage.error = EGL_SUCCESS;
+
         return g_localStorage.currentCtx;
     }
 
     EGLDisplay _eglGetCurrentDisplay(void)
     {
-        if (g_localStorage.currentCtx == EGL_NO_CONTEXT)
+        g_localStorage.error = EGL_SUCCESS;
+
+        // Bindings are per thread, so the answer comes straight from thread local
+        // storage; walking the displays would report another thread's binding.
+        if (g_localStorage.currentCtx == EGL_NO_CONTEXT || !g_localStorage.currentDpy)
         {
             return EGL_NO_DISPLAY;
         }
 
-        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-        while (walkerDpy)
-        {
-            if (walkerDpy->currentCtx == g_localStorage.currentCtx)
-            {
-                return reinterpret_cast<EGLDisplay>(walkerDpy);
-            }
-
-            walkerDpy = walkerDpy->next;
-        }
-
-        return EGL_NO_DISPLAY;
+        return reinterpret_cast<EGLDisplay>(g_localStorage.currentDpy);
     }
 
     EGLSurface _eglGetCurrentSurface(EGLint readdraw)
     {
-        if (g_localStorage.currentCtx == EGL_NO_CONTEXT)
+        // EGL 1.5 §3.9.1: an unrecognized readdraw is EGL_BAD_PARAMETER regardless
+        // of whether anything is current.
+        if (readdraw != EGL_DRAW && readdraw != EGL_READ)
         {
+            g_localStorage.error = EGL_BAD_PARAMETER;
+
             return EGL_NO_SURFACE;
         }
 
-        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-        while (walkerDpy)
+        if (g_localStorage.currentCtx == EGL_NO_CONTEXT)
         {
-            if (walkerDpy->currentCtx == g_localStorage.currentCtx)
-            {
-                if (readdraw == EGL_DRAW)
-                {
-                    return reinterpret_cast<EGLSurface>(walkerDpy->currentDraw);
-                }
-                else if (readdraw == EGL_READ)
-                {
-                    return reinterpret_cast<EGLSurface>(walkerDpy->currentRead);
-                }
+            g_localStorage.error = EGL_SUCCESS;
 
-                g_localStorage.error = EGL_BAD_PARAMETER;
-                return EGL_NO_SURFACE;
-            }
-
-            walkerDpy = walkerDpy->next;
+            return EGL_NO_SURFACE;
         }
 
-        return EGL_NO_SURFACE;
+        g_localStorage.error = EGL_SUCCESS;
+
+        return reinterpret_cast<EGLSurface>(readdraw == EGL_DRAW ? g_localStorage.currentDraw : g_localStorage.currentRead);
     }
 
     EGLBoolean _eglQueryContext(EGLDisplay dpy, EGLContext ctx, EGLint attribute, EGLint* value)
@@ -331,6 +336,8 @@ extern "C"
                                 *value = walkerCtx->configId;
                             }
 
+                            g_localStorage.error = EGL_SUCCESS;
+
                             return EGL_TRUE;
                         }
                         case EGL_CONTEXT_CLIENT_TYPE:
@@ -340,33 +347,34 @@ extern "C"
                                 *value = walkerCtx->clientAPI;
                             }
 
+                            g_localStorage.error = EGL_SUCCESS;
+
                             return EGL_TRUE;
                         }
                         case EGL_CONTEXT_CLIENT_VERSION:
                         {
                             if (value)
                             {
-                                // Scan for EGL_CONTEXT_MAJOR_VERSION rather than assuming
-                                // a fixed slot in the processed attribute list.
-                                EGLint major = 1;
-                                for (int i = 0; walkerCtx->attribList[i] != EGL_NONE; i += 2)
-                                {
-                                    if (walkerCtx->attribList[i] == EGL_CONTEXT_MAJOR_VERSION)
-                                    {
-                                        major = walkerCtx->attribList[i + 1];
-                                        break;
-                                    }
-                                }
-                                *value = major;
+                                // attribList is the processed NATIVE list; it is
+                                // terminated with 0 and never contains
+                                // EGL_CONTEXT_MAJOR_VERSION, so scanning it walked
+                                // off the end. The request is stored explicitly.
+                                *value = walkerCtx->majorVersion;
                             }
+
+                            g_localStorage.error = EGL_SUCCESS;
 
                             return EGL_TRUE;
                         }
                         case EGL_RENDER_BUFFER:
                         {
-                            if (walkerDpy->currentCtx == walkerCtx)
+                            g_localStorage.error = EGL_SUCCESS;
+
+                            // Bindings are per thread; only the calling thread's
+                            // binding may be reported.
+                            if (g_localStorage.currentCtx == walkerCtx)
                             {
-                                EGLSurfaceImpl* currentSurface = walkerDpy->currentDraw ? walkerDpy->currentDraw : walkerDpy->currentRead;
+                                EGLSurfaceImpl* currentSurface = g_localStorage.currentDraw ? g_localStorage.currentDraw : g_localStorage.currentRead;
 
                                 if (currentSurface)
                                 {
@@ -411,7 +419,8 @@ extern "C"
                         }
                         }
 
-                        g_localStorage.error = EGL_BAD_PARAMETER;
+                        // EGL 1.5 §3.7.4: an unrecognized attribute is EGL_BAD_ATTRIBUTE.
+                        g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
                         return EGL_FALSE;
                     }
@@ -435,6 +444,14 @@ extern "C"
     EGLBoolean _eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLContext ctx)
     {
         EGLBoolean success = EGL_FALSE;
+
+        // The binding this thread currently holds. It is only released once the new
+        // binding is in place, so a failing eglMakeCurrent leaves it untouched.
+        EGLDisplayImpl* previousDpy  = g_localStorage.currentDpy;
+        EGLSurfaceImpl* previousDraw = g_localStorage.currentDraw;
+        EGLSurfaceImpl* previousRead = g_localStorage.currentRead;
+        EGLContextImpl* previousCtx  = g_localStorage.currentCtx;
+
         {
             auto            _rl       = g_globalStorage.placeRootDpy_readlock();
             EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
@@ -564,9 +581,9 @@ extern "C"
                     if (currentCtx != EGL_NO_CONTEXT_IMPL)
                     {
                         // EGL 1.5 (3.7.3): the context must not already be current to
-                        // another thread. currentCtx is bound on this display but not on
-                        // this thread => it is current elsewhere.
-                        if (walkerDpy->currentCtx == currentCtx &&
+                        // another thread. A non-zero reference count that this thread
+                        // does not hold means it is bound somewhere else.
+                        if (currentCtx->refCount > 0 &&
                             g_localStorage.currentCtx != currentCtx)
                         {
                             g_localStorage.error = EGL_BAD_ACCESS;
@@ -600,6 +617,8 @@ extern "C"
 
                             if (!ctxList)
                             {
+                                g_localStorage.error = EGL_BAD_ALLOC;
+
                                 return EGL_FALSE;
                             }
 
@@ -632,6 +651,8 @@ extern "C"
                                         {
                                             free(ctxList);
 
+                                            g_localStorage.error = EGL_BAD_ALLOC;
+
                                             return EGL_FALSE;
                                         }
 
@@ -642,6 +663,8 @@ extern "C"
                                             free(sharedCtxList);
 
                                             free(ctxList);
+
+                                            g_localStorage.error = EGL_BAD_ALLOC;
 
                                             return EGL_FALSE;
                                         }
@@ -665,6 +688,8 @@ extern "C"
                             if (!result)
                             {
                                 free(ctxList);
+
+                                g_localStorage.error = EGL_BAD_ALLOC;
 
                                 return EGL_FALSE;
                             }
@@ -691,17 +716,87 @@ extern "C"
                     walkerDpy->currentRead = currentRead;
                     walkerDpy->currentCtx  = currentCtx;
 
-                    g_localStorage.currentCtx = currentCtx;
+                    // Reference the new objects before releasing the old ones, so
+                    // that re-binding the very same object never drops it to zero.
+                    if (currentDraw != EGL_NO_SURFACE_IMPL)
+                    {
+                        currentDraw->refCount++;
+                    }
+                    if (currentRead != EGL_NO_SURFACE_IMPL && currentRead != currentDraw)
+                    {
+                        currentRead->refCount++;
+                    }
+                    if (currentCtx != EGL_NO_CONTEXT_IMPL)
+                    {
+                        currentCtx->refCount++;
+                    }
+
+                    g_localStorage.currentDpy  = (currentCtx != EGL_NO_CONTEXT_IMPL) ? walkerDpy : nullptr;
+                    g_localStorage.currentDraw = currentDraw;
+                    g_localStorage.currentRead = currentRead;
+                    g_localStorage.currentCtx  = currentCtx;
+
+                    // Previous binding on this very display: release it here, while
+                    // its mutex is held. Other displays are handled below.
+                    if (previousDpy == walkerDpy)
+                    {
+                        if (previousDraw != EGL_NO_SURFACE_IMPL)
+                        {
+                            previousDraw->refCount--;
+                        }
+                        if (previousRead != EGL_NO_SURFACE_IMPL && previousRead != previousDraw)
+                        {
+                            previousRead->refCount--;
+                        }
+                        if (previousCtx != EGL_NO_CONTEXT_IMPL)
+                        {
+                            previousCtx->refCount--;
+                        }
+
+                        previousDpy = 0;
+                    }
 
                     break; // break displays loop
                 }
 
                 walkerDpy = walkerDpy->next;
             }
+
+            // The thread may have been current on a DIFFERENT display. That display
+            // must stop pointing at objects this thread no longer holds, otherwise it
+            // keeps them alive forever and confuses eglGetCurrentDisplay.
+            if (success && previousDpy)
+            {
+                guard_t _{previousDpy->mutex};
+
+                if (previousDraw != EGL_NO_SURFACE_IMPL)
+                {
+                    previousDraw->refCount--;
+                }
+                if (previousRead != EGL_NO_SURFACE_IMPL && previousRead != previousDraw)
+                {
+                    previousRead->refCount--;
+                }
+                if (previousCtx != EGL_NO_CONTEXT_IMPL)
+                {
+                    previousCtx->refCount--;
+                }
+
+                if (previousDpy->currentCtx == previousCtx)
+                {
+                    previousDpy->currentDraw = EGL_NO_SURFACE_IMPL;
+                    previousDpy->currentRead = EGL_NO_SURFACE_IMPL;
+                    previousDpy->currentCtx  = EGL_NO_CONTEXT_IMPL;
+                }
+            }
         }
 
         if (success)
+        {
             _eglInternalCleanup();
+
+            g_localStorage.error = EGL_SUCCESS;
+        }
 
         if (!success)
             g_localStorage.error = EGL_BAD_DISPLAY;

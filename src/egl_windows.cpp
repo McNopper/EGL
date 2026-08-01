@@ -89,10 +89,30 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
     opengl32dll = LoadLibrary("opengl32.dll");
 
+    if (!opengl32dll)
+    {
+        return EGL_FALSE;
+    }
+
     wglCreateContext_PTR  = reinterpret_cast<__PFN_wglCreateContext>(GetProcAddress(opengl32dll, "wglCreateContext"));
     wglDeleteContext_PTR  = reinterpret_cast<__PFN_wglDeleteContext>(GetProcAddress(opengl32dll, "wglDeleteContext"));
     wglMakeCurrent_PTR    = reinterpret_cast<__PFN_wglMakeCurrent>(GetProcAddress(opengl32dll, "wglMakeCurrent"));
     wglGetProcAddress_PTR = reinterpret_cast<__PFN_wglGetProcAddress>(GetProcAddress(opengl32dll, "wglGetProcAddress"));
+
+    // Without these four there is no way to bring up any context at all — bail out
+    // cleanly instead of calling through a NULL pointer further down.
+    if (!wglCreateContext_PTR || !wglDeleteContext_PTR || !wglMakeCurrent_PTR || !wglGetProcAddress_PTR)
+    {
+        FreeLibrary(opengl32dll);
+        opengl32dll = NULL;
+
+        wglCreateContext_PTR  = NULL;
+        wglDeleteContext_PTR  = NULL;
+        wglMakeCurrent_PTR    = NULL;
+        wglGetProcAddress_PTR = NULL;
+
+        return EGL_FALSE;
+    }
 
     //
 
@@ -205,6 +225,23 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
     wglMakeCurrent_PTR(NULL, NULL);
 
+    // WGL_ARB_create_context is required to probe (and later create) any versioned
+    // context. __getProcAddress can legitimately return NULL on a software, RDP or
+    // stripped driver, so fail cleanly here instead of calling through it below.
+    if (!wglCreateContextAttribsARB)
+    {
+        wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
+        nativeLocalStorageContainer->ctx = 0;
+
+        ReleaseDC(nativeLocalStorageContainer->hwnd, nativeLocalStorageContainer->hdc);
+        nativeLocalStorageContainer->hdc = 0;
+
+        DestroyWindow(nativeLocalStorageContainer->hwnd);
+        nativeLocalStorageContainer->hwnd = 0;
+
+        return EGL_FALSE;
+    }
+
     EGLint attrib_list[] = {
         WGL_CONTEXT_MAJOR_VERSION_ARB, 1,
         WGL_CONTEXT_MINOR_VERSION_ARB, 0,
@@ -294,11 +331,17 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
         return EGL_FALSE;
     }
 
-    wglMakeCurrent_PTR(0, 0);
+    if (wglMakeCurrent_PTR)
+    {
+        wglMakeCurrent_PTR(0, 0);
+    }
 
     if (nativeLocalStorageContainer->ctx)
     {
-        wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
+        if (wglDeleteContext_PTR)
+        {
+            wglDeleteContext_PTR(nativeLocalStorageContainer->ctx);
+        }
         nativeLocalStorageContainer->ctx = 0;
     }
 
@@ -320,7 +363,37 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* nativeLocalStorageCo
     angle_terminate();
 #endif
 
-    FreeLibrary(opengl32dll);
+    if (opengl32dll)
+    {
+        FreeLibrary(opengl32dll);
+        opengl32dll = NULL;
+    }
+
+    // Every entry point resolved out of opengl32.dll is stale now.
+    wglCreateContext_PTR  = NULL;
+    wglDeleteContext_PTR  = NULL;
+    wglMakeCurrent_PTR    = NULL;
+    wglGetProcAddress_PTR = NULL;
+
+    wglChoosePixelFormatARB      = NULL;
+    wglGetPixelFormatAttribivARB = NULL;
+    wglCreateContextAttribsARB   = NULL;
+    wglGetExtensionsStringARB    = NULL;
+    wglSwapIntervalEXT           = NULL;
+
+    wglCreatePbufferARB       = NULL;
+    wglGetPbufferDCARB        = NULL;
+    wglReleasePbufferDCARB    = NULL;
+    wglDestroyPbufferARB      = NULL;
+    wglBindTexImageARB_PTR    = NULL;
+    wglReleaseTexImageARB_PTR = NULL;
+
+    glFinish_PTR         = NULL;
+    glFenceSync_PTR      = NULL;
+    glDeleteSync_PTR     = NULL;
+    glClientWaitSync_PTR = NULL;
+    glWaitSync_PTR       = NULL;
+    glGetSynciv_PTR      = NULL;
 
     return EGL_TRUE;
 }
@@ -565,9 +638,16 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
             }
             else if (value == EGL_GL_COLORSPACE_SRGB)
             {
-                // Only request sRGB pixel format if the driver supports it;
-                // otherwise silently fall back to linear per spec.
-                iattribs[29]   = walkerDpy->srgbFramebufferSupported ? GL_TRUE : GL_FALSE;
+                // sRGB is a per config capability. Requesting it on a config that cannot
+                // present it is an EGL_BAD_MATCH rather than a silent downgrade to linear.
+                if (!walkerConfig->srgbCapable)
+                {
+                    *error = EGL_BAD_MATCH;
+
+                    return EGL_FALSE;
+                }
+
+                iattribs[29]   = GL_TRUE;
                 pbufColorspace = EGL_GL_COLORSPACE_SRGB;
             }
             else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT ||
@@ -619,8 +699,8 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 
     iattribs[9]  = walkerConfig->bufferSize;
     iattribs[11] = walkerConfig->redSize;
-    iattribs[13] = walkerConfig->blueSize;
-    iattribs[15] = walkerConfig->greenSize;
+    iattribs[13] = walkerConfig->greenSize;
+    iattribs[15] = walkerConfig->blueSize;
     iattribs[17] = walkerConfig->alphaSize;
     iattribs[19] = walkerConfig->depthSize;
     iattribs[21] = walkerConfig->stencilSize;
@@ -629,20 +709,49 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
 
     HDC hdc = walkerDpy->display_id;
 
-    int  pformat;
+    // WGL_ARB_pbuffer / WGL_ARB_pixel_format are optional; a software, RDP or
+    // stripped driver may not expose them at all.
+    if (!wglChoosePixelFormatARB || !wglCreatePbufferARB || !wglGetPbufferDCARB)
+    {
+        *error = EGL_BAD_MATCH;
+
+        return EGL_FALSE;
+    }
+
+    int  pformat     = 0;
     UINT max_formats = 1;
     if (!wglChoosePixelFormatARB(hdc, iattribs, NULL, max_formats, &pformat, &max_formats))
+    {
+        *error = EGL_BAD_MATCH;
+
         return EGL_FALSE;
+    }
+
+    if (max_formats == 0)
+    {
+        *error = EGL_BAD_MATCH;
+
+        return EGL_FALSE;
+    }
 
     // not sure im getting 1st arg ok (HDC)
     HPBUFFERARB pbuf = wglCreatePbufferARB(hdc, pformat, width, height, pbuf_attribs);
     if (!pbuf)
+    {
+        *error = EGL_BAD_ALLOC;
+
         return EGL_FALSE;
+    }
 
     hdc = wglGetPbufferDCARB(pbuf);
 
     if (!hdc)
     {
+        if (wglDestroyPbufferARB)
+        {
+            wglDestroyPbufferARB(pbuf);
+        }
+
         *error = EGL_BAD_NATIVE_WINDOW;
 
         return EGL_FALSE;
@@ -769,9 +878,18 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
                 }
                 else if (value == EGL_GL_COLORSPACE_SRGB)
                 {
-                    // Only request sRGB pixel format if the driver supports it;
-                    // otherwise silently fall back to linear per spec.
-                    template_attrib_list[29] = walkerDpy->srgbFramebufferSupported ? GL_TRUE : GL_FALSE;
+                    // sRGB is a per config capability. Requesting it on a config that cannot
+                    // present it is an EGL_BAD_MATCH rather than a silent downgrade to linear.
+                    if (!walkerConfig->srgbCapable)
+                    {
+                        ReleaseDC(win, hdc);
+
+                        *error = EGL_BAD_MATCH;
+
+                        return EGL_FALSE;
+                    }
+
+                    template_attrib_list[29] = GL_TRUE;
                     parsedColorspace         = EGL_GL_COLORSPACE_SRGB;
                 }
                 else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT ||
@@ -852,8 +970,8 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 
     template_attrib_list[9]  = walkerConfig->bufferSize;
     template_attrib_list[11] = walkerConfig->redSize;
-    template_attrib_list[13] = walkerConfig->blueSize;
-    template_attrib_list[15] = walkerConfig->greenSize;
+    template_attrib_list[13] = walkerConfig->greenSize;
+    template_attrib_list[15] = walkerConfig->blueSize;
     template_attrib_list[17] = walkerConfig->alphaSize;
     template_attrib_list[19] = walkerConfig->depthSize;
     template_attrib_list[21] = walkerConfig->stencilSize;
@@ -862,8 +980,19 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
     //
 
     UINT wgl_max_formats = 1;
-    INT  wgl_formats;
-    UINT wgl_num_formats;
+    INT  wgl_formats     = 0;
+    UINT wgl_num_formats = 0;
+
+    // WGL_ARB_pixel_format is optional; a software, RDP or stripped driver may not
+    // expose it at all.
+    if (!wglChoosePixelFormatARB)
+    {
+        ReleaseDC(win, hdc);
+
+        *error = EGL_BAD_MATCH;
+
+        return EGL_FALSE;
+    }
 
     if (!wglChoosePixelFormatARB(hdc, template_attrib_list, 0, wgl_max_formats, &wgl_formats, &wgl_num_formats))
     {
@@ -894,7 +1023,24 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
         return EGL_FALSE;
     }
 
-    if (!SetPixelFormat(hdc, wgl_formats, &pfd))
+    // A window's pixel format can only ever be set ONCE. Re-creating a surface on the
+    // same HWND, having two surfaces on one HWND, or being handed a window another
+    // toolkit already owns must therefore not blindly call SetPixelFormat: query what
+    // the window already has and only set it when it has none.
+    int currentPixelFormat = GetPixelFormat(hdc);
+
+    if (currentPixelFormat == 0)
+    {
+        if (!SetPixelFormat(hdc, wgl_formats, &pfd))
+        {
+            ReleaseDC(win, hdc);
+
+            *error = EGL_BAD_MATCH;
+
+            return EGL_FALSE;
+        }
+    }
+    else if (currentPixelFormat != wgl_formats)
     {
         ReleaseDC(win, hdc);
 
@@ -937,21 +1083,27 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
         if (_eglHDRColorspaceToVk(parsedColorspace, &vkFmt, &vkCS) && __vkIsReady())
         {
             NativeHDRSurfaceContainer* hdrContainer = reinterpret_cast<NativeHDRSurfaceContainer*>(malloc(sizeof(NativeHDRSurfaceContainer)));
-            if (hdrContainer)
+            if (!hdrContainer)
             {
-                if (__vkCreateHDRSurface(hdrContainer, win, parsedColorspace,
-                                         (uint32_t)(rect.right - rect.left),
-                                         (uint32_t)(rect.bottom - rect.top)) == EGL_TRUE)
-                {
-                    newSurface->nativeSurfaceContainer.hdr = hdrContainer;
-                }
-                else
-                {
-                    free(hdrContainer);
-                    ReleaseDC(win, hdc);
-                    *error = EGL_BAD_MATCH;
-                    return EGL_FALSE;
-                }
+                // The application explicitly asked for an HDR colorspace — silently
+                // handing back an SDR surface would be worse than failing.
+                ReleaseDC(win, hdc);
+                *error = EGL_BAD_ALLOC;
+                return EGL_FALSE;
+            }
+
+            if (__vkCreateHDRSurface(hdrContainer, win, parsedColorspace,
+                                     (uint32_t)(rect.right - rect.left),
+                                     (uint32_t)(rect.bottom - rect.top)) == EGL_TRUE)
+            {
+                newSurface->nativeSurfaceContainer.hdr = hdrContainer;
+            }
+            else
+            {
+                free(hdrContainer);
+                ReleaseDC(win, hdc);
+                *error = EGL_BAD_MATCH;
+                return EGL_FALSE;
             }
         }
     }
@@ -986,12 +1138,33 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpy, const EGLSurfaceImpl* surf
         ReleaseDC(surface->win, nativeSurfaceContainer->hdc);
     else if (surface->drawToPBuffer)
     {
-        wglReleasePbufferDCARB(surface->pbuf, surface->nativeSurfaceContainer.hdc);
-        wglDestroyPbufferARB(surface->pbuf);
+        if (wglReleasePbufferDCARB)
+        {
+            wglReleasePbufferDCARB(surface->pbuf, surface->nativeSurfaceContainer.hdc);
+        }
+        if (wglDestroyPbufferARB)
+        {
+            wglDestroyPbufferARB(surface->pbuf);
+        }
     }
     else if (surface->drawToPixmap)
     {
+        // A memory DC must not be deleted while the application's bitmap is still
+        // selected into it. Select a private scratch bitmap back in first so the
+        // pixmap is released before the DC goes away.
+        HBITMAP scratch = CreateBitmap(1, 1, 1, 1, NULL);
+
+        if (scratch)
+        {
+            SelectObject(nativeSurfaceContainer->hdc, scratch);
+        }
+
         DeleteDC(nativeSurfaceContainer->hdc);
+
+        if (scratch)
+        {
+            DeleteObject(scratch);
+        }
     }
 
     return EGL_TRUE;
@@ -1142,22 +1315,38 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
     HDC screenDC = GetDC(NULL);
     HDC memDC    = CreateCompatibleDC(screenDC);
     ReleaseDC(NULL, screenDC);
-    HGDIOBJ oldBmp = SelectObject(memDC, target);
-    SetDIBits(memDC, target, 0, (UINT)height, pixels, &bi, DIB_RGB_COLORS);
-    SelectObject(memDC, oldBmp);
+    if (!memDC)
+    {
+        free(pixels);
+
+        return EGL_FALSE;
+    }
+
+    // MSDN forbids the target bitmap from being selected into the device context
+    // passed to SetDIBits — doing so makes the call fail and eglCopyBuffers would
+    // silently copy nothing while still reporting success. The DC is only needed for
+    // its colour context here, so leave the bitmap unselected.
+    int scanLines = SetDIBits(memDC, target, 0, (UINT)height, pixels, &bi, DIB_RGB_COLORS);
+
     DeleteDC(memDC);
     free(pixels);
 
-    return EGL_TRUE;
+    return (scanLines != 0) ? EGL_TRUE : EGL_FALSE;
 }
 
 __eglMustCastToProperFunctionPointerType __getProcAddress(const char* procname)
 {
     __eglMustCastToProperFunctionPointerType ptr = NULL;
-    ptr                                          = reinterpret_cast<__eglMustCastToProperFunctionPointerType>(wglGetProcAddress_PTR(procname));
+
+    if (wglGetProcAddress_PTR)
+    {
+        ptr = reinterpret_cast<__eglMustCastToProperFunctionPointerType>(wglGetProcAddress_PTR(procname));
+    }
     if (ptr != NULL)
         return ptr;
     // https://www.khronos.org/opengl/wiki/Talk:Platform_specifics:_Windows
+    if (!opengl32dll)
+        return NULL;
     return reinterpret_cast<__eglMustCastToProperFunctionPointerType>(GetProcAddress(opengl32dll, procname));
 }
 
@@ -1172,6 +1361,15 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
     EGLint numberPixelFormats;
 
+    // WGL_ARB_pixel_format is what the whole config enumeration is built on; without
+    // it there is nothing to enumerate.
+    if (!wglGetPixelFormatAttribivARB)
+    {
+        *error = EGL_NOT_INITIALIZED;
+
+        return EGL_FALSE;
+    }
+
     EGLint attribute = WGL_NUMBER_PIXEL_FORMATS_ARB;
     if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, 1, 0, 1, &attribute, &numberPixelFormats))
     {
@@ -1180,7 +1378,16 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
         return EGL_FALSE;
     }
 
-    const char* extensions_str = wglGetExtensionsStringARB(nativeLocalStorageContainer->hdc);
+    // wglGetExtensionsStringARB is optional and can legitimately return NULL on a
+    // software / RDP / stripped driver — treat that as "no WGL extensions at all"
+    // rather than handing NULL to strstr.
+    const char* extensions_str = wglGetExtensionsStringARB
+                                     ? wglGetExtensionsStringARB(nativeLocalStorageContainer->hdc)
+                                     : NULL;
+    if (!extensions_str)
+    {
+        extensions_str = "";
+    }
 
     const int render_texture_supported = strstr(extensions_str, "WGL_ARB_render_texture") != NULL;
     const int ES_supported             = strstr(extensions_str, "WGL_EXT_create_context_es_profile") != NULL;
@@ -1380,25 +1587,54 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
         //
 
-        attribute = WGL_BIND_TO_TEXTURE_RGB_ARB;
-        if (render_texture_supported &&
-            !wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGB))
+        // sRGB capability is per pixel format, not per driver: NVIDIA for example exposes it
+        // on every 8 bit per component format and on none of the 10 bit ones. Without the
+        // extension the attribute cannot be queried at all, so report EGL_FALSE.
+        newConfig->srgbCapable = EGL_FALSE;
+        if (walkerDpy->srgbFramebufferSupported)
         {
-            *error = EGL_NOT_INITIALIZED;
+            attribute = WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB;
+            if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &value))
+            {
+                *error = EGL_NOT_INITIALIZED;
 
-            return EGL_FALSE;
+                return EGL_FALSE;
+            }
+
+            newConfig->srgbCapable = value ? EGL_TRUE : EGL_FALSE;
         }
-        newConfig->bindToTextureRGB = newConfig->bindToTextureRGB ? EGL_TRUE : EGL_FALSE;
 
-        attribute = WGL_BIND_TO_TEXTURE_RGBA_ARB;
-        if (render_texture_supported &&
-            !wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGBA))
+        //
+
+        // Without WGL_ARB_render_texture the attribute cannot be queried at all.
+        // Report EGL_FALSE instead of leaving the EGL_DONT_CARE (-1) default, which
+        // is truthy and would normalize to EGL_TRUE — advertising a capability that
+        // eglBindTexImage then has to reject.
+        attribute                   = WGL_BIND_TO_TEXTURE_RGB_ARB;
+        newConfig->bindToTextureRGB = EGL_FALSE;
+        if (render_texture_supported)
         {
-            *error = EGL_NOT_INITIALIZED;
+            if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGB))
+            {
+                *error = EGL_NOT_INITIALIZED;
 
-            return EGL_FALSE;
+                return EGL_FALSE;
+            }
+            newConfig->bindToTextureRGB = newConfig->bindToTextureRGB ? EGL_TRUE : EGL_FALSE;
         }
-        newConfig->bindToTextureRGBA = newConfig->bindToTextureRGBA ? EGL_TRUE : EGL_FALSE;
+
+        attribute                    = WGL_BIND_TO_TEXTURE_RGBA_ARB;
+        newConfig->bindToTextureRGBA = EGL_FALSE;
+        if (render_texture_supported)
+        {
+            if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGBA))
+            {
+                *error = EGL_NOT_INITIALIZED;
+
+                return EGL_FALSE;
+            }
+            newConfig->bindToTextureRGBA = newConfig->bindToTextureRGBA ? EGL_TRUE : EGL_FALSE;
+        }
 
         //
 
@@ -1532,7 +1768,15 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const
 
     nativeContextContainer->backend  = EGL_BACKEND_WGL;
     nativeContextContainer->angleCtx = nullptr;
-    nativeContextContainer->ctx      = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, attribList);
+    nativeContextContainer->ctx      = nullptr;
+
+    // WGL_ARB_create_context is optional; without it no versioned context exists.
+    if (!wglCreateContextAttribsARB)
+    {
+        return EGL_FALSE;
+    }
+
+    nativeContextContainer->ctx = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, attribList);
 
     return nativeContextContainer->ctx != 0;
 }
@@ -1608,6 +1852,12 @@ EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
         return angle_swapInterval(interval);
 #endif
 
+    // WGL_EXT_swap_control is optional.
+    if (!wglSwapIntervalEXT)
+    {
+        return EGL_FALSE;
+    }
+
     return (EGLBoolean)wglSwapIntervalEXT(interval);
 }
 
@@ -1635,7 +1885,7 @@ EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceIm
 
 EGLBoolean __getPlatformDependentHandles(void* out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
 {
-    if (!nativeSurfaceContainer || !nativeContextContainer)
+    if (!out || !walkerDpy || !nativeSurfaceContainer || !nativeContextContainer)
         return EGL_FALSE;
 
     EGLContextInternals* handles = reinterpret_cast<EGLContextInternals*>(out);

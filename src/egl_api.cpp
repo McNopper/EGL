@@ -9,6 +9,8 @@ extern "C"
         {
             g_localStorage.api = api;
 
+            g_localStorage.error = EGL_SUCCESS;
+
             return EGL_TRUE;
         }
 
@@ -19,54 +21,77 @@ extern "C"
 
     EGLenum _eglQueryAPI(void)
     {
+        g_localStorage.error = EGL_SUCCESS;
+
         return g_localStorage.api;
+    }
+
+    // Internal helper for eglWaitGL. Restores the rendering API without touching the
+    // thread error, which eglBindAPI would clear and thereby hide a failure of the
+    // eglWaitClient call it wraps.
+    void _eglBindAPIKeepError(EGLenum api)
+    {
+        g_localStorage.api = api;
     }
 
     EGLBoolean _eglWaitClient(void)
     {
         if (g_localStorage.currentCtx == EGL_NO_CONTEXT)
         {
+            g_localStorage.error = EGL_SUCCESS;
+
             return EGL_TRUE;
         }
 
-        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-        while (walkerDpy)
         {
-            if (walkerDpy->currentCtx == g_localStorage.currentCtx)
+            auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+            EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+            while (walkerDpy)
             {
-                guard_t _{walkerDpy->mutex};
-
-                if (!walkerDpy->initialized || walkerDpy->destroy)
+                // Bindings are per thread.
+                if (walkerDpy == g_localStorage.currentDpy)
                 {
-                    return EGL_FALSE;
+                    guard_t _{walkerDpy->mutex};
+
+                    if (!walkerDpy->initialized || walkerDpy->destroy)
+                    {
+                        g_localStorage.error = EGL_NOT_INITIALIZED;
+
+                        return EGL_FALSE;
+                    }
+
+                    if (g_localStorage.currentDraw && (!g_localStorage.currentDraw->initialized || g_localStorage.currentDraw->destroy))
+                    {
+                        g_localStorage.error = EGL_BAD_CURRENT_SURFACE;
+
+                        return EGL_FALSE;
+                    }
+
+                    if (g_localStorage.currentRead && (!g_localStorage.currentRead->initialized || g_localStorage.currentRead->destroy))
+                    {
+                        g_localStorage.error = EGL_BAD_CURRENT_SURFACE;
+
+                        return EGL_FALSE;
+                    }
+
+                    break;
                 }
 
-                if (walkerDpy->currentDraw && (!walkerDpy->currentDraw->initialized || walkerDpy->currentDraw->destroy))
-                {
-                    g_localStorage.error = EGL_BAD_CURRENT_SURFACE;
-
-                    return EGL_FALSE;
-                }
-
-                if (walkerDpy->currentRead && (!walkerDpy->currentRead->initialized || walkerDpy->currentRead->destroy))
-                {
-                    g_localStorage.error = EGL_BAD_CURRENT_SURFACE;
-
-                    return EGL_FALSE;
-                }
-
-                break;
+                walkerDpy = walkerDpy->next;
             }
-
-            walkerDpy = walkerDpy->next;
         }
 
         if (g_localStorage.api == EGL_OPENGL_API || g_localStorage.api == EGL_OPENGL_ES_API)
         {
-            glFinish();
+            // glFinish is a function pointer resolved at bootstrap; it may be null.
+            if (glFinish_PTR)
+            {
+                glFinish();
+            }
         }
+
+        g_localStorage.error = EGL_SUCCESS;
 
         return EGL_TRUE;
     }
@@ -82,42 +107,51 @@ extern "C"
 
         if (g_localStorage.currentCtx == EGL_NO_CONTEXT)
         {
+            g_localStorage.error = EGL_SUCCESS;
+
             return EGL_TRUE;
         }
 
-        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-        while (walkerDpy)
         {
-            if (walkerDpy->currentCtx == g_localStorage.currentCtx)
+            auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+            EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+            while (walkerDpy)
             {
-                guard_t _{walkerDpy->mutex};
-
-                if (walkerDpy->currentDraw && (!walkerDpy->currentDraw->initialized || walkerDpy->currentDraw->destroy))
+                if (walkerDpy == g_localStorage.currentDpy)
                 {
-                    g_localStorage.error = EGL_BAD_CURRENT_SURFACE;
+                    guard_t _{walkerDpy->mutex};
 
-                    return EGL_FALSE;
+                    if (g_localStorage.currentDraw && (!g_localStorage.currentDraw->initialized || g_localStorage.currentDraw->destroy))
+                    {
+                        g_localStorage.error = EGL_BAD_CURRENT_SURFACE;
+
+                        return EGL_FALSE;
+                    }
+
+                    if (g_localStorage.currentRead && (!g_localStorage.currentRead->initialized || g_localStorage.currentRead->destroy))
+                    {
+                        g_localStorage.error = EGL_BAD_CURRENT_SURFACE;
+
+                        return EGL_FALSE;
+                    }
+
+                    break;
                 }
 
-                if (walkerDpy->currentRead && (!walkerDpy->currentRead->initialized || walkerDpy->currentRead->destroy))
-                {
-                    g_localStorage.error = EGL_BAD_CURRENT_SURFACE;
-
-                    return EGL_FALSE;
-                }
-
-                break;
+                walkerDpy = walkerDpy->next;
             }
-
-            walkerDpy = walkerDpy->next;
         }
 
         if (g_localStorage.api == EGL_OPENGL_API || g_localStorage.api == EGL_OPENGL_ES_API)
         {
-            glFinish();
+            if (glFinish_PTR)
+            {
+                glFinish();
+            }
         }
+
+        g_localStorage.error = EGL_SUCCESS;
 
         return EGL_TRUE;
     }
@@ -153,7 +187,25 @@ extern "C"
                             return EGL_FALSE;
                         }
 
-                        return __swapBuffers(walkerDpy, walkerSurface);
+                        // EGL 1.5 §3.10.1: surface must be a window surface bound as
+                        // the draw surface of the calling thread's current context.
+                        // Without this __swapBuffers would present whatever device
+                        // context a pbuffer container happens to carry.
+                        if (!walkerSurface->drawToWindow || g_localStorage.currentDraw != walkerSurface)
+                        {
+                            g_localStorage.error = EGL_BAD_SURFACE;
+
+                            return EGL_FALSE;
+                        }
+
+                        if (!__swapBuffers(walkerDpy, walkerSurface))
+                        {
+                            return EGL_FALSE;
+                        }
+
+                        g_localStorage.error = EGL_SUCCESS;
+
+                        return EGL_TRUE;
                     }
 
                     walkerSurface = walkerSurface->next;
@@ -203,21 +255,28 @@ extern "C"
                 }
 
                 // Verify calling thread's context is current on this display.
-                if (walkerDpy->currentCtx != g_localStorage.currentCtx)
+                if (g_localStorage.currentDpy != walkerDpy)
                 {
                     g_localStorage.error = EGL_BAD_SURFACE;
 
                     return EGL_FALSE;
                 }
 
-                if (walkerDpy->currentDraw == EGL_NO_SURFACE_IMPL || walkerDpy->currentRead == EGL_NO_SURFACE_IMPL)
+                if (g_localStorage.currentDraw == EGL_NO_SURFACE_IMPL || g_localStorage.currentRead == EGL_NO_SURFACE_IMPL)
                 {
                     g_localStorage.error = EGL_BAD_SURFACE;
 
                     return EGL_FALSE;
                 }
 
-                return __swapInterval(walkerDpy, interval);
+                if (!__swapInterval(walkerDpy, interval))
+                {
+                    return EGL_FALSE;
+                }
+
+                g_localStorage.error = EGL_SUCCESS;
+
+                return EGL_TRUE;
             }
 
             walkerDpy = walkerDpy->next;

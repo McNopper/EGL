@@ -48,6 +48,9 @@ extern "C"
 
                         newSurface->next       = walkerDpy->rootSurface;
                         walkerDpy->rootSurface = newSurface;
+
+                        g_localStorage.error = EGL_SUCCESS;
+
                         return reinterpret_cast<EGLSurface>(newSurface);
                     }
                     walkerConfig = walkerConfig->next;
@@ -65,6 +68,10 @@ extern "C"
 
     EGLSurface _eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWindowType win, const EGLint* attrib_list)
     {
+        static const EGLint emptyList[] = {EGL_NONE};
+        if (!attrib_list)
+            attrib_list = emptyList;
+
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
         EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
@@ -104,6 +111,9 @@ extern "C"
 
                         newSurface->next       = walkerDpy->rootSurface;
                         walkerDpy->rootSurface = newSurface;
+
+                        g_localStorage.error = EGL_SUCCESS;
+
                         return reinterpret_cast<EGLSurface>(newSurface);
                     }
                     walkerConfig = walkerConfig->next;
@@ -121,6 +131,10 @@ extern "C"
 
     EGLSurface _eglCreatePixmapSurface(EGLDisplay dpy, EGLConfig config, EGLNativePixmapType pixmap, const EGLint* attrib_list)
     {
+        static const EGLint emptyList[] = {EGL_NONE};
+        if (!attrib_list)
+            attrib_list = emptyList;
+
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
         EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
@@ -160,6 +174,9 @@ extern "C"
 
                         newSurface->next       = walkerDpy->rootSurface;
                         walkerDpy->rootSurface = newSurface;
+
+                        g_localStorage.error = EGL_SUCCESS;
+
                         return reinterpret_cast<EGLSurface>(newSurface);
                     }
                     walkerConfig = walkerConfig->next;
@@ -184,6 +201,8 @@ extern "C"
         {
             if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
             {
+                guard_t _{walkerDpy->mutex};
+
                 if (!walkerDpy->initialized || walkerDpy->destroy)
                 {
                     g_localStorage.error = EGL_NOT_INITIALIZED;
@@ -195,7 +214,20 @@ extern "C"
                 {
                     if (reinterpret_cast<EGLSurface>(walkerSurface) == surface)
                     {
-                        return __copyBuffers(walkerDpy, walkerSurface, target);
+                        if (!walkerSurface->initialized || walkerSurface->destroy)
+                        {
+                            g_localStorage.error = EGL_BAD_SURFACE;
+                            return EGL_FALSE;
+                        }
+
+                        if (!__copyBuffers(walkerDpy, walkerSurface, target))
+                        {
+                            return EGL_FALSE;
+                        }
+
+                        g_localStorage.error = EGL_SUCCESS;
+
+                        return EGL_TRUE;
                     }
                     walkerSurface = walkerSurface->next;
                 }
@@ -247,7 +279,10 @@ extern "C"
                             walkerSurface->initialized = EGL_FALSE;
                             walkerSurface->destroy     = EGL_TRUE;
 
-                            __destroySurface(walkerDpy->display_id, walkerSurface);
+                            // EGL 1.5 §3.5.6: the native drawable must survive as long
+                            // as the surface is current to any thread, so the native
+                            // teardown happens in _eglInternalCleanup, together with
+                            // the struct free.
 
                             success = EGL_TRUE;
                             break;
@@ -269,6 +304,9 @@ extern "C"
         if (success)
         {
             _eglInternalCleanup();
+
+            g_localStorage.error = EGL_SUCCESS;
+
             return EGL_TRUE;
         }
 
@@ -306,6 +344,10 @@ extern "C"
 
                             return EGL_FALSE;
                         }
+
+                        // Cleared up front; the fall-through below overwrites it for
+                        // an unrecognized attribute.
+                        g_localStorage.error = EGL_SUCCESS;
 
                         switch (attribute)
                         {
@@ -512,11 +554,30 @@ extern "C"
                             return EGL_FALSE;
                         }
 
+                        // EGL 1.5 §3.5.6: the surface's config has to advertise the
+                        // capability before it may be requested.
+                        EGLint surfaceTypeBits = 0;
+
+                        for (EGLConfigImpl* walkerConfig = walkerDpy->rootConfig; walkerConfig; walkerConfig = walkerConfig->next)
+                        {
+                            if (walkerConfig->configId == walkerSurface->configId)
+                            {
+                                surfaceTypeBits = walkerConfig->surfaceType;
+
+                                break;
+                            }
+                        }
+
+                        // Cleared up front; the fall-through below overwrites it for
+                        // an unrecognized attribute.
+                        g_localStorage.error = EGL_SUCCESS;
+
                         switch (attribute)
                         {
                         case EGL_MIPMAP_LEVEL:
                         {
                             walkerSurface->mipmapLevel = value;
+
                             return EGL_TRUE;
                         }
                         case EGL_MULTISAMPLE_RESOLVE:
@@ -526,7 +587,13 @@ extern "C"
                                 g_localStorage.error = EGL_BAD_ATTRIBUTE;
                                 return EGL_FALSE;
                             }
+                            if (value == EGL_MULTISAMPLE_RESOLVE_BOX && !(surfaceTypeBits & EGL_MULTISAMPLE_RESOLVE_BOX_BIT))
+                            {
+                                g_localStorage.error = EGL_BAD_MATCH;
+                                return EGL_FALSE;
+                            }
                             walkerSurface->multisampleResolve = value;
+
                             return EGL_TRUE;
                         }
                         case EGL_SWAP_BEHAVIOR:
@@ -536,7 +603,13 @@ extern "C"
                                 g_localStorage.error = EGL_BAD_ATTRIBUTE;
                                 return EGL_FALSE;
                             }
+                            if (value == EGL_BUFFER_PRESERVED && !(surfaceTypeBits & EGL_SWAP_BEHAVIOR_PRESERVED_BIT))
+                            {
+                                g_localStorage.error = EGL_BAD_MATCH;
+                                return EGL_FALSE;
+                            }
                             walkerSurface->swapBehavior = value;
+
                             return EGL_TRUE;
                         }
                         case EGL_SMPTE2086_DISPLAY_PRIMARY_RX_EXT:
@@ -656,6 +729,11 @@ extern "C"
                 {
                     if (reinterpret_cast<EGLSurface>(walkerSurface) == surface)
                     {
+                        if (!walkerSurface->initialized || walkerSurface->destroy)
+                        {
+                            g_localStorage.error = EGL_BAD_SURFACE;
+                            return EGL_FALSE;
+                        }
                         if (!walkerSurface->drawToPBuffer)
                         {
                             g_localStorage.error = EGL_BAD_SURFACE;
@@ -671,7 +749,14 @@ extern "C"
                             g_localStorage.error = EGL_BAD_PARAMETER;
                             return EGL_FALSE;
                         }
-                        return __bindTexImage(walkerDpy, walkerSurface, buffer);
+                        if (!__bindTexImage(walkerDpy, walkerSurface, buffer))
+                        {
+                            return EGL_FALSE;
+                        }
+
+                        g_localStorage.error = EGL_SUCCESS;
+
+                        return EGL_TRUE;
                     }
                     walkerSurface = walkerSurface->next;
                 }
@@ -709,6 +794,11 @@ extern "C"
                 {
                     if (reinterpret_cast<EGLSurface>(walkerSurface) == surface)
                     {
+                        if (!walkerSurface->initialized || walkerSurface->destroy)
+                        {
+                            g_localStorage.error = EGL_BAD_SURFACE;
+                            return EGL_FALSE;
+                        }
                         if (!walkerSurface->drawToPBuffer)
                         {
                             g_localStorage.error = EGL_BAD_SURFACE;
@@ -719,7 +809,14 @@ extern "C"
                             g_localStorage.error = EGL_BAD_PARAMETER;
                             return EGL_FALSE;
                         }
-                        return __releaseTexImage(walkerDpy, walkerSurface, buffer);
+                        if (!__releaseTexImage(walkerDpy, walkerSurface, buffer))
+                        {
+                            return EGL_FALSE;
+                        }
+
+                        g_localStorage.error = EGL_SUCCESS;
+
+                        return EGL_TRUE;
                     }
                     walkerSurface = walkerSurface->next;
                 }

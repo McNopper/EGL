@@ -1,25 +1,53 @@
 ﻿#include "egl_common.h"
 #include <algorithm>
 
-static int _ChooseConfig_sort_predicate(const void* _lhs, const void* _rhs)
+// The request template is needed for sort rule 3, so it is passed in explicitly;
+// a plain qsort comparator has no way of seeing it.
+static int _ChooseConfig_sort_predicate(const EGLConfigImpl* lhs, const EGLConfigImpl* rhs, const EGLConfigImpl& request)
 {
-    const EGLConfigImpl* lhs = *reinterpret_cast<const EGLConfigImpl* const*>(_lhs);
-    const EGLConfigImpl* rhs = *reinterpret_cast<const EGLConfigImpl* const*>(_rhs);
-
     if (lhs->configCaveat == rhs->configCaveat)
     {
         if (lhs->colorBufferType == rhs->colorBufferType)
         {
+            // EGL 1.5 Table 3.5 rule 3: a colour component whose requested size is
+            // 0 or EGL_DONT_CARE must NOT be counted. Summing all of them ranks an
+            // RGBA8888 config above RGB888 for a request of 8/8/8 without alpha.
             EGLint color_bits[2] = {0, 0};
             switch (lhs->colorBufferType)
             {
             case EGL_RGB_BUFFER:
-                color_bits[0] = lhs->redSize + lhs->greenSize + lhs->blueSize + lhs->alphaSize;
-                color_bits[1] = rhs->redSize + rhs->greenSize + rhs->blueSize + rhs->alphaSize;
+                if (request.redSize > 0)
+                {
+                    color_bits[0] += lhs->redSize;
+                    color_bits[1] += rhs->redSize;
+                }
+                if (request.greenSize > 0)
+                {
+                    color_bits[0] += lhs->greenSize;
+                    color_bits[1] += rhs->greenSize;
+                }
+                if (request.blueSize > 0)
+                {
+                    color_bits[0] += lhs->blueSize;
+                    color_bits[1] += rhs->blueSize;
+                }
+                if (request.alphaSize > 0)
+                {
+                    color_bits[0] += lhs->alphaSize;
+                    color_bits[1] += rhs->alphaSize;
+                }
                 break;
             case EGL_LUMINANCE_BUFFER:
-                color_bits[0] = lhs->luminanceSize + lhs->alphaSize;
-                color_bits[1] = rhs->luminanceSize + rhs->alphaSize;
+                if (request.luminanceSize > 0)
+                {
+                    color_bits[0] += lhs->luminanceSize;
+                    color_bits[1] += rhs->luminanceSize;
+                }
+                if (request.alphaSize > 0)
+                {
+                    color_bits[0] += lhs->alphaSize;
+                    color_bits[1] += rhs->alphaSize;
+                }
                 break;
             default:
                 break;
@@ -83,6 +111,15 @@ extern "C"
             attrib_list = emptyList;
 
         if (!num_config)
+        {
+            g_localStorage.error = EGL_BAD_PARAMETER;
+
+            return EGL_FALSE;
+        }
+
+        // config_size is signed and ends up as a memcpy size; a negative value would
+        // turn into a huge size_t.
+        if (config_size < 0)
         {
             g_localStorage.error = EGL_BAD_PARAMETER;
 
@@ -443,8 +480,9 @@ extern "C"
 
                     attribListIndex += 2;
 
-                    // More than 28 entries can not exist.
-                    if (attribListIndex >= 28 * 2)
+                    // More than 28 entries can not exist. A fully populated legal
+                    // list ends on exactly 28 * 2, so only more than that is an error.
+                    if (attribListIndex > 28 * 2)
                     {
                         g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
@@ -455,18 +493,40 @@ extern "C"
                 config.drawToPixmap  = (config.surfaceType & EGL_PIXMAP_BIT) ? EGL_TRUE : EGL_FALSE;
                 config.drawToPBuffer = (config.surfaceType & EGL_PBUFFER_BIT) ? EGL_TRUE : EGL_FALSE;
 
+                // EGL 1.5 §3.4.1: if EGL_CONFIG_ID is given and is not EGL_DONT_CARE,
+                // every other attribute is ignored.
+                const EGLBoolean matchConfigIdOnly = (config.configId != EGL_DONT_CARE) ? EGL_TRUE : EGL_FALSE;
+
                 // Check, if this configuration exists.
                 EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
 
-#define stack_mem_sz (1ull << 13) // 8k
-                char         stack_mem[stack_mem_sz];
-                const EGLint max_configs    = stack_mem_sz / sizeof(EGLConfig);
-                EGLConfig*   configsOnStack = reinterpret_cast<EGLConfig*>(stack_mem);
+                // Properly typed storage: a char array reinterpret_cast to EGLConfig*
+                // carries no alignment guarantee.
+                EGLConfig    configsOnStack[1024];
+                const EGLint max_configs = static_cast<EGLint>(sizeof(configsOnStack) / sizeof(configsOnStack[0]));
 
                 EGLint configIndex = 0;
 
                 while (walkerConfig && configIndex < max_configs)
                 {
+                    if (matchConfigIdOnly)
+                    {
+                        if (config.configId != walkerConfig->configId)
+                        {
+                            walkerConfig = walkerConfig->next;
+
+                            continue;
+                        }
+
+                        configsOnStack[configIndex] = walkerConfig;
+
+                        walkerConfig = walkerConfig->next;
+
+                        configIndex++;
+
+                        continue;
+                    }
+
                     if (config.alphaMaskSize > walkerConfig->alphaMaskSize)
                     {
                         walkerConfig = walkerConfig->next;
@@ -521,7 +581,9 @@ extern "C"
 
                         continue;
                     }
-                    if ((config.conformant & walkerConfig->conformant) != config.conformant)
+                    // EGL_DONT_CARE is -1, so the mask test below could never be
+                    // satisfied and would silently match nothing.
+                    if (config.conformant != EGL_DONT_CARE && (config.conformant & walkerConfig->conformant) != config.conformant)
                     {
                         walkerConfig = walkerConfig->next;
 
@@ -599,13 +661,13 @@ extern "C"
 
                         continue;
                     }
-                    if ((config.renderableType & walkerConfig->renderableType) != config.renderableType)
+                    if (config.renderableType != EGL_DONT_CARE && (config.renderableType & walkerConfig->renderableType) != config.renderableType)
                     {
                         walkerConfig = walkerConfig->next;
 
                         continue;
                     }
-                    if ((config.surfaceType & walkerConfig->surfaceType) != config.surfaceType)
+                    if (config.surfaceType != EGL_DONT_CARE && (config.surfaceType & walkerConfig->surfaceType) != config.surfaceType)
                     {
                         walkerConfig = walkerConfig->next;
 
@@ -655,12 +717,38 @@ extern "C"
                     configIndex++;
                 }
 
-                if (configIndex)
-                    qsort(configsOnStack, configIndex, sizeof(*configs), &_ChooseConfig_sort_predicate);
+                if (walkerConfig)
+                {
+                    // More matches than the stack buffer holds. Truncating silently
+                    // would leave the caller with no way of noticing.
+                    g_localStorage.error = EGL_BAD_ALLOC;
 
-                *num_config = configIndex;
+                    return EGL_FALSE;
+                }
+
+                if (configIndex)
+                {
+                    std::sort(configsOnStack, configsOnStack + configIndex,
+                              [&config](const EGLConfig lhs, const EGLConfig rhs)
+                              {
+                                  return _ChooseConfig_sort_predicate(reinterpret_cast<const EGLConfigImpl*>(lhs), reinterpret_cast<const EGLConfigImpl*>(rhs), config) < 0;
+                              });
+                }
+
+                // EGL 1.5 §3.4.1: when configs is not NULL, num_config reports the
+                // number of entries actually written, not the total match count.
+                EGLint numberWritten = configIndex;
+
                 if (configs)
-                    memcpy(configs, configsOnStack, (std::min)(configIndex, config_size) * sizeof(EGLConfig));
+                {
+                    numberWritten = (std::min)(configIndex, config_size);
+
+                    memcpy(configs, configsOnStack, static_cast<size_t>(numberWritten) * sizeof(EGLConfig));
+                }
+
+                *num_config = numberWritten;
+
+                g_localStorage.error = EGL_SUCCESS;
 
                 return EGL_TRUE;
             }
@@ -676,6 +764,13 @@ extern "C"
     EGLBoolean _eglGetConfigs(EGLDisplay dpy, EGLConfig* configs, EGLint config_size, EGLint* num_config)
     {
         if (!num_config)
+        {
+            g_localStorage.error = EGL_BAD_PARAMETER;
+
+            return EGL_FALSE;
+        }
+
+        if (config_size < 0)
         {
             g_localStorage.error = EGL_BAD_PARAMETER;
 
@@ -700,19 +795,28 @@ extern "C"
 
                 EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
 
-                EGLint configIndex = 0;
+                EGLint configIndex   = 0;
+                EGLint numberWritten = 0;
 
                 while (walkerConfig)
                 {
                     if (configs && configIndex < config_size)
+                    {
                         configs[configIndex] = walkerConfig;
+
+                        numberWritten++;
+                    }
 
                     walkerConfig = walkerConfig->next;
 
                     configIndex++;
                 }
 
-                *num_config = configIndex;
+                // EGL 1.5 §3.4.1: with configs != NULL only the number of entries
+                // actually written may be reported.
+                *num_config = configs ? numberWritten : configIndex;
+
+                g_localStorage.error = EGL_SUCCESS;
 
                 return EGL_TRUE;
             }
@@ -1028,6 +1132,8 @@ extern "C"
                     return EGL_FALSE;
                 }
                 }
+
+                g_localStorage.error = EGL_SUCCESS;
 
                 return EGL_TRUE;
             }

@@ -443,6 +443,8 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
+01.08.2026 - Comprehensive correctness, memory-safety and thread-safety pass. Fixed eglQueryContext out-of-bounds read; eglChooseConfig num_config reporting; per-thread current-binding tracking with reference counting; eglTerminate resource cleanup; cleanup loop skipping list-head nodes; eglGetDisplay atomicity; sRGB as per-config capability; Vulkan swapchain recreate double-free/OOB; per-frame/per-image semaphore rings; required vs optional device extensions; compositeAlpha negotiation; SetPixelFormat-once handling; WGL attribute green/blue swap; X11 teardown ordering; Wayland private event queue; and numerous spec-conformance error-code fixes. Verified on Windows (MSVC) and Linux (GCC, X11 + Wayland). v1.0.8.
+
 02.06.2026 - Correctness pass, including fixes and documentation alignment. v1.0.7.
 
 27.05.2026 - Fixed ReleaseDC resource leak on Windows. Fixed memory leak and uninitialized fence handles on Vulkan swapchain resize. Fixed eglWaitGL binding wrong API. Fixed duplicate CMake option blocks. v1.0.6.

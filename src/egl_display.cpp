@@ -1,6 +1,7 @@
 ﻿#include "egl_common.h"
 #include <cstring>
 #include <cstdio>
+#include <new>
 
 extern "C"
 {
@@ -21,36 +22,48 @@ extern "C"
             return EGL_NO_DISPLAY;
         }
 
-        //
+        // EGL_DEFAULT_DISPLAY has to be resolved BEFORE the lookup, because the
+        // resolved native handle is what gets stored. Searching for the
+        // unresolved 0 would never match and allocate a new display every call.
+        EGLNativeDisplayType resolved_id = display_id;
+
+        if (!resolved_id)
         {
-            auto _rl = g_globalStorage.placeRootDpy_readlock();
-
-            EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-
-            while (walkerDpy)
-            {
-                if (walkerDpy->display_id == display_id)
-                {
-                    return reinterpret_cast<EGLDisplay>(walkerDpy);
-                }
-
-                walkerDpy = walkerDpy->next;
-            }
+            auto dummy  = g_globalStorage.dummy_read();
+            resolved_id = __getDefaultNativeDisplay(&dummy);
         }
 
-        EGLDisplayImpl* newDpy = new EGLDisplayImpl();
+        // Lookup and insert must happen atomically under the write lock: otherwise
+        // two concurrent calls either lose one display or create two displays for
+        // the same display_id.
+        auto _wl = g_globalStorage.placeRootDpy_writelock();
+
+        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+        while (walkerDpy)
+        {
+            if (walkerDpy->display_id == resolved_id)
+            {
+                g_localStorage.error = EGL_SUCCESS;
+
+                return reinterpret_cast<EGLDisplay>(walkerDpy);
+            }
+
+            walkerDpy = walkerDpy->next;
+        }
+
+        EGLDisplayImpl* newDpy = new (std::nothrow) EGLDisplayImpl();
 
         if (!newDpy)
         {
+            g_localStorage.error = EGL_BAD_ALLOC;
+
             return EGL_NO_DISPLAY;
         }
 
         newDpy->initialized = EGL_FALSE;
         newDpy->destroy     = EGL_FALSE;
-        {
-            auto dummy         = g_globalStorage.dummy_read();
-            newDpy->display_id = display_id ? display_id : __getDefaultNativeDisplay(&dummy);
-        }
+        newDpy->display_id  = resolved_id;
         newDpy->rootSurface = 0;
         newDpy->rootCtx     = 0;
         newDpy->rootConfig  = 0;
@@ -61,8 +74,9 @@ extern "C"
         newDpy->currentCtx  = EGL_NO_CONTEXT_IMPL;
         newDpy->next        = g_globalStorage.rootDpy;
 
-        auto _wl                = g_globalStorage.placeRootDpy_writelock();
         g_globalStorage.rootDpy = newDpy;
+
+        g_localStorage.error = EGL_SUCCESS;
 
         return newDpy;
     }
@@ -85,12 +99,34 @@ extern "C"
                 }
 
                 {
-                    auto       dummy = g_globalStorage.dummy_read();
-                    EGLBoolean fail  = (!walkerDpy->initialized && !__initialize(walkerDpy, &dummy, &g_localStorage.error));
-                    g_globalStorage.dummy_write(dummy);
-                    if (fail)
+                    // The bootstrap state is process wide, so the whole
+                    // read-modify-write around __initialize has to be serialized.
+                    guard_t _b{g_globalStorage.bootstrapMutex()};
+
+                    if (!walkerDpy->initialized)
                     {
-                        return EGL_FALSE;
+                        // __initialize unconditionally installs a fresh config list,
+                        // so release the previous one first; otherwise a re-initialize
+                        // after eglTerminate orphans it.
+                        EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
+
+                        while (walkerConfig)
+                        {
+                            EGLConfigImpl* deleteConfig = walkerConfig;
+
+                            walkerConfig = walkerConfig->next;
+
+                            free(deleteConfig);
+                        }
+                        walkerDpy->rootConfig = 0;
+
+                        auto       dummy = g_globalStorage.dummy_read();
+                        EGLBoolean fail  = !__initialize(walkerDpy, &dummy, &g_localStorage.error);
+                        g_globalStorage.dummy_write(dummy);
+                        if (fail)
+                        {
+                            return EGL_FALSE;
+                        }
                     }
                 }
 
@@ -107,6 +143,8 @@ extern "C"
                 {
                     *minor = 5;
                 }
+
+                g_localStorage.error = EGL_SUCCESS;
 
                 return EGL_TRUE;
             }
@@ -134,7 +172,35 @@ extern "C"
 
                     if (!walkerDpy->initialized || walkerDpy->destroy)
                     {
+                        g_localStorage.error = EGL_SUCCESS;
+
                         return EGL_TRUE;
+                    }
+
+                    // EGL 1.5 §3.2: eglTerminate marks all resources of the display
+                    // for destruction. Without this the surface/context lists never
+                    // empty, so the display itself is never released and its config
+                    // list, native handles and the loaded GL library leak.
+                    // The native drawables are torn down by _eglInternalCleanup once
+                    // nothing has them current any more.
+                    EGLSurfaceImpl* walkerSurface = walkerDpy->rootSurface;
+
+                    while (walkerSurface)
+                    {
+                        walkerSurface->initialized = EGL_FALSE;
+                        walkerSurface->destroy     = EGL_TRUE;
+
+                        walkerSurface = walkerSurface->next;
+                    }
+
+                    EGLContextImpl* walkerCtx = walkerDpy->rootCtx;
+
+                    while (walkerCtx)
+                    {
+                        walkerCtx->initialized = EGL_FALSE;
+                        walkerCtx->destroy     = EGL_TRUE;
+
+                        walkerCtx = walkerCtx->next;
                     }
 
                     walkerDpy->initialized = EGL_FALSE;
@@ -150,6 +216,9 @@ extern "C"
         if (success)
         {
             _eglInternalCleanup();
+
+            g_localStorage.error = EGL_SUCCESS;
+
             return EGL_TRUE;
         }
 
@@ -162,7 +231,11 @@ extern "C"
         if (dpy == EGL_NO_DISPLAY)
         {
             if (name == EGL_EXTENSIONS)
+            {
+                g_localStorage.error = EGL_SUCCESS;
+
                 return "EGL_EXT_client_extensions EGL_EXT_platform_device";
+            }
             g_localStorage.error = EGL_BAD_DISPLAY;
             return nullptr;
         }
@@ -182,6 +255,8 @@ extern "C"
 
                     return 0;
                 }
+
+                g_localStorage.error = EGL_SUCCESS;
 
                 switch (name)
                 {
@@ -232,7 +307,9 @@ extern "C"
                         appendExt("EGL_EXT_gl_colorspace_display_p3");
                     if (hdr & EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT)
                         appendExt("EGL_EXT_gl_colorspace_display_p3_linear");
-                    if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)
+                    // Passthrough is a distinct colorspace, not just display_p3; it
+                    // has its own bit which the backends have to set to advertise it.
+                    if (hdr & EGL_HDR_CS_DISPLAY_P3_PASSTHROUGH_BIT)
                         appendExt("EGL_EXT_gl_colorspace_p3_passthrough");
                     if (hdr)
                     {
@@ -270,21 +347,38 @@ extern "C"
 
     EGLBoolean _eglReleaseThread(void)
     {
-        if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
+        EGLBoolean released = EGL_FALSE;
+
+        if (g_localStorage.currentDpy)
         {
             auto            _rl       = g_globalStorage.placeRootDpy_readlock();
             EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
 
             while (walkerDpy)
             {
-                guard_t _{walkerDpy->mutex};
-
-                if (walkerDpy->currentCtx == g_localStorage.currentCtx)
+                if (walkerDpy == g_localStorage.currentDpy)
                 {
+                    guard_t _{walkerDpy->mutex};
+
                     __makeCurrent(walkerDpy, nullptr, nullptr);
-                    walkerDpy->currentDraw = EGL_NO_SURFACE_IMPL;
-                    walkerDpy->currentRead = EGL_NO_SURFACE_IMPL;
-                    walkerDpy->currentCtx  = EGL_NO_CONTEXT_IMPL;
+
+                    // Drop this thread's references so the objects may be freed.
+                    if (g_localStorage.currentDraw != EGL_NO_SURFACE_IMPL)
+                        g_localStorage.currentDraw->refCount--;
+                    if (g_localStorage.currentRead != EGL_NO_SURFACE_IMPL)
+                        g_localStorage.currentRead->refCount--;
+                    if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
+                        g_localStorage.currentCtx->refCount--;
+
+                    if (walkerDpy->currentCtx == g_localStorage.currentCtx)
+                    {
+                        walkerDpy->currentDraw = EGL_NO_SURFACE_IMPL;
+                        walkerDpy->currentRead = EGL_NO_SURFACE_IMPL;
+                        walkerDpy->currentCtx  = EGL_NO_CONTEXT_IMPL;
+                    }
+
+                    released = EGL_TRUE;
+
                     break;
                 }
 
@@ -294,7 +388,12 @@ extern "C"
 
         // Reset per-thread state to the same defaults a freshly created thread has;
         // the rendering API resets to EGL_OPENGL_ES_API per EGL 1.5 (3.7).
-        g_localStorage = {EGL_SUCCESS, EGL_OPENGL_ES_API, EGL_NO_CONTEXT_IMPL};
+        g_localStorage = {EGL_SUCCESS, EGL_OPENGL_ES_API, EGL_NO_CONTEXT_IMPL, nullptr, EGL_NO_SURFACE_IMPL, EGL_NO_SURFACE_IMPL};
+
+        if (released)
+        {
+            _eglInternalCleanup();
+        }
 
         return EGL_TRUE;
     }

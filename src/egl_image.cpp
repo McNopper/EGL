@@ -1,4 +1,5 @@
 ﻿#include "egl_common.h"
+#include <new>
 
 extern "C"
 {
@@ -74,7 +75,7 @@ extern "C"
                     return EGL_NO_IMAGE;
                 }
 
-                EGLImageImpl* newImage = new EGLImageImpl();
+                EGLImageImpl* newImage = new (std::nothrow) EGLImageImpl();
                 if (!newImage)
                 {
                     g_localStorage.error = EGL_BAD_ALLOC;
@@ -85,6 +86,7 @@ extern "C"
                 std::lock_guard<std::mutex> lk(walkerDpy->mutex);
                 newImage->next       = walkerDpy->rootImage;
                 walkerDpy->rootImage = newImage;
+                g_localStorage.error = EGL_SUCCESS;
                 return reinterpret_cast<EGLImage>(newImage);
             }
             walkerDpy = walkerDpy->next;
@@ -118,6 +120,7 @@ extern "C"
                         else
                             walkerDpy->rootImage = walker->next;
                         delete walker;
+                        g_localStorage.error = EGL_SUCCESS;
                         return EGL_TRUE;
                     }
                     prev   = walker;

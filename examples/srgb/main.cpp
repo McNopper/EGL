@@ -10,12 +10,16 @@
 #include <GL/gl.h>
 #include <stdio.h>
 
+// EGL has no config attribute for sRGB framebuffer capability, and drivers commonly expose
+// it on 8 bit per component formats only. Requesting an alpha channel keeps the total colour
+// bit count (EGL 1.5 sorting rule 3) from promoting a 10 bit config ahead of an 8 bit one.
 static const EGLint k_config_attribs[] = {
     EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
     EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
     EGL_RED_SIZE,        8,
     EGL_GREEN_SIZE,      8,
     EGL_BLUE_SIZE,       8,
+    EGL_ALPHA_SIZE,      8,
     EGL_DEPTH_SIZE,      24,
     EGL_NONE
 };

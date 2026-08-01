@@ -80,7 +80,7 @@ bool resolve(HMODULE m, T& out, const char* name)
     return out != nullptr;
 }
 
-bool chooseDefaultConfig(EGLint* outVersion)
+bool chooseDefaultConfig()
 {
     static const EGLint cfgAttribs[] = {
         0x3033 /*EGL_SURFACE_TYPE*/, 0x0004 /*EGL_WINDOW_BIT*/,
@@ -93,29 +93,67 @@ bool chooseDefaultConfig(EGLint* outVersion)
     };
 
     EGLint num = 0;
-    if (!g.eglChooseConfig(g.display, cfgAttribs, &g.config, 1, &num) || num == 0)
+    if (g.eglChooseConfig(g.display, cfgAttribs, &g.config, 1, &num) && num != 0)
     {
-        // Fall back to ES2.
-        static const EGLint cfgAttribs2[] = {
-            0x3033, 0x0004,
-            0x3040, 0x0004 /*EGL_OPENGL_ES2_BIT*/,
-            0x3024, 8,
-            0x3023, 8,
-            0x3022, 8,
-            0x3021, 8,
-            0x3038};
-        num = 0;
-        if (!g.eglChooseConfig(g.display, cfgAttribs2, &g.config, 1, &num) || num == 0)
-        {
-            return false;
-        }
-        outVersion[0] = 2;
-        outVersion[1] = 0;
         return true;
     }
-    outVersion[0] = 3;
-    outVersion[1] = 0;
+
+    // Fall back to ES2.
+    static const EGLint cfgAttribs2[] = {
+        0x3033, 0x0004,
+        0x3040, 0x0004 /*EGL_OPENGL_ES2_BIT*/,
+        0x3024, 8,
+        0x3023, 8,
+        0x3022, 8,
+        0x3021, 8,
+        0x3038};
+    num = 0;
+    if (!g.eglChooseConfig(g.display, cfgAttribs2, &g.config, 1, &num) || num == 0)
+    {
+        return false;
+    }
     return true;
+}
+
+// Probe the highest ES version ANGLE actually accepts by creating a real context
+// for it, the same way the GLX path probes desktop GL. ANGLE's D3D11 backend
+// commonly supports 3.1/3.2, and the core rejects any request above
+// g_ES_max_supported_version, so reporting a hard-coded 3.0 would lock those out.
+bool probeESVersion(EGLint* outVersion)
+{
+    static const EGLint k_versions[][2] = {{3, 2}, {3, 1}, {3, 0}, {2, 0}};
+
+    if (g.eglBindAPI)
+    {
+        g.eglBindAPI(EGL_OPENGL_ES_API);
+    }
+
+    for (const auto& version : k_versions)
+    {
+        const EGLint ctxAttribs[] = {
+            0x3098 /*EGL_CONTEXT_MAJOR_VERSION*/, version[0],
+            0x30FB /*EGL_CONTEXT_MINOR_VERSION*/, version[1],
+            0x3038 /*EGL_NONE*/
+        };
+
+        void* ctx = g.eglCreateContext(g.display, g.config, nullptr, ctxAttribs);
+        if (ctx)
+        {
+            g.eglDestroyContext(g.display, ctx);
+            outVersion[0] = version[0];
+            outVersion[1] = version[1];
+            return true;
+        }
+
+        // Consume the failure so the next probe (and the application) does not
+        // observe a stale error code.
+        if (g.eglGetError)
+        {
+            g.eglGetError();
+        }
+    }
+
+    return false;
 }
 
 } // anonymous namespace
@@ -166,8 +204,11 @@ extern "C"
             resolve(g.libEGL, g.eglSwapBuffers, "eglSwapBuffers") &&
             resolve(g.libEGL, g.eglSwapInterval, "eglSwapInterval") &&
             resolve(g.libEGL, g.eglDestroyContext, "eglDestroyContext") &&
-            resolve(g.libEGL, g.eglDestroySurface, "eglDestroySurface") &&
-            resolve(g.libEGL, g.eglGetError, "eglGetError");
+            resolve(g.libEGL, g.eglDestroySurface, "eglDestroySurface");
+
+        // Optional: only used to consume error codes during version probing. A
+        // stripped libEGL missing it is no reason to disable the whole ES path.
+        resolve(g.libEGL, g.eglGetError, "eglGetError");
 
         if (!ok)
         {
@@ -206,10 +247,8 @@ extern "C"
             return EGL_FALSE;
         }
 
-        if (!chooseDefaultConfig(g.esMax))
+        if (!chooseDefaultConfig() || !probeESVersion(g.esMax))
         {
-            g.eglTerminate(g.display);
-            g.display = nullptr;
             angle_terminate();
             return EGL_FALSE;
         }
@@ -225,6 +264,13 @@ extern "C"
 
     void angle_terminate(void)
     {
+        // eglTerminate only MARKS the display's resources for deletion — a context
+        // that is still current keeps them, and the driver DLL, alive past the
+        // FreeLibrary below. Release it first.
+        if (g.display && g.eglMakeCurrent)
+        {
+            g.eglMakeCurrent(g.display, nullptr, nullptr, nullptr);
+        }
         if (g.display && g.eglTerminate)
         {
             g.eglTerminate(g.display);

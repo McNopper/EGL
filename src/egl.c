@@ -100,6 +100,8 @@ extern EGLBoolean _eglBindAPI(EGLenum api);
 
 extern EGLenum _eglQueryAPI(void);
 
+extern void _eglBindAPIKeepError(EGLenum api);
+
 extern EGLBoolean _eglWaitClient(void);
 
 extern EGLBoolean _eglReleaseThread(void);
@@ -122,7 +124,7 @@ EGLContext _eglGetCurrentContext(void);
 // EGL_VERSION_1_5
 //
 
-extern EGLDisplay _eglGetPlatformDisplay(EGLenum platform, void* native_display, const EGLAttrib* attrib_list);
+extern EGLDisplay _eglGetPlatformDisplay(EGLenum platform, const void* native_display, const EGLAttrib* attrib_list);
 
 extern EGLSurface _eglCreatePlatformWindowSurface(EGLDisplay dpy, EGLConfig config, void* native_window, const EGLAttrib* attrib_list);
 
@@ -270,7 +272,8 @@ EGLAPI EGLBoolean EGLAPIENTRY eglWaitGL(void)
 
     result = _eglWaitClient();
 
-    _eglBindAPI(api);
+    /* Restoring the API must not clear the error _eglWaitClient just reported. */
+    _eglBindAPIKeepError(api);
 
     return result;
 }

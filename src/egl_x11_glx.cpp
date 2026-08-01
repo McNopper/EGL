@@ -111,8 +111,14 @@ static GLXFBConfig __glxFBConfigById(Display* dpy, int screen, int id)
     const int    attribs[] = {GLX_FBCONFIG_ID, id, None};
     int          n         = 0;
     GLXFBConfig* fbs       = s_glXChooseFBConfig(dpy, screen, attribs, &n);
-    if (!fbs || n == 0)
+    if (!fbs)
         return nullptr;
+    if (n == 0)
+    {
+        // A non-NULL array with no entries still has to be released.
+        XFree(fbs);
+        return nullptr;
+    }
     GLXFBConfig fb = fbs[0];
     XFree(fbs);
     return fb;
@@ -402,23 +408,40 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* c)
     if (!c)
         return EGL_FALSE;
 
-    s_glXMakeContextCurrent(c->display, None, None, nullptr);
+    // This is reachable after a FAILED __internalInit, in which case neither the
+    // GLX entry points nor the Display were ever set up.
+    if (s_glXMakeContextCurrent && c->display)
+        s_glXMakeContextCurrent(c->display, None, None, nullptr);
 
     if (c->ctx)
     {
-        s_glXDestroyContext(c->display, c->ctx);
+        if (s_glXDestroyContext && c->display)
+            s_glXDestroyContext(c->display, c->ctx);
         c->ctx = nullptr;
     }
-    if (c->window)
+    if (c->window && c->display)
     {
         XDestroyWindow(c->display, c->window);
         c->window = 0;
     }
-    if (s_dummyColormap)
+    if (s_dummyColormap && c->display)
     {
         XFreeColormap(c->display, s_dummyColormap);
         s_dummyColormap = 0;
     }
+
+    // Tear the backends down BEFORE the Display is closed and libGL is unloaded:
+    // gles_init was handed this exact Display*, so eglTerminate on the system EGL
+    // would otherwise touch freed Xlib state, and the Vulkan/GL interop entry points
+    // still point into libGL.
+#ifdef LINUX_VK
+    __vkTerm();
+#endif
+
+#ifdef EGL_LINUX_ENABLE_GLES
+    gles_terminate();
+#endif
+
     if (c->display)
     {
         XCloseDisplay(c->display);
@@ -429,14 +452,6 @@ EGLBoolean __internalTerminate(NativeLocalStorageContainer* c)
         dlclose(s_libGL);
         s_libGL = nullptr;
     }
-
-#ifdef LINUX_VK
-    __vkTerm();
-#endif
-
-#ifdef EGL_LINUX_ENABLE_GLES
-    gles_terminate();
-#endif
 
     return EGL_TRUE;
 }
@@ -830,15 +845,26 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
         VkColorSpaceKHR cs;
         if (__vkIsReady() && _eglHDRColorspaceToVk(parsedColorspace, &fmt, &cs))
         {
+            // The application explicitly asked for an HDR colorspace — silently
+            // handing back an SDR surface would be worse than failing.
             auto* hdr = static_cast<NativeHDRSurfaceContainer*>(
                 malloc(sizeof(NativeHDRSurfaceContainer)));
-            if (hdr)
+            if (!hdr)
             {
-                if (__vkCreateHDRSurface(hdr, win, walkerDpy->display_id,
-                                         parsedColorspace, w, h) == EGL_TRUE)
-                    newSurface->nativeSurfaceContainer.hdr = hdr;
-                else
-                    free(hdr);
+                *error = EGL_BAD_ALLOC;
+                return EGL_FALSE;
+            }
+
+            if (__vkCreateHDRSurface(hdr, win, walkerDpy->display_id,
+                                     parsedColorspace, w, h) == EGL_TRUE)
+            {
+                newSurface->nativeSurfaceContainer.hdr = hdr;
+            }
+            else
+            {
+                free(hdr);
+                *error = EGL_BAD_MATCH;
+                return EGL_FALSE;
             }
         }
     }
@@ -1098,65 +1124,104 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy,
                          EGLNativePixmapType   target)
 {
     (void)surface;
-    if (!target)
+    if (!walkerDpy || !target)
         return EGL_FALSE;
 
-    Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
+    Display* dpy    = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int      screen = DefaultScreen(dpy);
+
+    // The XImage has to match the PIXMAP's depth and geometry — not the screen's
+    // default visual and not the GL viewport.
+    Window       root;
+    int          px, py;
+    unsigned int pw = 0, ph = 0, pbw = 0, pdepth = 0;
+    if (!XGetGeometry(dpy, (Drawable)target, &root, &px, &py, &pw, &ph, &pbw, &pdepth))
+        return EGL_FALSE;
+
+    // We read back 8-bit BGRA, so only the packed 32-bit-per-pixel depths can be
+    // served without an extra conversion pass.
+    if (pdepth != 24 && pdepth != 32)
+        return EGL_FALSE;
+
+    // Handing XCreateImage a visual whose depth differs from the drawable's is a
+    // BadMatch, and the default visual need not have the pixmap's depth.
+    Visual*     visual = DefaultVisual(dpy, screen);
+    XVisualInfo vinfo;
+    if ((unsigned int)DefaultDepth(dpy, screen) != pdepth)
+    {
+        if (!XMatchVisualInfo(dpy, screen, (int)pdepth, TrueColor, &vinfo))
+            return EGL_FALSE;
+        visual = vinfo.visual;
+    }
 
     // Read current GL viewport dimensions
     GLint vp[4];
     glGetIntegerv(GL_VIEWPORT, vp);
-    int width  = vp[2];
-    int height = vp[3];
-    if (width <= 0 || height <= 0)
+    if (vp[2] <= 0 || vp[3] <= 0)
         return EGL_FALSE;
 
-    // Read framebuffer pixels (BGRA, bottom-up)
-    GLsizei stride = (width * 4 + 3) & ~3;
-    auto*   pixels = static_cast<GLubyte*>(malloc((size_t)stride * (size_t)height));
+    // Never copy more than the pixmap can actually hold.
+    unsigned int width  = ((unsigned int)vp[2] < pw) ? (unsigned int)vp[2] : pw;
+    unsigned int height = ((unsigned int)vp[3] < ph) ? (unsigned int)vp[3] : ph;
+    if (width == 0 || height == 0)
+        return EGL_FALSE;
+
+    // Let Xlib derive bits_per_pixel and the stride from the server's pixmap format
+    // for this depth instead of assuming width * 4.
+    XImage* img = XCreateImage(dpy, visual, pdepth, ZPixmap, 0, nullptr,
+                               width, height, 32, 0);
+    if (!img)
+        return EGL_FALSE;
+
+    if (img->bits_per_pixel != 32 || img->bytes_per_line <= 0)
+    {
+        XDestroyImage(img);
+        return EGL_FALSE;
+    }
+
+    const size_t stride = (size_t)img->bytes_per_line;
+
+    auto* pixels = static_cast<GLubyte*>(malloc(stride * (size_t)height));
     if (!pixels)
+    {
+        XDestroyImage(img);
         return EGL_FALSE;
+    }
 
-    // GL_BGRA = 0x80E1
-    glReadPixels(0, 0, width, height, 0x80E1, GL_UNSIGNED_BYTE, pixels);
+    // GL_BGRA = 0x80E1; the default GL_PACK_ALIGNMENT of 4 produces exactly the
+    // stride Xlib computed for a 32-bit-per-pixel, 32-bit-padded scanline.
+    glReadPixels(0, 0, (GLsizei)width, (GLsizei)height, 0x80E1, GL_UNSIGNED_BYTE, pixels);
 
     // Flip rows (GL is bottom-up, X is top-down)
-    auto* flipped = static_cast<GLubyte*>(malloc((size_t)stride * (size_t)height));
+    auto* flipped = static_cast<GLubyte*>(malloc(stride * (size_t)height));
     if (!flipped)
     {
         free(pixels);
+        XDestroyImage(img);
         return EGL_FALSE;
     }
-    for (int row = 0; row < height; ++row)
-        memcpy(flipped + (size_t)row * (size_t)stride,
-               pixels + (size_t)(height - 1 - row) * (size_t)stride,
-               (size_t)stride);
+    for (unsigned int row = 0; row < height; ++row)
+        memcpy(flipped + (size_t)row * stride,
+               pixels + (size_t)(height - 1 - row) * stride,
+               stride);
     free(pixels);
 
-    // Query the pixmap's depth to create a matching XImage
-    Window       root;
-    int          px, py;
-    unsigned int pw, ph, pbw, pdepth;
-    XGetGeometry(dpy, (Drawable)target, &root, &px, &py, &pw, &ph, &pbw, &pdepth);
+    // XDestroyImage frees img->data (flipped) as well
+    img->data = reinterpret_cast<char*>(flipped);
 
-    XImage* img = XCreateImage(dpy, DefaultVisual(dpy, DefaultScreen(dpy)),
-                               pdepth, ZPixmap, 0,
-                               reinterpret_cast<char*>(flipped),
-                               (unsigned)width, (unsigned)height,
-                               32, stride);
-    if (!img)
+    GC gc = XCreateGC(dpy, (Drawable)target, 0, nullptr);
+    if (!gc)
     {
-        free(flipped);
+        XDestroyImage(img);
         return EGL_FALSE;
     }
 
-    GC gc = XCreateGC(dpy, (Drawable)target, 0, nullptr);
-    XPutImage(dpy, (Drawable)target, gc, img, 0, 0, 0, 0, (unsigned)width, (unsigned)height);
+    XPutImage(dpy, (Drawable)target, gc, img, 0, 0, 0, 0, width, height);
     XFreeGC(dpy, gc);
-
-    // XDestroyImage frees img->data (flipped) as well
-    img->data = reinterpret_cast<char*>(flipped); // ensure it's set
     XDestroyImage(img);
+
+    // Surface any X error here rather than on an unrelated later call.
+    XSync(dpy, False);
 
     return EGL_TRUE;
 }
@@ -1439,7 +1504,7 @@ EGLBoolean __getPlatformDependentHandles(void*                         out,
                                          const NativeSurfaceContainer* nativeSurfaceContainer,
                                          const NativeContextContainer* nativeContextContainer)
 {
-    if (!nativeSurfaceContainer || !nativeContextContainer)
+    if (!out || !walkerDpy || !nativeSurfaceContainer || !nativeContextContainer)
         return EGL_FALSE;
 
     EGLContextInternals* h = reinterpret_cast<EGLContextInternals*>(out);

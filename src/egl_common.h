@@ -3,6 +3,7 @@
 #include <atomic>
 #include <thread>
 #include <mutex>
+#include <shared_mutex>
 #include "egl_internal.h"
 #include <EGL/eglext.h>
 
@@ -18,13 +19,6 @@
 #define GL_WAIT_FAILED_GL 0x911D
 #define GL_SYNC_FLUSH_COMMANDS_BIT_GL 0x00000001
 #define GL_TIMEOUT_IGNORED_GL 0xFFFFFFFFFFFFFFFFull
-
-// Internal token used by our eglClientWaitSync implementation to signal a wait failure.
-// EGL 1.5 reserves 0x30F4 but does not expose it as a public define; it's referenced as
-// EGL_WAIT_FAILED_KHR by EGL_KHR_reusable_sync. Defined here to keep <EGL/egl.h> unmodified.
-#ifndef EGL_WAIT_FAILED
-#define EGL_WAIT_FAILED 0x30F4
-#endif
 
 typedef void (*__PFN_glFinish)();
 typedef void* (*__PFN_glFenceSync)(GLenum condition, GLbitfield flags);
@@ -113,6 +107,15 @@ struct GlobalStorage
         return WriteLock(this);
     }
 
+    // Serializes the whole read-modify-write of the process wide bootstrap state
+    // (dummy window / DC / GL context, resp. the X11 Display connection). Without
+    // it two concurrent eglGetDisplay calls both run the bootstrap and one of the
+    // two results is leaked.
+    std::mutex& bootstrapMutex()
+    {
+        return lock_bootstrap;
+    }
+
     GlobalStorage()
     {
         memset(&dummy, 0, sizeof(dummy));
@@ -121,36 +124,29 @@ struct GlobalStorage
   private:
     NativeLocalStorageContainer dummy;
 
-    std::atomic_uint32_t lock_dpy   = 0u;
-    std::atomic_uint32_t lock_dummy = 0u;
+    // Reader/writer locks. std::shared_mutex does not starve writers and does not
+    // busy-wait, unlike the hand-rolled spin counter this replaces.
+    std::shared_mutex lock_dpy;
+    std::shared_mutex lock_dummy;
 
-    static void lock_read(std::atomic_uint32_t& c)
-    {
-        if (++c > LOCK_WRITE_VALUE)
-        {
-            while (c >= LOCK_WRITE_VALUE)
-                std::this_thread::yield();
-        }
-    }
-    static void unlock_read(std::atomic_uint32_t& c)
-    {
-        --c;
-    }
-    static void lock_write(std::atomic_uint32_t& c)
-    {
-        uint32_t expected = 0u;
-        while (!c.compare_exchange_strong(expected, LOCK_WRITE_VALUE))
-        {
-            expected = 0u;
-            std::this_thread::yield();
-        }
-    }
-    static void unlock_write(std::atomic_uint32_t& c)
-    {
-        c -= LOCK_WRITE_VALUE;
-    }
+    std::mutex lock_bootstrap;
 
-    constexpr inline static uint32_t LOCK_WRITE_VALUE = 0xdeadbeefu;
+    static void lock_read(std::shared_mutex& m)
+    {
+        m.lock_shared();
+    }
+    static void unlock_read(std::shared_mutex& m)
+    {
+        m.unlock_shared();
+    }
+    static void lock_write(std::shared_mutex& m)
+    {
+        m.lock();
+    }
+    static void unlock_write(std::shared_mutex& m)
+    {
+        m.unlock();
+    }
 };
 
 typedef std::lock_guard<std::mutex> guard_t;

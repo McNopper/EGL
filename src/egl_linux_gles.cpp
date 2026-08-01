@@ -35,7 +35,6 @@ typedef int (*PFN_eglSwapInterval)(void* dpy, int interval);
 typedef int (*PFN_eglDestroyContext)(void* dpy, void* ctx);
 typedef int (*PFN_eglDestroySurface)(void* dpy, void* surface);
 typedef int (*PFN_eglGetError)(void);
-typedef void* (*PFN_eglGetProcAddress)(const char* procname);
 
 // EGL_OPENGL_ES_API = 0x30A0
 #define SYSGL_EGL_OPENGL_ES_API 0x30A0u
@@ -77,7 +76,6 @@ struct GlesState
     PFN_eglDestroyContext        eglDestroyContext{nullptr};
     PFN_eglDestroySurface        eglDestroySurface{nullptr};
     PFN_eglGetError              eglGetError{nullptr};
-    PFN_eglGetProcAddress        eglGetProcAddress{nullptr};
 
     void* display{nullptr};
     void* config{nullptr};
@@ -121,6 +119,11 @@ static bool chooseDefaultConfig(int* outVersion)
         SYSGL_EGL_BLUE_SIZE, 8,
         SYSGL_EGL_ALPHA_SIZE, 8,
         SYSGL_EGL_NONE};
+
+    // Consume the ES3 failure so the application does not observe a stale error
+    // code from a probe it never made.
+    if (g.eglGetError)
+        g.eglGetError();
 
     num = 0;
     if (g.eglChooseConfig(g.display, cfgAttribs2, &g.config, 1, &num) && num > 0)
@@ -175,14 +178,17 @@ extern "C"
             resolveSym(g.libEGL, g.eglSwapBuffers, "eglSwapBuffers") &&
             resolveSym(g.libEGL, g.eglSwapInterval, "eglSwapInterval") &&
             resolveSym(g.libEGL, g.eglDestroyContext, "eglDestroyContext") &&
-            resolveSym(g.libEGL, g.eglDestroySurface, "eglDestroySurface") &&
-            resolveSym(g.libEGL, g.eglGetError, "eglGetError");
+            resolveSym(g.libEGL, g.eglDestroySurface, "eglDestroySurface");
 
         if (!ok)
         {
             gles_terminate();
             return EGL_FALSE;
         }
+
+        // Optional: only used to consume error codes between config probes. A
+        // stripped libEGL missing it is no reason to disable the whole ES path.
+        resolveSym(g.libEGL, g.eglGetError, "eglGetError");
 
         resolveSym(g.libEGL, g.eglGetPlatformDisplayEXT, "eglGetPlatformDisplayEXT");
 
@@ -206,8 +212,6 @@ extern "C"
 
         if (!chooseDefaultConfig(g.esMax))
         {
-            g.eglTerminate(g.display);
-            g.display = nullptr;
             gles_terminate();
             return EGL_FALSE;
         }
@@ -233,6 +237,13 @@ extern "C"
 
     void gles_terminate(void)
     {
+        // eglTerminate only MARKS the display's resources for deletion — a context
+        // that is still current keeps them, and the driver libraries, alive past the
+        // dlclose below. Release it first.
+        if (g.display && g.eglMakeCurrent)
+        {
+            g.eglMakeCurrent(g.display, nullptr, nullptr, nullptr);
+        }
         if (g.display && g.eglTerminate)
         {
             g.eglTerminate(g.display);

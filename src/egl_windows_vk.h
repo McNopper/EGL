@@ -11,11 +11,26 @@ struct _NativeHDRSurfaceContainer
     VkSwapchainKHR   vkSwapchain;
     VkFormat         vkFormat;
     VkColorSpaceKHR  vkColorSpace;
+    // Per-swapchain-image objects. All of these arrays have exactly imageCount
+    // entries; imageCount is only non-zero while arrays of that size really exist.
     uint32_t         imageCount;
     VkImage*         swapchainImages;
     VkCommandPool    cmdPool;
     VkCommandBuffer* cmdBuffers;
-    VkFence*         fences;
+    // One render-finished semaphore per swapchain image (the canonical WSI pattern):
+    // a single shared one would be re-signalled while an earlier present still waits.
+    VkSemaphore* renderFinishedSemaphores;
+    // Non-owning aliases into fences[]: which frame slot last submitted work for
+    // this image, so a re-used image is never recorded into while still in flight.
+    VkFence* imagesInFlight;
+
+    // Per-frame-in-flight objects. imageCount + 1 slots, indexed by frameIndex.
+    // The acquire semaphore must have no pending signal/wait when it is passed to
+    // vkAcquireNextImageKHR, which the matching per-frame fence guarantees.
+    uint32_t     frameCount;
+    uint32_t     frameIndex;
+    VkSemaphore* acquireSemaphores;
+    VkFence*     fences;
 
     VkImage        renderImage;
     VkDeviceMemory renderMemory;
@@ -23,13 +38,14 @@ struct _NativeHDRSurfaceContainer
     GLuint         glMemoryObject;
     GLuint         blitFbo;
 
-    VkSemaphore acquireSemaphore;
     VkSemaphore glDoneSemaphore;
-    VkSemaphore blitDoneSemaphore;
     GLuint      glDoneSemObj;
 
-    uint32_t     width;
-    uint32_t     height;
+    uint32_t width;
+    uint32_t height;
+    // The extent the swapchain images were actually created with. During a live
+    // resize this can differ from width/height, which still describe the GL side.
+    VkExtent2D   swapchainExtent;
     VkDeviceSize renderMemorySize;
     HWND         hwnd;
 
