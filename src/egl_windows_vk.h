@@ -1,4 +1,5 @@
-﻿#pragma once
+﻿#ifndef EGL_WINDOWS_VK_H
+#define EGL_WINDOWS_VK_H
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
 #include "egl_internal.h"
@@ -73,3 +74,4 @@ uint32_t   __vkQueryHDRColorspaces(HWND hwnd);
 // it for submission when the colorspace actually consumes it (HDR10 PQ / HLG) and
 // the application supplied non-zero values.
 void __vkUpdateHDRMetadata(NativeHDRSurfaceContainer* hdr, const EGLSurfaceImpl* surf);
+#endif  // EGL_WINDOWS_VK_H

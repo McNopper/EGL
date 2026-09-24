@@ -1,4 +1,5 @@
-﻿#pragma once
+﻿#ifndef EGL_COMMON_H
+#define EGL_COMMON_H
 
 #include <atomic>
 #include <thread>
@@ -33,8 +34,8 @@ extern __PFN_glClientWaitSync glClientWaitSync_PTR;
 extern __PFN_glWaitSync       glWaitSync_PTR;
 extern __PFN_glGetSynciv      glGetSynciv_PTR;
 
-#define EGL_NO_SURFACE_IMPL static_cast<EGLSurfaceImpl*>(EGL_NO_SURFACE)
-#define EGL_NO_CONTEXT_IMPL static_cast<EGLContextImpl*>(EGL_NO_CONTEXT)
+#define EGL_NO_SURFACE_IMPL (static_cast<EGLSurfaceImpl*>(EGL_NO_SURFACE))
+#define EGL_NO_CONTEXT_IMPL (static_cast<EGLContextImpl*>(EGL_NO_CONTEXT))
 
 struct GlobalStorage
 {
@@ -163,3 +164,4 @@ extern __PFN_glFinish glFinish_PTR;
 EGLBoolean _eglInternalInit();
 void       _eglInternalTerminate();
 void       _eglInternalCleanup();
+#endif  // EGL_COMMON_H

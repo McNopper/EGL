@@ -620,6 +620,13 @@ static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* na
         *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display));
         return EGL_TRUE;
     }
+    // Advertised as a client extension by _eglQueryString, so it has to be
+    // accepted here as well (only the default device is supported).
+    if (platform == EGL_PLATFORM_DEVICE_EXT && !native_display)
+    {
+        *out = EGL_DEFAULT_DISPLAY;
+        return EGL_TRUE;
+    }
     return EGL_FALSE;
 }
 
@@ -635,6 +642,13 @@ static inline EGLBoolean __matchPlatformDisplay(EGLenum platform, const void* na
     if (platform == EGL_PLATFORM_X11_EXT || platform == EGL_PLATFORM_X11_KHR)
     {
         *out = reinterpret_cast<EGLNativeDisplayType>(const_cast<void*>(native_display));
+        return EGL_TRUE;
+    }
+    // Advertised as a client extension by _eglQueryString, so it has to be
+    // accepted here as well (only the default device is supported).
+    if (platform == EGL_PLATFORM_DEVICE_EXT && !native_display)
+    {
+        *out = EGL_DEFAULT_DISPLAY;
         return EGL_TRUE;
     }
     return EGL_FALSE;

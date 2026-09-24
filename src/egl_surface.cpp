@@ -500,6 +500,8 @@ extern "C"
                             if (value)
                                 *value = walkerSurface->cta861MaxFrameAverageLightLevel;
                             return EGL_TRUE;
+                        default:
+                            break; // Unrecognized attribute; ignored.
                         }
 
                         g_localStorage.error = EGL_BAD_ATTRIBUTE;
@@ -648,6 +650,8 @@ extern "C"
                         case EGL_CTA861_3_MAX_FRAME_AVERAGE_LEVEL_EXT:
                             walkerSurface->cta861MaxFrameAverageLightLevel = value;
                             return EGL_TRUE;
+                        default:
+                            break; // Unrecognized attribute; ignored.
                         }
 
                         g_localStorage.error = EGL_BAD_ATTRIBUTE;

@@ -3,7 +3,7 @@
 thread_local LocalStorage g_localStorage =
     {EGL_SUCCESS, EGL_OPENGL_ES_API, EGL_NO_CONTEXT_IMPL, nullptr, EGL_NO_SURFACE_IMPL, EGL_NO_SURFACE_IMPL};
 
-GlobalStorage g_globalStorage;
+GlobalStorage g_globalStorage; // NOLINT(bugprone-throwing-static-initialization) - contains only mutexes/PODs; their construction cannot throw
 
 EGLint g_GL_max_supported_version[2] = {0, 0};
 EGLint g_ES_max_supported_version[2] = {0, 0};

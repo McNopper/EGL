@@ -26,7 +26,7 @@
 
 #include "egl_windows_vk.h"
 #include "egl_common.h"
-#include "../../EGL/include/EGL/eglctxinternals.h"
+#include "eglctxinternals.h"
 #ifdef EGL_WIN_ENABLE_ANGLE
 #include "egl_windows_angle.h"
 #endif
@@ -565,7 +565,12 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
         attribListIndex += 2;
 
         // More than 14 entries can not exist.
-        if (attribListIndex >= 7 * 2)
+        // The template is written by fixed slot, so nothing here grows with the
+        // input length; this is purely a cap on the number of accepted attributes.
+        // There are exactly 7 distinct EGL context attributes and the switch above
+        // handles all of them, so a fully specified legal list must be accepted —
+        // the check has to fire only *after* the 7th pair, not at it.
+        if (attribListIndex > 7 * 2)
         {
             *error = EGL_BAD_ATTRIBUTE;
 
@@ -692,6 +697,8 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
         case EGL_VG_COLORSPACE:
             *error = EGL_BAD_MATCH;
             return EGL_FALSE;
+        default:
+            break; // Unrecognized attribute; ignored.
         }
 
         currentAttribIndex += 2;
@@ -761,7 +768,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
     newSurface->drawToPixmap               = EGL_FALSE;
     newSurface->drawToPBuffer              = EGL_TRUE;
     newSurface->doubleBuffer               = (EGLBoolean)iattribs[7];
-    newSurface->configId                   = pformat;
+    newSurface->configId                   = walkerConfig->configId;
     newSurface->width                      = width;
     newSurface->height                     = height;
     newSurface->swapBehavior               = EGL_BUFFER_DESTROYED;
@@ -806,7 +813,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
         newSurface->drawToPixmap                        = EGL_FALSE;
         newSurface->drawToPBuffer                       = EGL_FALSE;
         newSurface->doubleBuffer                        = EGL_TRUE;
-        newSurface->configId                            = 0;
+        newSurface->configId                            = walkerConfig->configId;
         newSurface->width                               = rect.right - rect.left;
         newSurface->height                              = rect.bottom - rect.top;
         newSurface->swapBehavior                        = EGL_BUFFER_DESTROYED;
@@ -934,13 +941,6 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
             }
             break;
             case EGL_VG_ALPHA_FORMAT:
-            {
-                ReleaseDC(win, hdc);
-
-                *error = EGL_BAD_MATCH;
-
-                return EGL_FALSE;
-            }
             case EGL_VG_COLORSPACE:
             {
                 ReleaseDC(win, hdc);
@@ -949,6 +949,8 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 
                 return EGL_FALSE;
             }
+        default:
+            break; // Unrecognized attribute; ignored.
             }
 
             indexAttribList += 2;
@@ -1053,7 +1055,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
     newSurface->drawToPixmap  = EGL_FALSE;
     newSurface->drawToPBuffer = EGL_FALSE;
     newSurface->doubleBuffer  = (EGLBoolean)template_attrib_list[7];
-    newSurface->configId      = wgl_formats;
+    newSurface->configId      = walkerConfig->configId;
 
     RECT rect = {0};
     GetClientRect(win, &rect);
@@ -1235,7 +1237,11 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
         return EGL_FALSE;
     }
 
-    SelectObject(memDC, pixmap);
+    // Keep the previously selected bitmap so the error paths below can put it back
+    // before DeleteDC: deleting a memory DC while the caller's bitmap is still
+    // selected into it is invalid and leaves the bitmap's selection state dangling
+    // (see __destroySurface, which goes out of its way to avoid exactly this).
+    HGDIOBJ previousBitmap = SelectObject(memDC, pixmap);
 
     PIXELFORMATDESCRIPTOR pfd;
     memset(&pfd, 0, sizeof(pfd));
@@ -1244,6 +1250,7 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
 
     if (!SetPixelFormat(memDC, walkerConfig->configId, &pfd))
     {
+        SelectObject(memDC, previousBitmap);
         DeleteDC(memDC);
         *error = EGL_BAD_MATCH;
         return EGL_FALSE;
@@ -1698,16 +1705,31 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
         }
 
         newConfig->matchNativePixmap = EGL_NONE;
-        newConfig->nativeRenderable  = EGL_DONT_CARE; // ???
+
+        // EGL_NATIVE_RENDERABLE is a config *value* and only ever EGL_TRUE or
+        // EGL_FALSE; EGL_DONT_CARE is a request value only. Storing it made
+        // eglGetConfigAttrib report an illegal -1 and made
+        // eglChooseConfig(..., EGL_NATIVE_RENDERABLE, EGL_TRUE, ...) match nothing,
+        // while the GLX backend reports EGL_TRUE and works.
+        {
+            int gdiValue = 0;
+            attribute    = WGL_SUPPORT_GDI_ARB;
+            if (wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &gdiValue))
+            {
+                newConfig->nativeRenderable = gdiValue ? EGL_TRUE : EGL_FALSE;
+            }
+            else
+            {
+                newConfig->nativeRenderable = EGL_TRUE;
+            }
+        }
 
         // Query configCaveat from acceleration type.
         int accelValue = 0;
         attribute      = WGL_ACCELERATION_ARB;
         if (wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &accelValue))
         {
-            if (accelValue == WGL_NO_ACCELERATION_ARB)
-                newConfig->configCaveat = EGL_SLOW_CONFIG;
-            else if (accelValue == WGL_GENERIC_ACCELERATION_ARB)
+            if (accelValue == WGL_NO_ACCELERATION_ARB || accelValue == WGL_GENERIC_ACCELERATION_ARB)
                 newConfig->configCaveat = EGL_SLOW_CONFIG;
             else
                 newConfig->configCaveat = EGL_NONE;

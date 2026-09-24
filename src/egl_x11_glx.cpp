@@ -25,7 +25,7 @@
  */
 
 #include "egl_common.h"
-#include <EGL/eglctxinternals.h>
+#include "eglctxinternals.h"
 
 #ifdef LINUX_VK
 #include "egl_linux_vk.h"
@@ -210,6 +210,9 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     GLXFBConfig* fbs = s_glXChooseFBConfig(c->display, screen, kDummyFBAttribs, &nfb);
     if (!fbs || nfb == 0)
     {
+        // glXChooseFBConfig may hand back a non-NULL zero-length allocation.
+        if (fbs)
+            XFree(fbs);
         XCloseDisplay(c->display);
         c->display = nullptr;
         dlclose(s_libGL);
@@ -580,7 +583,12 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
         }
 
         idx += 2;
-        if (idx >= 7 * 2)
+        // Fixed-slot template: nothing grows with the input length, so this only
+        // caps the accepted attribute count. There are exactly 7 distinct EGL
+        // context attributes and the switch above handles all of them, so a fully
+        // specified legal list must pass - the check has to fire after the 7th
+        // pair, not at it.
+        if (idx > 7 * 2)
         {
             *error = EGL_BAD_ATTRIBUTE;
             return EGL_FALSE;
@@ -1283,6 +1291,9 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
     GLXFBConfig* fbs = s_glXGetFBConfigs(dpy, screen, &nfb);
     if (!fbs || nfb == 0)
     {
+        // The array can be non-NULL with zero elements.
+        if (fbs)
+            XFree(fbs);
         *error = EGL_NOT_INITIALIZED;
         return EGL_FALSE;
     }

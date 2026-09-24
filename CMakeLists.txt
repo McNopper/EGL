@@ -1,9 +1,20 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(EGL C CXX)
+project(EGL VERSION 1.0.9 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Build policy + static analysis. Registered ONLY when EGL is the top-level
+# project: the example projects vendor EGL through add_subdirectory() and
+# FetchContent, and a second `cppcheck` custom target would make CMake fail
+# that build outright. None of this is required to build EGL - with the tools
+# absent and every option at its default the build is unchanged.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
+    include(cppcheck)
+    include(warnings)
+endif()
 
 if(WIN32)
     # Windows — WGL + Vulkan HDR (fully implemented)
@@ -25,9 +36,9 @@ if(WIN32)
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows_angle.cpp)
             set(EGL_ES_BACKEND_SUFFIX "_ES_Windows_ANGLE")
         else()
-            message(WARNING "EGL: EGL_WIN_ENABLE_ANGLE=ON but ANGLE package not found. "
-                            "Run 'vcpkg install' or pass -DCMAKE_TOOLCHAIN_FILE=<vcpkg.cmake>. "
-                            "Disabling ANGLE for this build.")
+            message(STATUS "EGL: EGL_WIN_ENABLE_ANGLE=ON but the ANGLE package was not found - "
+                           "building without the ANGLE OpenGL ES backend. Run 'vcpkg install' or pass "
+                           "-DCMAKE_TOOLCHAIN_FILE=<vcpkg.cmake> to enable it.")
             set(EGL_HAS_ANGLE OFF)
         endif()
     endif()
@@ -131,6 +142,7 @@ set(EGL_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_api.cpp
     ${EGL_PLATFORM_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_internal.h
+    ${CMAKE_CURRENT_LIST_DIR}/src/eglctxinternals.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/egl.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/eglext.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/eglplatform.h
@@ -139,6 +151,13 @@ set(EGL_SOURCES
 add_library(EGL STATIC
     ${EGL_SOURCES})
 
+# No-op at the default settings; raises the level and/or makes it fatal when
+# ENABLE_STRICT_WARNINGS / ENABLE_WERROR are turned on. PRIVATE, so consumers
+# of EGL never inherit these flags.
+if(COMMAND project_enable_warnings)
+    project_enable_warnings(EGL)
+endif()
+
 set_target_properties(EGL PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY         ${CMAKE_SOURCE_DIR}/lib
     ARCHIVE_OUTPUT_DIRECTORY_DEBUG   ${CMAKE_SOURCE_DIR}/lib
@@ -146,7 +165,10 @@ set_target_properties(EGL PROPERTIES
     PREFIX                           "lib")
 
 if(WIN32)
-    target_link_libraries(EGL PUBLIC Vulkan::Vulkan)
+    # The Windows sources call GL 1.1 entry points directly (glGetIntegerv,
+    # glReadPixels, glGenTextures, glBindTexture, glDeleteTextures), so the
+    # import library has to propagate to consumers of this static library.
+    target_link_libraries(EGL PUBLIC Vulkan::Vulkan opengl32)
     target_include_directories(EGL PRIVATE ${Vulkan_INCLUDE_DIRS})
     if(EGL_HAS_ANGLE)
         target_compile_definitions(EGL PUBLIC EGL_WIN_ENABLE_ANGLE)
@@ -179,4 +201,10 @@ target_include_directories(EGL PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/include)
 target_compile_definitions(EGL PUBLIC KHRONOS_STATIC) # PUBLIC - make it go down to every target linking EGL
 add_definitions(-DEGLAPI=)
-add_subdirectory(examples)
+# The example applications are optional. Consumers that vendor this library
+# only want the EGL static library, and the examples depend on test asset
+# paths and would otherwise build 11+ extra executables.
+option(EGL_BUILD_EXAMPLES "Build the EGL example applications" ON)
+if(EGL_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()

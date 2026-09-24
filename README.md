@@ -276,9 +276,9 @@ The following colorspace extensions are probed at `eglInitialize` time and adver
 | `EGL_EXT_gl_colorspace_bt2020_hlg` | BT.2020 HLG | A2B10G10R10_UNORM |
 | `EGL_EXT_gl_colorspace_display_p3` | Display P3 (sRGB EOTF) | R8G8B8A8_UNORM |
 | `EGL_EXT_gl_colorspace_display_p3_linear` | Display P3 linear | R16G16B16A16_SFLOAT |
-| `EGL_EXT_gl_colorspace_p3_passthrough` | Display P3 passthrough | R8G8B8A8_UNORM |
+| `EGL_EXT_gl_colorspace_display_p3_passthrough` | Display P3 passthrough | R8G8B8A8_UNORM |
 
-`EGL_EXT_gl_colorspace_display_p3` and `EGL_EXT_gl_colorspace_p3_passthrough` share a single
+`EGL_EXT_gl_colorspace_display_p3` and `EGL_EXT_gl_colorspace_display_p3_passthrough` share a single
 Display-P3 capability bit, so they are advertised together. When any HDR/wide-gamut colorspace
 is available the library additionally advertises `EGL_EXT_surface_SMPTE2086_metadata` and
 `EGL_EXT_surface_CTA861_3_metadata` for supplying mastering-display and content-light metadata.
@@ -442,6 +442,8 @@ egl.c                     Public C API (thin shims, no logic)
 ```
 
 ## Changelog
+
+24.09.2026 - Correctness and packaging pass. Moved the first-party `eglctxinternals.h` out of the public `include/` tree into `src/`, so `include/` now holds only the Khronos API headers. Replaced a `memcmp` over the padded `VkHdrMetadataEXT` with a field-wise comparison (C does not require struct assignment to preserve padding, so the HDR metadata dirty-check could re-send the metadata on every present). Added explicit `default:` cases to the attribute and config dispatch switches. Replaced `#pragma once` with include guards. Added the `EGL_BUILD_EXAMPLES` option so consumers can vendor the library without building the examples. Documented the correct `EGL_EXT_gl_colorspace_display_p3_passthrough` extension name. Declared the project version, and added the `cppcheck` and `clang-tidy` analysis lanes and `AGENTS.md`. v1.0.9.
 
 01.08.2026 - Comprehensive correctness, memory-safety and thread-safety pass. Fixed eglQueryContext out-of-bounds read; eglChooseConfig num_config reporting; per-thread current-binding tracking with reference counting; eglTerminate resource cleanup; cleanup loop skipping list-head nodes; eglGetDisplay atomicity; sRGB as per-config capability; Vulkan swapchain recreate double-free/OOB; per-frame/per-image semaphore rings; required vs optional device extensions; compositeAlpha negotiation; SetPixelFormat-once handling; WGL attribute green/blue swap; X11 teardown ordering; Wayland private event queue; and numerous spec-conformance error-code fixes. Verified on Windows (MSVC) and Linux (GCC, X11 + Wayland). v1.0.8.
 

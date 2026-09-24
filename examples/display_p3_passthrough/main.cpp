@@ -46,7 +46,7 @@ static void frame(EGLApp* app, void*)
 int main(void)
 {
     EGLApp* app = egl_app_create(k_config_attribs, k_surface_attribs,
-                                  "EGL_EXT_gl_colorspace_p3_passthrough",
+                                  "EGL_EXT_gl_colorspace_display_p3_passthrough",
                                   "EGL Display P3 Passthrough", 800, 600);
     if (!app)
         return 1;

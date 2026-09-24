@@ -2,6 +2,7 @@
 #include "egl_common.h"
 #include <vector>
 #include <algorithm>
+#include <string.h>
 #include <EGL/eglext.h>
 
 extern __eglMustCastToProperFunctionPointerType __getProcAddress(const char* procname);
@@ -113,11 +114,36 @@ EGLBoolean __vkInit()
     if (g_vkInstance != VK_NULL_HANDLE)
         return EGL_TRUE;
 
-    const char* instExts[] = {
+    // VK_KHR_surface and the WSI extension are required, but
+    // VK_EXT_swapchain_colorspace is not. Making it mandatory meant
+    // vkCreateInstance failed outright on drivers without it, which disabled the
+    // whole Vulkan presentation path. Enable it only when the instance actually
+    // exposes it - the HDR/P3 entries in __vkQueryHDRColorspaces then simply fail
+    // their swapchain probe and stay unadvertised.
+    static const char* k_requiredInstExts[] = {
         VK_KHR_SURFACE_EXTENSION_NAME,
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-        VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME,
     };
+
+    std::vector<const char*> instExts(k_requiredInstExts,
+                                      k_requiredInstExts + sizeof(k_requiredInstExts) / sizeof(k_requiredInstExts[0]));
+
+    {
+        uint32_t instExtCount = 0;
+        if (vkEnumerateInstanceExtensionProperties(nullptr, &instExtCount, nullptr) == VK_SUCCESS && instExtCount > 0)
+        {
+            std::vector<VkExtensionProperties> instExtProps(instExtCount);
+            vkEnumerateInstanceExtensionProperties(nullptr, &instExtCount, instExtProps.data());
+            for (uint32_t i = 0; i < instExtCount; ++i)
+            {
+                if (strcmp(instExtProps[i].extensionName, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME) == 0)
+                {
+                    instExts.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+                    break;
+                }
+            }
+        }
+    }
 
     VkApplicationInfo appInfo = {};
     appInfo.sType             = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -127,8 +153,8 @@ EGLBoolean __vkInit()
     VkInstanceCreateInfo instCI    = {};
     instCI.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instCI.pApplicationInfo        = &appInfo;
-    instCI.enabledExtensionCount   = (uint32_t)(sizeof(instExts) / sizeof(instExts[0]));
-    instCI.ppEnabledExtensionNames = instExts;
+    instCI.enabledExtensionCount   = (uint32_t)instExts.size();
+    instCI.ppEnabledExtensionNames = instExts.data();
 
     if (vkCreateInstance(&instCI, nullptr, &g_vkInstance) != VK_SUCCESS)
         return EGL_FALSE;
@@ -375,6 +401,14 @@ uint32_t __vkQueryHDRColorspaces(HWND hwnd)
         {VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_ST2084_EXT, EGL_HDR_CS_BT2020_PQ_BIT},
         {VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_BT2020_LINEAR_EXT, EGL_HDR_CS_BT2020_LINEAR_BIT},
         {VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_HLG_EXT, EGL_HDR_CS_BT2020_HLG_BIT},
+        // Display-P3 family. Without these the EGL_HDR_CS_DISPLAY_P3* bits were
+        // never set, so EGL_EXT_gl_colorspace_display_p3{,_linear,_passthrough}
+        // were never advertised even though _eglHDRColorspaceToVk and surface
+        // creation both fully support them - the display_p3 examples could never
+        // run. The format+colorspace pair must match _eglHDRColorspaceToVk above.
+        {VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT, EGL_HDR_CS_DISPLAY_P3_BIT},
+        {VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT, EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT},
+        {VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT, EGL_HDR_CS_DISPLAY_P3_PASSTHROUGH_BIT},
     };
 
     // Get surface capabilities for swapchain test.
@@ -1291,6 +1325,21 @@ static bool __vkInitGLSide(NativeHDRSurfaceContainer* hdr)
     return true;
 }
 
+// ---- __vkHdrMetadataEqual: compare payload fields, not raw bytes ----
+// VkHdrMetadataEXT contains padding, and C does not require struct assignment to
+// preserve padding bytes. memcmp over the whole object can therefore report a
+// spurious difference after `hdrMetadata = m` and re-send the metadata on every
+// present, so compare the twelve payload fields explicitly.
+bool __vkHdrMetadataEqual(const VkHdrMetadataEXT* a, const VkHdrMetadataEXT* b)
+{
+    return a->displayPrimaryRed.x == b->displayPrimaryRed.x && a->displayPrimaryRed.y == b->displayPrimaryRed.y &&
+           a->displayPrimaryGreen.x == b->displayPrimaryGreen.x && a->displayPrimaryGreen.y == b->displayPrimaryGreen.y &&
+           a->displayPrimaryBlue.x == b->displayPrimaryBlue.x && a->displayPrimaryBlue.y == b->displayPrimaryBlue.y &&
+           a->whitePoint.x == b->whitePoint.x && a->whitePoint.y == b->whitePoint.y &&
+           a->maxLuminance == b->maxLuminance && a->minLuminance == b->minLuminance &&
+           a->maxContentLightLevel == b->maxContentLightLevel && a->maxFrameAverageLightLevel == b->maxFrameAverageLightLevel;
+}
+
 // ---- __vkUpdateHDRMetadata: pull SMPTE2086/CTA861 metadata from the surface ----
 void __vkUpdateHDRMetadata(NativeHDRSurfaceContainer* hdr, const EGLSurfaceImpl* surf)
 {
@@ -1332,7 +1381,7 @@ void __vkUpdateHDRMetadata(NativeHDRSurfaceContainer* hdr, const EGLSurfaceImpl*
     m.maxContentLightLevel      = (float)surf->cta861MaxContentLightLevel;
     m.maxFrameAverageLightLevel = (float)surf->cta861MaxFrameAverageLightLevel;
 
-    if (!hdr->hasHdrMetadata || memcmp(&m, &hdr->hdrMetadata, sizeof(m)) != 0)
+    if (!hdr->hasHdrMetadata || !__vkHdrMetadataEqual(&m, &hdr->hdrMetadata))
     {
         hdr->hdrMetadata      = m;
         hdr->hdrMetadataDirty = true;

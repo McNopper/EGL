@@ -17,7 +17,7 @@ struct __NativeWindow
 
 static LRESULT CALLBACK s_wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-    __NativeWindow* win = reinterpret_cast<__NativeWindow*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    __NativeWindow* win = reinterpret_cast<__NativeWindow*>(GetWindowLongPtr(hwnd, GWLP_USERDATA)); // NOLINT(performance-no-int-to-ptr) - documented Win32 GWLP_USERDATA round-trip; the handle is an opaque slot, not a derived pointer
 
     switch (msg)
     {

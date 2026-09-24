@@ -10,7 +10,8 @@
  * Copyright (c) since 2014 Norbert Nopper
  */
 
-#pragma once
+#ifndef EGL_LINUX_GLES_H
+#define EGL_LINUX_GLES_H
 
 #include <EGL/egl.h>
 
@@ -68,3 +69,4 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+#endif  // EGL_LINUX_GLES_H

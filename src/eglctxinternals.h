@@ -19,6 +19,9 @@ struct _EGLContextInternals
 /* X11/GLX (X11 backend and Wayland backend both use GLX context internals) */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+/* GLXDrawable, GLXFBConfig and GLXContext below come from here; without it this
+ * installed public header does not compile stand-alone on unix. */
+#include <GL/glx.h>
 
 struct _EGLContextInternals
 {

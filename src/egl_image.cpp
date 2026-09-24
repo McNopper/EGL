@@ -17,7 +17,6 @@ extern "C"
         case EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
         case EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
         case EGL_GL_TEXTURE_3D:
-        case 0x30C3: // EGL_GL_TEXTURE_2D_ARRAY (EGL 1.5)
         case EGL_GL_RENDERBUFFER:
             break;
         default:
@@ -46,6 +45,12 @@ extern "C"
         {
             if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
             {
+                // Hold the display mutex across the whole lookup and insert: the
+                // initialized flag, rootCtx and rootImage are all mutated by the
+                // other entry points under this mutex, so walking them while holding
+                // only the global read lock was a data race.
+                std::lock_guard<std::mutex> lk(walkerDpy->mutex);
+
                 if (!walkerDpy->initialized || walkerDpy->destroy)
                 {
                     g_localStorage.error = EGL_NOT_INITIALIZED;
@@ -83,7 +88,6 @@ extern "C"
                 }
                 newImage->target = target;
                 newImage->buffer = buffer;
-                std::lock_guard<std::mutex> lk(walkerDpy->mutex);
                 newImage->next       = walkerDpy->rootImage;
                 walkerDpy->rootImage = newImage;
                 g_localStorage.error = EGL_SUCCESS;

@@ -1,0 +1,43 @@
+# cppcheck suppressions
+#
+# Format: one suppression id per line (optionally id:file:line).
+# Keep this list short and justified. Prefer inline // cppcheck-suppress
+# comments for one-off, local suppressions over global entries here.
+
+# System/standard-library headers are not analysed; silence the advisory
+# that fires when cppcheck cannot find them.
+missingIncludeSystem
+
+# Informational messages produced by cppcheck itself, not code findings.
+checkersReport
+
+# Do not fail when a suppression in this file matches nothing.
+unmatchedSuppression
+
+# The native handle and object containers are plain aggregates with no
+# constructor; every construction site either uses value-initialization
+# (`new EGLDisplayImpl()`) or a zeroing memset, so the members are never read
+# uninitialized. Adding in-class initializers would drop their aggregate status.
+uninitMemberVarNoCtor
+
+# The EGL public API is C: opaque handles are exchanged as void* and cast back
+# to the internal struct pointers at every entry point. That cast-through-void
+# shape is the documented boundary idiom, not a defect.
+dangerousTypeCast
+
+# The C entry point src/egl.c and the C++ implementation declare the same _egl*
+# symbols in two languages. TU-wise analysis sees both and reports one
+# definition; no real build includes both translation units of a symbol twice.
+ctuOneDefinitionRuleViolation
+
+# EGL is a LIBRARY: the egl* entry points are the public API and have no caller
+# inside this repository (only the examples call a handful of them). Reporting
+# the exported surface as unused would bury real dead-code findings.
+# Internal helpers are `static` and stay covered by -Wunused-function.
+unusedFunction
+
+# The native handle containers are small PODs (an HDC/HGLRC pair, a drawable +
+# FBConfig pair) passed by value at the platform seam. They are trivially
+# copyable and deliberately passed as the seam contract; const-ref churn buys
+# nothing measurable and would ripple across every backend.
+passedByValue

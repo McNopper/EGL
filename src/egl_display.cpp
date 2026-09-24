@@ -19,6 +19,11 @@ extern "C"
     {
         if (!_eglInternalInit())
         {
+            // Report a reason: returning EGL_NO_DISPLAY with a stale EGL_SUCCESS
+            // makes the failure indistinguishable from success for callers that
+            // branch on eglGetError().
+            g_localStorage.error = EGL_NOT_INITIALIZED;
+
             return EGL_NO_DISPLAY;
         }
 
@@ -172,9 +177,17 @@ extern "C"
 
                     if (!walkerDpy->initialized || walkerDpy->destroy)
                     {
-                        g_localStorage.error = EGL_SUCCESS;
+                        // A display that was never initialized (or whose eglInitialize
+                        // failed, leaving a partially built config list) still has to
+                        // become collectable. Marking it for destruction lets
+                        // _eglInternalCleanup unlink it below; returning from here
+                        // instead made every failed get/terminate cycle leak a display
+                        // node and its config list for the lifetime of the process.
+                        walkerDpy->destroy = EGL_TRUE;
 
-                        return EGL_TRUE;
+                        success = EGL_TRUE;
+
+                        break;
                     }
 
                     // EGL 1.5 §3.2: eglTerminate marks all resources of the display
@@ -310,7 +323,7 @@ extern "C"
                     // Passthrough is a distinct colorspace, not just display_p3; it
                     // has its own bit which the backends have to set to advertise it.
                     if (hdr & EGL_HDR_CS_DISPLAY_P3_PASSTHROUGH_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_p3_passthrough");
+                        appendExt("EGL_EXT_gl_colorspace_display_p3_passthrough");
                     if (hdr)
                     {
                         appendExt("EGL_EXT_surface_SMPTE2086_metadata");
@@ -318,6 +331,8 @@ extern "C"
                     }
                     return extBuf;
                 }
+                default:
+                    break; // Unrecognized attribute; ignored.
                 }
 
                 g_localStorage.error = EGL_BAD_PARAMETER;
@@ -363,9 +378,15 @@ extern "C"
                     __makeCurrent(walkerDpy, nullptr, nullptr);
 
                     // Drop this thread's references so the objects may be freed.
+                    // _eglMakeCurrent only takes a second reference when the read
+                    // surface differs from the draw surface, so releasing has to use
+                    // the same rule. Decrementing unconditionally drove refCount to
+                    // -1 for the usual draw == read case, and _eglInternalCleanup only
+                    // frees a surface at refCount == 0, so the surface then leaked
+                    // forever (and a later make-current could hand out a dangling one).
                     if (g_localStorage.currentDraw != EGL_NO_SURFACE_IMPL)
                         g_localStorage.currentDraw->refCount--;
-                    if (g_localStorage.currentRead != EGL_NO_SURFACE_IMPL)
+                    if (g_localStorage.currentRead != EGL_NO_SURFACE_IMPL && g_localStorage.currentRead != g_localStorage.currentDraw)
                         g_localStorage.currentRead->refCount--;
                     if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
                         g_localStorage.currentCtx->refCount--;

@@ -10,7 +10,8 @@
  * Copyright (c) since 2014 Norbert Nopper
  */
 
-#pragma once
+#ifndef EGL_WINDOWS_ANGLE_H
+#define EGL_WINDOWS_ANGLE_H
 
 #include <windows.h>
 #include <EGL/egl.h>
@@ -56,3 +57,4 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+#endif  // EGL_WINDOWS_ANGLE_H

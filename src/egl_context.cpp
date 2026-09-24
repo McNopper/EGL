@@ -27,6 +27,8 @@ extern "C"
             case EGL_CONTEXT_MINOR_VERSION:
                 requested_version[1] = attrib_list[i + 1];
                 break;
+            default:
+                break; // Unrecognized attribute; ignored.
             }
         }
 
@@ -417,6 +419,8 @@ extern "C"
 
                             return EGL_TRUE;
                         }
+                        default:
+                            break; // Unrecognized attribute; ignored.
                         }
 
                         // EGL 1.5 §3.7.4: an unrecognized attribute is EGL_BAD_ATTRIBUTE.

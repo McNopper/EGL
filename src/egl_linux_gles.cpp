@@ -16,7 +16,7 @@
 #define EGL_PLATFORM_X11_EXT 0x31D5
 #endif
 #ifndef EGL_PLATFORM_WAYLAND_EXT
-#define EGL_PLATFORM_WAYLAND_EXT 0x31D6
+#define EGL_PLATFORM_WAYLAND_EXT 0x31D8
 #endif
 
 // System EGL function pointer types.

@@ -303,7 +303,7 @@ extern "C"
         };
 #define EGL_PROC(n)                                                        \
     {                                                                      \
-        #n, reinterpret_cast<__eglMustCastToProperFunctionPointerType>(&n) \
+        #n, reinterpret_cast<__eglMustCastToProperFunctionPointerType>(&(n)) \
     }
         static const EglProc k_eglProcs[] = {
             // EGL 1.0
