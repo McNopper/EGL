@@ -34,10 +34,16 @@ jobs:
       - uses: actions/checkout@v4
 
       # The Windows backend is WGL + Vulkan HDR: find_package(Vulkan REQUIRED).
+      # The installer sets VULKAN_SDK at machine level, which later steps do
+      # not inherit, so export it for the configure step via GITHUB_ENV.
       - name: Install Vulkan SDK (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install -y vulkan-sdk
+        run: |
+          choco install -y vulkan-sdk
+          $sdk = (Get-ChildItem 'C:\VulkanSDK' -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName
+          if (-not $sdk) { throw 'Vulkan SDK install directory not found under C:\VulkanSDK' }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
