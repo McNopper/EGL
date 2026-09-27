@@ -1,0 +1,66 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+# No macOS job: the library implements WGL, X11/GLX and Wayland backends and
+# CMake fails by design on any other platform.
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            os: windows-latest
+          - name: linux-x11
+            os: ubuntu-latest
+          - name: linux-x11-vk
+            os: ubuntu-latest
+            cmake_flags: -DLINUX_VK=ON
+          - name: linux-wayland
+            os: ubuntu-latest
+            cmake_flags: -DWL_EGL_PLATFORM=ON
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Windows backend is WGL + Vulkan HDR: find_package(Vulkan REQUIRED).
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install -y vulkan-sdk
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev \
+            libgl1-mesa-dev \
+            libglx-dev \
+            libopengl-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libvulkan-dev \
+            pkg-config
+
+      # The Visual Studio generator sets up its own environment on Windows;
+      # Ninja is used on the Unix runners.
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_flags }}
+
+      - name: Build
+        run: cmake --build build --config Release
