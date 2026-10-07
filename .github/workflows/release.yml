@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Same matrix as the CI workflow: Windows (WGL + Vulkan HDR) and the three
+# Linux backend combinations. No macOS job - the library implements WGL,
+# X11/GLX and Wayland backends and CMake fails by design on any other platform.
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, platform: windows-x64 }
+          - { os: ubuntu-latest, platform: linux-x11-x64 }
+          - { os: ubuntu-latest, platform: linux-x11-vk-x64, cmake_flags: -DLINUX_VK=ON }
+          - { os: ubuntu-latest, platform: linux-wayland-x64, cmake_flags: -DWL_EGL_PLATFORM=ON }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Windows backend is WGL + Vulkan HDR: find_package(Vulkan REQUIRED).
+      # The installer sets VULKAN_SDK at machine level, which later steps do
+      # not inherit, so export it for the configure step via GITHUB_ENV.
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install -y vulkan-sdk
+          $sdk = (Get-ChildItem 'C:\VulkanSDK' -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName
+          if (-not $sdk) { throw 'Vulkan SDK install directory not found under C:\VulkanSDK' }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev \
+            libgl1-mesa-dev \
+            libglx-dev \
+            libopengl-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libvulkan-dev \
+            pkg-config
+
+      # The Visual Studio generator sets up its own environment on Windows;
+      # Ninja is used on the Unix runners.
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_flags }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      # Binary drop: the static library, the Khronos include tree (exactly
+      # the standard EGL API surface) and eglctxinternals.h for consumers of
+      # eglGetPlatformDependentHandles.
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "EGL-$($env:GITHUB_REF_NAME.TrimStart('v'))-${{ matrix.platform }}"
+          $stage = "stage/$name"
+          New-Item -ItemType Directory -Force "$stage/lib", "$stage/include", 'dist' | Out-Null
+          $lib = Get-ChildItem lib -Recurse -Filter EGL.lib -File | Select-Object -First 1
+          if (-not $lib) { throw 'EGL.lib not found in lib/' }
+          Copy-Item $lib.FullName "$stage/lib/"
+          Copy-Item -Recurse include/* "$stage/include/"
+          Copy-Item src/eglctxinternals.h "$stage/"
+          Copy-Item LICENSE, THIRD-PARTY.md, README.md "$stage/"
+          Push-Location $stage
+          cmake -E tar cfv "../../dist/$name.zip" --format=zip .
+          Pop-Location
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -e
+          name="EGL-${GITHUB_REF_NAME#v}-${{ matrix.platform }}"
+          stage="stage/$name"
+          mkdir -p "$stage/lib" "$stage/include" dist
+          f="$(find lib -name 'libEGL.a' | head -1)"
+          [ -n "$f" ] || { echo 'libEGL.a not found in lib/'; exit 1; }
+          cp "$f" "$stage/lib/"
+          cp -r include/* "$stage/include/"
+          cp src/eglctxinternals.h "$stage/"
+          cp LICENSE THIRD-PARTY.md README.md "$stage/"
+          ( cd "$stage" && cmake -E tar cfz "../../dist/$name.tar.gz" --format=gnutar . )
+
+      # The release entry is normally created together with the tag; the
+      # fallback create keeps a bare-tag push self-sufficient.
+      - name: Attach archives to the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
