@@ -79,8 +79,10 @@ jobs:
           $name = "EGL-$($env:GITHUB_REF_NAME.TrimStart('v'))-${{ matrix.platform }}"
           $stage = "stage/$name"
           New-Item -ItemType Directory -Force "$stage/lib", "$stage/include", 'dist' | Out-Null
-          $lib = Get-ChildItem lib -Recurse -Filter EGL.lib -File | Select-Object -First 1
-          if (-not $lib) { throw 'EGL.lib not found in lib/' }
+          # The target sets PREFIX "lib" on every platform: libEGL.lib here,
+          # libEGL.a on Linux.
+          $lib = Get-ChildItem lib -Recurse -Filter libEGL.lib -File | Select-Object -First 1
+          if (-not $lib) { throw 'libEGL.lib not found in lib/' }
           Copy-Item $lib.FullName "$stage/lib/"
           Copy-Item -Recurse include/* "$stage/include/"
           Copy-Item src/eglctxinternals.h "$stage/"
