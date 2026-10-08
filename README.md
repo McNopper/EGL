@@ -1,5 +1,7 @@
 # EGL 1.5 Implementation
 
+[![Build](https://github.com/McNopper/EGL/actions/workflows/build.yml/badge.svg)](https://github.com/McNopper/EGL/actions/workflows/build.yml)
+
 A portable, spec-compliant implementation of [EGL 1.5](https://www.khronos.org/registry/egl/) built around
 a platform-agnostic core and pluggable OS/rendering backends. The library provides the standard EGL
 surface creation, context management, and synchronization API across operating systems, so that
