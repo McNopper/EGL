@@ -1,4 +1,4 @@
-﻿/**
+/**
  * EGL windows desktop implementation.
  *
  * The MIT License (MIT)
@@ -25,6 +25,10 @@
  */
 
 #include "egl_windows_vk.h"
+
+#ifndef GL_BGRA
+#define GL_BGRA 0x80E1u
+#endif
 #include "egl_common.h"
 #include "eglctxinternals.h"
 #ifdef EGL_WIN_ENABLE_ANGLE
@@ -570,7 +574,7 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
         // There are exactly 7 distinct EGL context attributes and the switch above
         // handles all of them, so a fully specified legal list must be accepted —
         // the check has to fire only *after* the 7th pair, not at it.
-        if (attribListIndex > 7 * 2)
+        if (attribListIndex > CONTEXT_ATTRIB_LIST_MAX_PAIRS * 2)
         {
             *error = EGL_BAD_ATTRIBUTE;
 
@@ -955,8 +959,8 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
 
             indexAttribList += 2;
 
-            // More than 8 entries can not exist.
-            if (indexAttribList >= 8 * 2)
+            // More than 8 entries can not exist; fire after the 8th pair, not at it.
+            if (indexAttribList > WINDOW_ATTRIB_LIST_MAX_PAIRS * 2)
             {
                 ReleaseDC(win, hdc);
 
@@ -1307,8 +1311,8 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
     if (!pixels)
         return EGL_FALSE;
 
-    // GL_BGRA = 0x80E1; bottom-up origin matches positive-height DIB
-    glReadPixels(0, 0, width, height, 0x80E1, GL_UNSIGNED_BYTE, pixels);
+    // GL_BGRA: bottom-up origin matches positive-height DIB
+    glReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
 
     BITMAPINFO bi;
     memset(&bi, 0, sizeof(bi));
@@ -1349,12 +1353,32 @@ __eglMustCastToProperFunctionPointerType __getProcAddress(const char* procname)
     {
         ptr = reinterpret_cast<__eglMustCastToProperFunctionPointerType>(wglGetProcAddress_PTR(procname));
     }
-    if (ptr != NULL)
+    // wglGetProcAddress reports failure as 1, 2, 3 or -1 - not just NULL.
+    // Compare as an integer so none of the sentinels can slip through.
+    const uintptr_t p = reinterpret_cast<uintptr_t>(ptr);
+
+    if (p != 0 && p != 1 && p != 2 && p != 3 && p != static_cast<uintptr_t>(-1))
         return ptr;
     // https://www.khronos.org/opengl/wiki/Talk:Platform_specifics:_Windows
     if (!opengl32dll)
         return NULL;
     return reinterpret_cast<__eglMustCastToProperFunctionPointerType>(GetProcAddress(opengl32dll, procname));
+}
+
+// Single pixel-format attribute query with the uniform failure path: on
+// failure every caller sets EGL_NOT_INITIALIZED and bails out of initialization.
+static bool __queryWglAttrib(const NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint pixelFormat, EGLint wglAttribute, EGLint* destination, EGLint* error)
+{
+    EGLint attribute = wglAttribute;
+
+    if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, pixelFormat, 0, 1, &attribute, destination))
+    {
+        *error = EGL_NOT_INITIALIZED;
+
+        return false;
+    }
+
+    return true;
 }
 
 EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* error)
@@ -1377,11 +1401,8 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
         return EGL_FALSE;
     }
 
-    EGLint attribute = WGL_NUMBER_PIXEL_FORMATS_ARB;
-    if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, 1, 0, 1, &attribute, &numberPixelFormats))
+    if (!__queryWglAttrib(nativeLocalStorageContainer, 1, WGL_NUMBER_PIXEL_FORMATS_ARB, &numberPixelFormats, error))
     {
-        *error = EGL_NOT_INITIALIZED;
-
         return EGL_FALSE;
     }
 
@@ -1419,12 +1440,10 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
     for (EGLint currentPixelFormat = 1; currentPixelFormat <= numberPixelFormats; currentPixelFormat++)
     {
         EGLint value;
+        EGLint attribute;
 
-        attribute = WGL_SUPPORT_OPENGL_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &value))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_SUPPORT_OPENGL_ARB, &value, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
         if (!value)
@@ -1432,11 +1451,8 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
             continue;
         }
 
-        attribute = WGL_PIXEL_TYPE_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &value))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_PIXEL_TYPE_ARB, &value, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
         if (value != WGL_TYPE_RGBA_ARB)
@@ -1469,19 +1485,13 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
         //
 
-        attribute = WGL_DRAW_TO_WINDOW_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToWindow))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_DRAW_TO_WINDOW_ARB, &newConfig->drawToWindow, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_DRAW_TO_BITMAP_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->drawToPixmap))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_DRAW_TO_BITMAP_ARB, &newConfig->drawToPixmap, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
@@ -1491,11 +1501,8 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
             newConfig->drawToPBuffer = EGL_FALSE;
         }
 
-        attribute = WGL_DOUBLE_BUFFER_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->doubleBuffer))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_DOUBLE_BUFFER_ARB, &newConfig->doubleBuffer, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
@@ -1518,77 +1525,50 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
         newConfig->colorBufferType = EGL_RGB_BUFFER;
         newConfig->configId        = currentPixelFormat;
 
-        attribute = WGL_COLOR_BITS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bufferSize))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_COLOR_BITS_ARB, &newConfig->bufferSize, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_RED_BITS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->redSize))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_RED_BITS_ARB, &newConfig->redSize, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_GREEN_BITS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->greenSize))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_GREEN_BITS_ARB, &newConfig->greenSize, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_BLUE_BITS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->blueSize))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_BLUE_BITS_ARB, &newConfig->blueSize, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_ALPHA_BITS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->alphaSize))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_ALPHA_BITS_ARB, &newConfig->alphaSize, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_DEPTH_BITS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->depthSize))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_DEPTH_BITS_ARB, &newConfig->depthSize, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_STENCIL_BITS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->stencilSize))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_STENCIL_BITS_ARB, &newConfig->stencilSize, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
         //
 
-        attribute = WGL_SAMPLE_BUFFERS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->sampleBuffers))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_SAMPLE_BUFFERS_ARB, &newConfig->sampleBuffers, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_SAMPLES_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->samples))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_SAMPLES_ARB, &newConfig->samples, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
@@ -1600,11 +1580,8 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
         newConfig->srgbCapable = EGL_FALSE;
         if (walkerDpy->srgbFramebufferSupported)
         {
-            attribute = WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB;
-            if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &value))
+            if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, &value, error))
             {
-                *error = EGL_NOT_INITIALIZED;
-
                 return EGL_FALSE;
             }
 
@@ -1617,27 +1594,21 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
         // Report EGL_FALSE instead of leaving the EGL_DONT_CARE (-1) default, which
         // is truthy and would normalize to EGL_TRUE — advertising a capability that
         // eglBindTexImage then has to reject.
-        attribute                   = WGL_BIND_TO_TEXTURE_RGB_ARB;
         newConfig->bindToTextureRGB = EGL_FALSE;
         if (render_texture_supported)
         {
-            if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGB))
+            if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_BIND_TO_TEXTURE_RGB_ARB, &newConfig->bindToTextureRGB, error))
             {
-                *error = EGL_NOT_INITIALIZED;
-
                 return EGL_FALSE;
             }
             newConfig->bindToTextureRGB = newConfig->bindToTextureRGB ? EGL_TRUE : EGL_FALSE;
         }
 
-        attribute                    = WGL_BIND_TO_TEXTURE_RGBA_ARB;
         newConfig->bindToTextureRGBA = EGL_FALSE;
         if (render_texture_supported)
         {
-            if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->bindToTextureRGBA))
+            if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_BIND_TO_TEXTURE_RGBA_ARB, &newConfig->bindToTextureRGBA, error))
             {
-                *error = EGL_NOT_INITIALIZED;
-
                 return EGL_FALSE;
             }
             newConfig->bindToTextureRGBA = newConfig->bindToTextureRGBA ? EGL_TRUE : EGL_FALSE;
@@ -1645,62 +1616,41 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
         //
 
-        attribute = WGL_MAX_PBUFFER_PIXELS_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferPixels))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_MAX_PBUFFER_PIXELS_ARB, &newConfig->maxPBufferPixels, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_MAX_PBUFFER_WIDTH_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferWidth))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_MAX_PBUFFER_WIDTH_ARB, &newConfig->maxPBufferWidth, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_MAX_PBUFFER_HEIGHT_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->maxPBufferHeight))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_MAX_PBUFFER_HEIGHT_ARB, &newConfig->maxPBufferHeight, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
         //
 
-        attribute = WGL_TRANSPARENT_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentType))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_TRANSPARENT_ARB, &newConfig->transparentType, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
         newConfig->transparentType = newConfig->transparentType ? EGL_TRANSPARENT_RGB : EGL_NONE;
 
-        attribute = WGL_TRANSPARENT_RED_VALUE_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentRedValue))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_TRANSPARENT_RED_VALUE_ARB, &newConfig->transparentRedValue, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_TRANSPARENT_GREEN_VALUE_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentGreenValue))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_TRANSPARENT_GREEN_VALUE_ARB, &newConfig->transparentGreenValue, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 
-        attribute = WGL_TRANSPARENT_BLUE_VALUE_ARB;
-        if (!wglGetPixelFormatAttribivARB(nativeLocalStorageContainer->hdc, currentPixelFormat, 0, 1, &attribute, &newConfig->transparentBlueValue))
+        if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_TRANSPARENT_BLUE_VALUE_ARB, &newConfig->transparentBlueValue, error))
         {
-            *error = EGL_NOT_INITIALIZED;
-
             return EGL_FALSE;
         }
 

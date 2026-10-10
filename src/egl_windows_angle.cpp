@@ -9,6 +9,20 @@
 
 #include <stdio.h>
 
+// EGL token values for the dlopened ANGLE libEGL: this TU talks to the
+// runtime-loaded library and deliberately avoids the EGL headers (the same
+// naming egl_linux_gles.cpp uses for the same idea).
+#define SYSGL_EGL_NONE            0x3038
+#define SYSGL_EGL_SURFACE_TYPE    0x3033
+#define SYSGL_EGL_WINDOW_BIT      0x0004
+#define SYSGL_EGL_RENDERABLE_TYPE 0x3040
+#define SYSGL_EGL_OPENGL_ES2_BIT  0x0004
+#define SYSGL_EGL_OPENGL_ES3_BIT  0x0040
+#define SYSGL_EGL_RED_SIZE        0x3024
+#define SYSGL_EGL_GREEN_SIZE      0x3023
+#define SYSGL_EGL_BLUE_SIZE       0x3022
+#define SYSGL_EGL_ALPHA_SIZE      0x3021
+
 // Use ANGLE's own EGL headers via the vcpkg include path, but rename the
 // well-known EGL types to ANGLE-prefixed aliases so they don't collide with
 // this library's public EGL types when both end up in the same translation
@@ -83,13 +97,13 @@ bool resolve(HMODULE m, T& out, const char* name)
 bool chooseDefaultConfig()
 {
     static const EGLint cfgAttribs[] = {
-        0x3033 /*EGL_SURFACE_TYPE*/, 0x0004 /*EGL_WINDOW_BIT*/,
-        0x3040 /*EGL_RENDERABLE_TYPE*/, 0x0040 /*EGL_OPENGL_ES3_BIT*/,
-        0x3024 /*EGL_RED_SIZE*/, 8,
-        0x3023 /*EGL_GREEN_SIZE*/, 8,
-        0x3022 /*EGL_BLUE_SIZE*/, 8,
-        0x3021 /*EGL_ALPHA_SIZE*/, 8,
-        0x3038 /*EGL_NONE*/
+        SYSGL_EGL_SURFACE_TYPE, SYSGL_EGL_WINDOW_BIT,
+        SYSGL_EGL_RENDERABLE_TYPE, SYSGL_EGL_OPENGL_ES3_BIT,
+        SYSGL_EGL_RED_SIZE, 8,
+        SYSGL_EGL_GREEN_SIZE, 8,
+        SYSGL_EGL_BLUE_SIZE, 8,
+        SYSGL_EGL_ALPHA_SIZE, 8,
+        SYSGL_EGL_NONE
     };
 
     EGLint num = 0;
@@ -100,13 +114,13 @@ bool chooseDefaultConfig()
 
     // Fall back to ES2.
     static const EGLint cfgAttribs2[] = {
-        0x3033, 0x0004,
-        0x3040, 0x0004 /*EGL_OPENGL_ES2_BIT*/,
-        0x3024, 8,
-        0x3023, 8,
-        0x3022, 8,
-        0x3021, 8,
-        0x3038};
+        SYSGL_EGL_SURFACE_TYPE, SYSGL_EGL_WINDOW_BIT,
+        SYSGL_EGL_RENDERABLE_TYPE, SYSGL_EGL_OPENGL_ES2_BIT,
+        SYSGL_EGL_RED_SIZE, 8,
+        SYSGL_EGL_GREEN_SIZE, 8,
+        SYSGL_EGL_BLUE_SIZE, 8,
+        SYSGL_EGL_ALPHA_SIZE, 8,
+        SYSGL_EGL_NONE};
     num = 0;
     if (!g.eglChooseConfig(g.display, cfgAttribs2, &g.config, 1, &num) || num == 0)
     {

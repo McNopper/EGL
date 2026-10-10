@@ -154,52 +154,10 @@ typedef struct _NativeLocalStorageContainer
 
 typedef GLXPbuffer NativePbufferType;
 
-#elif defined(USE_X11)
+#elif defined(USE_X11) || defined(__unix__)
 
-// X11 explicit — GLX backend (egl_x11_glx.cpp)
-#include <X11/X.h>
-#include <GL/glx.h>
-#define CONTEXT_ATTRIB_LIST_SIZE 11
-
-// Forward declaration; full definition is in egl_linux_vk.h (only with LINUX_VK)
-typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
-
-// Backend tag: GLX is the default desktop OpenGL path; GLES delegates to the
-// system libEGL (Mesa / vendor) when EGL_LINUX_ENABLE_GLES is set.
-typedef enum
-{
-    EGL_BACKEND_GLX  = 0,
-    EGL_BACKEND_GLES = 1
-} NativeBackend;
-
-typedef struct _NativeSurfaceContainer
-{
-    GLXDrawable                drawable;
-    GLXFBConfig                config;
-    NativeHDRSurfaceContainer* hdr;         // NULL = SDR (GLX); non-NULL = Vulkan HDR
-    NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
-    void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
-} NativeSurfaceContainer;
-
-typedef struct _NativeContextContainer
-{
-    GLXContext    ctx;
-    NativeBackend backend; // 0 = GLX (default), 1 = system GLES
-    void*         glesCtx; // EGLContext from system libEGL when backend == GLES
-} NativeContextContainer;
-
-typedef struct _NativeLocalStorageContainer
-{
-    Display*   display;
-    Window     window;
-    GLXContext ctx;
-} NativeLocalStorageContainer;
-
-typedef GLXPbuffer NativePbufferType;
-
-#elif defined(__unix__)
-
-// Generic Unix fallback (Linux+X11, FreeBSD, OpenBSD, etc.) — GLX backend (egl_x11_glx.cpp)
+// GLX backend (egl_x11_glx.cpp) - explicit X11 or the generic Unix fallback
+// (Linux+X11, FreeBSD, OpenBSD, etc.); both compile the same GLX code.
 #include <X11/X.h>
 #include <GL/glx.h>
 #define CONTEXT_ATTRIB_LIST_SIZE 11
@@ -531,12 +489,47 @@ typedef struct _LocalStorage
     EGLSurfaceImpl* currentRead;
 } LocalStorage;
 
+// ── Attribute-template input caps ──────────────────────────────────────────
+// Input caps, not overflow guards: the checks fire after the final legal pair
+// (AGENTS.md). The fixed-slot attribute templates live in the platform
+// backends; the conversion buffer backs the EGLAttrib list adapters.
+
+#define CONTEXT_ATTRIB_LIST_MAX_PAIRS 7
+#define WINDOW_ATTRIB_LIST_MAX_PAIRS  8
+#define EGLATTRIB_CONVERT_BUFFER_SIZE 64
+
 //
 #if __cplusplus
 extern "C"
 {
 #endif
     void _eglInternalSetDefaultConfig(EGLConfigImpl* config);
+
+    // ── Shared list lookups ──────────────────────────────────────────────────
+    // Each walks the owning list and returns the impl whose public handle
+    // matches. Lock preconditions: the caller holds the global display-list
+    // read lock while using the _eglFindDisplay/_eglFindCurrentDisplay result,
+    // and the display mutex for the per-display lists. _eglFindDisplay sets
+    // EGL_BAD_DISPLAY on an unknown handle; the object finds set no error -
+    // the not-found code differs per entry point and stays at the call site.
+
+    EGLDisplayImpl* _eglFindDisplay(EGLDisplay dpy);
+
+    EGLDisplayImpl* _eglFindCurrentDisplay();
+
+    EGLConfigImpl* _eglFindConfig(EGLDisplayImpl* walkerDpy, EGLConfig config);
+
+    EGLContextImpl* _eglFindContext(EGLDisplayImpl* walkerDpy, EGLContext ctx);
+
+    EGLSurfaceImpl* _eglFindSurface(EGLDisplayImpl* walkerDpy, EGLSurface surface);
+
+    EGLSyncImpl* _eglFindSync(EGLDisplayImpl* walkerDpy, EGLSync sync);
+
+    EGLImageImpl* _eglFindImage(EGLDisplayImpl* walkerDpy, EGLImage image);
+
+    // Releases a thread binding's references (defined in egl_context.cpp; the
+    // draw == read single-reference rule is documented there).
+    void _eglReleaseBindingRefs(EGLSurfaceImpl* draw, EGLSurfaceImpl* read, EGLContextImpl* ctx);
 #if __cplusplus
 }
 #endif

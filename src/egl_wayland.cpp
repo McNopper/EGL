@@ -558,7 +558,7 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
         // context attributes and the switch above handles all of them, so a fully
         // specified legal list must pass - the check has to fire after the 7th
         // pair, not at it.
-        if (idx > 7 * 2)
+        if (idx > CONTEXT_ATTRIB_LIST_MAX_PAIRS * 2)
         {
             *error = EGL_BAD_ATTRIBUTE;
             return EGL_FALSE;
@@ -734,7 +734,8 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
                 return EGL_FALSE;
             }
             i += 2;
-            if (i >= 8 * 2)
+            // The 8-pair input cap must fire after the 8th pair, not at it.
+            if (i > WINDOW_ATTRIB_LIST_MAX_PAIRS * 2)
             {
                 *error = EGL_BAD_ATTRIBUTE;
                 return EGL_FALSE;

@@ -4,6 +4,27 @@
 extern "C"
 {
 
+    // Returns the image node for `image`, or nullptr when the handle is
+    // unknown. No error is set - the not-found code stays at the call site.
+    // The caller holds the display mutex: eglDestroyImage unlinks and deletes
+    // under it.
+    EGLImageImpl* _eglFindImage(EGLDisplayImpl* walkerDpy, EGLImage image)
+    {
+        EGLImageImpl* walker = walkerDpy->rootImage;
+
+        while (walker)
+        {
+            if (reinterpret_cast<EGLImage>(walker) == image)
+            {
+                return walker;
+            }
+
+            walker = walker->next;
+        }
+
+        return nullptr;
+    }
+
     EGLImage _eglCreateImage(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLAttrib* attrib_list)
     {
         (void)attrib_list;
@@ -40,102 +61,82 @@ extern "C"
         }
 
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-        while (walkerDpy)
+        EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
+        if (!walkerDpy)
         {
-            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
-            {
-                // Hold the display mutex across the whole lookup and insert: the
-                // initialized flag, rootCtx and rootImage are all mutated by the
-                // other entry points under this mutex, so walking them while holding
-                // only the global read lock was a data race.
-                std::lock_guard<std::mutex> lk(walkerDpy->mutex);
-
-                if (!walkerDpy->initialized || walkerDpy->destroy)
-                {
-                    g_localStorage.error = EGL_NOT_INITIALIZED;
-                    return EGL_NO_IMAGE;
-                }
-
-                // Validate that ctx belongs to this display.
-                bool            ctxFound  = false;
-                EGLContextImpl* walkerCtx = walkerDpy->rootCtx;
-                while (walkerCtx)
-                {
-                    if (reinterpret_cast<EGLContext>(walkerCtx) == ctx)
-                    {
-                        if (!walkerCtx->initialized || walkerCtx->destroy)
-                        {
-                            g_localStorage.error = EGL_BAD_CONTEXT;
-                            return EGL_NO_IMAGE;
-                        }
-                        ctxFound = true;
-                        break;
-                    }
-                    walkerCtx = walkerCtx->next;
-                }
-                if (!ctxFound)
-                {
-                    g_localStorage.error = EGL_BAD_CONTEXT;
-                    return EGL_NO_IMAGE;
-                }
-
-                EGLImageImpl* newImage = new (std::nothrow) EGLImageImpl();
-                if (!newImage)
-                {
-                    g_localStorage.error = EGL_BAD_ALLOC;
-                    return EGL_NO_IMAGE;
-                }
-                newImage->target = target;
-                newImage->buffer = buffer;
-                newImage->next       = walkerDpy->rootImage;
-                walkerDpy->rootImage = newImage;
-                g_localStorage.error = EGL_SUCCESS;
-                return reinterpret_cast<EGLImage>(newImage);
-            }
-            walkerDpy = walkerDpy->next;
+            return EGL_NO_IMAGE;
         }
-        g_localStorage.error = EGL_BAD_DISPLAY;
-        return EGL_NO_IMAGE;
+        // Hold the display mutex across the whole lookup and insert: the
+        // initialized flag, rootCtx and rootImage are all mutated by the
+        // other entry points under this mutex, so walking them while holding
+        // only the global read lock was a data race.
+        std::lock_guard<std::mutex> lk(walkerDpy->mutex);
+
+        if (!walkerDpy->initialized || walkerDpy->destroy)
+        {
+            g_localStorage.error = EGL_NOT_INITIALIZED;
+            return EGL_NO_IMAGE;
+        }
+
+        // Validate that ctx belongs to this display.
+        EGLContextImpl* walkerCtx = _eglFindContext(walkerDpy, ctx);
+        if (!walkerCtx)
+        {
+            g_localStorage.error = EGL_BAD_CONTEXT;
+            return EGL_NO_IMAGE;
+        }
+        if (!walkerCtx->initialized || walkerCtx->destroy)
+        {
+            g_localStorage.error = EGL_BAD_CONTEXT;
+            return EGL_NO_IMAGE;
+        }
+
+        EGLImageImpl* newImage = new (std::nothrow) EGLImageImpl();
+        if (!newImage)
+        {
+            g_localStorage.error = EGL_BAD_ALLOC;
+            return EGL_NO_IMAGE;
+        }
+        newImage->target = target;
+        newImage->buffer = buffer;
+        newImage->next       = walkerDpy->rootImage;
+        walkerDpy->rootImage = newImage;
+        g_localStorage.error = EGL_SUCCESS;
+        return reinterpret_cast<EGLImage>(newImage);
     }
 
     EGLBoolean _eglDestroyImage(EGLDisplay dpy, EGLImage image)
     {
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
-        while (walkerDpy)
+        EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
+        if (!walkerDpy)
         {
-            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
-            {
-                if (!walkerDpy->initialized || walkerDpy->destroy)
-                {
-                    g_localStorage.error = EGL_NOT_INITIALIZED;
-                    return EGL_FALSE;
-                }
-                std::lock_guard<std::mutex> lk(walkerDpy->mutex);
-                EGLImageImpl*               prev   = nullptr;
-                EGLImageImpl*               walker = walkerDpy->rootImage;
-                while (walker)
-                {
-                    if (reinterpret_cast<EGLImage>(walker) == image)
-                    {
-                        if (prev)
-                            prev->next = walker->next;
-                        else
-                            walkerDpy->rootImage = walker->next;
-                        delete walker;
-                        g_localStorage.error = EGL_SUCCESS;
-                        return EGL_TRUE;
-                    }
-                    prev   = walker;
-                    walker = walker->next;
-                }
-                g_localStorage.error = EGL_BAD_PARAMETER;
-                return EGL_FALSE;
-            }
-            walkerDpy = walkerDpy->next;
+            return EGL_FALSE;
         }
-        g_localStorage.error = EGL_BAD_DISPLAY;
+        if (!walkerDpy->initialized || walkerDpy->destroy)
+        {
+            g_localStorage.error = EGL_NOT_INITIALIZED;
+            return EGL_FALSE;
+        }
+        std::lock_guard<std::mutex> lk(walkerDpy->mutex);
+        EGLImageImpl*               prev   = nullptr;
+        EGLImageImpl*               walker = walkerDpy->rootImage;
+        while (walker)
+        {
+            if (reinterpret_cast<EGLImage>(walker) == image)
+            {
+                if (prev)
+                    prev->next = walker->next;
+                else
+                    walkerDpy->rootImage = walker->next;
+                delete walker;
+                g_localStorage.error = EGL_SUCCESS;
+                return EGL_TRUE;
+            }
+            prev   = walker;
+            walker = walker->next;
+        }
+        g_localStorage.error = EGL_BAD_PARAMETER;
         return EGL_FALSE;
     }
 

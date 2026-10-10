@@ -27,6 +27,12 @@
 #include "egl_common.h"
 #include "eglctxinternals.h"
 
+// The GL_BGRA readback format is core since GL 1.2 but is not in every GL
+// header this TU may see.
+#ifndef GL_BGRA
+#define GL_BGRA 0x80E1u
+#endif
+
 #ifdef LINUX_VK
 #include "egl_linux_vk.h"
 #endif
@@ -588,7 +594,7 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
         // context attributes and the switch above handles all of them, so a fully
         // specified legal list must pass - the check has to fire after the 7th
         // pair, not at it.
-        if (idx > 7 * 2)
+        if (idx > CONTEXT_ATTRIB_LIST_MAX_PAIRS * 2)
         {
             *error = EGL_BAD_ATTRIBUTE;
             return EGL_FALSE;
@@ -767,7 +773,8 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
                 return EGL_FALSE;
             }
             i += 2;
-            if (i >= 8 * 2)
+            // The 8-pair input cap must fire after the 8th pair, not at it.
+            if (i > WINDOW_ATTRIB_LIST_MAX_PAIRS * 2)
             {
                 *error = EGL_BAD_ATTRIBUTE;
                 return EGL_FALSE;
@@ -788,7 +795,14 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
         Window       root;
         int          x, y;
         unsigned int w, h, bw, depth;
-        XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth);
+        if (!XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth))
+        {
+            // The drawable is unusable - drop the GLES surface created above.
+            gles_destroySurface(surf);
+
+            *error = EGL_BAD_NATIVE_WINDOW;
+            return EGL_FALSE;
+        }
 
         newSurface->drawToWindow                       = EGL_TRUE;
         newSurface->drawToPixmap                       = EGL_FALSE;
@@ -821,7 +835,11 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
     Window       root;
     int          x, y;
     unsigned int w, h, bw, depth;
-    XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth);
+    if (!XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth))
+    {
+        *error = EGL_BAD_NATIVE_WINDOW;
+        return EGL_FALSE;
+    }
 
     newSurface->drawToWindow                       = EGL_TRUE;
     newSurface->drawToPixmap                       = EGL_FALSE;
@@ -1069,7 +1087,14 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl*       newSurface,
     Window       root;
     int          x, y;
     unsigned int w, h, bw, depth;
-    XGetGeometry(dpy, (Drawable)pixmap, &root, &x, &y, &w, &h, &bw, &depth);
+    if (!XGetGeometry(dpy, (Drawable)pixmap, &root, &x, &y, &w, &h, &bw, &depth))
+    {
+        // The GLX pixmap created above must not leak.
+        s_glXDestroyPixmap(dpy, glxPix);
+
+        *error = EGL_BAD_NATIVE_PIXMAP;
+        return EGL_FALSE;
+    }
 
     newSurface->drawToWindow                       = EGL_FALSE;
     newSurface->drawToPixmap                       = EGL_TRUE;
@@ -1196,9 +1221,9 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy,
         return EGL_FALSE;
     }
 
-    // GL_BGRA = 0x80E1; the default GL_PACK_ALIGNMENT of 4 produces exactly the
+    // GL_BGRA: the default GL_PACK_ALIGNMENT of 4 produces exactly the
     // stride Xlib computed for a 32-bit-per-pixel, 32-bit-padded scanline.
-    glReadPixels(0, 0, (GLsizei)width, (GLsizei)height, 0x80E1, GL_UNSIGNED_BYTE, pixels);
+    glReadPixels(0, 0, (GLsizei)width, (GLsizei)height, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
 
     // Flip rows (GL is bottom-up, X is top-down)
     auto* flipped = static_cast<GLubyte*>(malloc(stride * (size_t)height));

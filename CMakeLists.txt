@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(EGL VERSION 1.0.10 LANGUAGES C CXX)
+project(EGL VERSION 1.0.11 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,7 @@ if(WIN32)
     find_package(Vulkan REQUIRED)
     set(EGL_PLATFORM_SOURCES
         ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/src/egl_vk_core.cpp
         ${CMAKE_CURRENT_LIST_DIR}/src/egl_windows_vk.cpp)
     set(EGL_BACKEND_SUFFIX "_GL_Windows_WGL_VK")
 
@@ -77,7 +78,8 @@ elseif(UNIX)
         add_compile_definitions(WL_EGL_PLATFORM)
         set(EGL_PLATFORM_SOURCES
             ${CMAKE_CURRENT_LIST_DIR}/src/egl_wayland.cpp
-            ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
+            ${CMAKE_CURRENT_LIST_DIR}/src/egl_vk_core.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
         set(EGL_BACKEND_SUFFIX "_GL_Linux_Wayland_VK")
 
         # Optional: enable real OpenGL ES via the system libEGL / libGLESv2
@@ -105,7 +107,8 @@ elseif(UNIX)
             add_compile_definitions(LINUX_VK)
             set(EGL_PLATFORM_SOURCES
                 ${CMAKE_CURRENT_LIST_DIR}/src/egl_x11_glx.cpp
-                ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
+                ${CMAKE_CURRENT_LIST_DIR}/src/egl_vk_core.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/src/egl_linux_vk.cpp)
             set(EGL_BACKEND_SUFFIX "_GL_Linux_X11_GLX_VK")
         else()
             set(EGL_PLATFORM_SOURCES

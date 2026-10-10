@@ -41,3 +41,11 @@ unusedFunction
 # copyable and deliberately passed as the seam contract; const-ref churn buys
 # nothing measurable and would ripple across every backend.
 passedByValue
+
+# The platform traps (`#error "Platform not recognized"` in eglplatform.h and
+# egl_internal.h) are deliberate guards that must fire for a misconfigured
+# build. cppcheck evaluates headers in configurations where no platform macro
+# is set, so the trap always "fires" there. Scoped to the two dispatch headers
+# so any other #error stays fatal.
+preprocessorErrorDirective:*eglplatform.h
+preprocessorErrorDirective:*egl_internal.h

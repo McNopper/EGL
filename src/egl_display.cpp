@@ -3,8 +3,55 @@
 #include <cstdio>
 #include <new>
 
+// The extension blob eglQueryString assembles; grown only if the advertised
+// extension list outgrows it.
+#define EXTENSION_BUFFER_SIZE 2048
+
 extern "C"
 {
+
+    // Walks the display list for the public handle; unknown handles get
+    // EGL_BAD_DISPLAY. The caller holds the global read lock while using the
+    // result - same as the hand-rolled walks this replaces.
+    EGLDisplayImpl* _eglFindDisplay(EGLDisplay dpy)
+    {
+        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+        while (walkerDpy)
+        {
+            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
+            {
+                return walkerDpy;
+            }
+
+            walkerDpy = walkerDpy->next;
+        }
+
+        g_localStorage.error = EGL_BAD_DISPLAY;
+
+        return nullptr;
+    }
+
+    // Returns the display currently bound to this thread, or nullptr when
+    // nothing is current. No error is set: a thread without a binding is a
+    // legitimate state (the Wait*/ReleaseThread entry points treat it as
+    // success).
+    EGLDisplayImpl* _eglFindCurrentDisplay()
+    {
+        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+
+        while (walkerDpy)
+        {
+            if (walkerDpy == g_localStorage.currentDpy)
+            {
+                return walkerDpy;
+            }
+
+            walkerDpy = walkerDpy->next;
+        }
+
+        return nullptr;
+    }
 
     EGLint _eglGetError(void)
     {
@@ -89,77 +136,70 @@ extern "C"
     EGLBoolean _eglInitialize(EGLDisplay dpy, EGLint* major, EGLint* minor)
     {
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+        EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
 
-        while (walkerDpy)
+        if (!walkerDpy)
         {
-            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
-            {
-                guard_t _{walkerDpy->mutex};
-
-                if (walkerDpy->destroy)
-                {
-                    // Allow re-initialization after eglTerminate (EGL 1.5 §3.2).
-                    walkerDpy->destroy = EGL_FALSE;
-                }
-
-                {
-                    // The bootstrap state is process wide, so the whole
-                    // read-modify-write around __initialize has to be serialized.
-                    guard_t _b{g_globalStorage.bootstrapMutex()};
-
-                    if (!walkerDpy->initialized)
-                    {
-                        // __initialize unconditionally installs a fresh config list,
-                        // so release the previous one first; otherwise a re-initialize
-                        // after eglTerminate orphans it.
-                        EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
-
-                        while (walkerConfig)
-                        {
-                            EGLConfigImpl* deleteConfig = walkerConfig;
-
-                            walkerConfig = walkerConfig->next;
-
-                            free(deleteConfig);
-                        }
-                        walkerDpy->rootConfig = 0;
-
-                        auto       dummy = g_globalStorage.dummy_read();
-                        EGLBoolean fail  = !__initialize(walkerDpy, &dummy, &g_localStorage.error);
-                        g_globalStorage.dummy_write(dummy);
-                        if (fail)
-                        {
-                            return EGL_FALSE;
-                        }
-                    }
-                }
-
-                walkerDpy->initialized = EGL_TRUE;
-
-                //
-
-                if (major)
-                {
-                    *major = 1;
-                }
-
-                if (minor)
-                {
-                    *minor = 5;
-                }
-
-                g_localStorage.error = EGL_SUCCESS;
-
-                return EGL_TRUE;
-            }
-
-            walkerDpy = walkerDpy->next;
+            return EGL_FALSE;
         }
 
-        g_localStorage.error = EGL_BAD_DISPLAY;
+        guard_t _{walkerDpy->mutex};
 
-        return EGL_FALSE;
+        if (walkerDpy->destroy)
+        {
+            // Allow re-initialization after eglTerminate (EGL 1.5 §3.2).
+            walkerDpy->destroy = EGL_FALSE;
+        }
+
+        {
+            // The bootstrap state is process wide, so the whole
+            // read-modify-write around __initialize has to be serialized.
+            guard_t _b{g_globalStorage.bootstrapMutex()};
+
+            if (!walkerDpy->initialized)
+            {
+                // __initialize unconditionally installs a fresh config list,
+                // so release the previous one first; otherwise a re-initialize
+                // after eglTerminate orphans it.
+                EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
+
+                while (walkerConfig)
+                {
+                    EGLConfigImpl* deleteConfig = walkerConfig;
+
+                    walkerConfig = walkerConfig->next;
+
+                    free(deleteConfig);
+                }
+                walkerDpy->rootConfig = 0;
+
+                auto       dummy = g_globalStorage.dummy_read();
+                EGLBoolean fail  = !__initialize(walkerDpy, &dummy, &g_localStorage.error);
+                g_globalStorage.dummy_write(dummy);
+                if (fail)
+                {
+                    return EGL_FALSE;
+                }
+            }
+        }
+
+        walkerDpy->initialized = EGL_TRUE;
+
+        //
+
+        if (major)
+        {
+            *major = 1;
+        }
+
+        if (minor)
+        {
+            *minor = 5;
+        }
+
+        g_localStorage.error = EGL_SUCCESS;
+
+        return EGL_TRUE;
     }
 
     EGLBoolean _eglTerminate(EGLDisplay dpy)
@@ -167,29 +207,26 @@ extern "C"
         EGLBoolean success = EGL_FALSE;
         {
             auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-            EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+            EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
 
-            while (walkerDpy)
+            if (walkerDpy)
             {
-                if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
+                guard_t _{walkerDpy->mutex};
+
+                if (!walkerDpy->initialized || walkerDpy->destroy)
                 {
-                    guard_t _{walkerDpy->mutex};
+                    // A display that was never initialized (or whose eglInitialize
+                    // failed, leaving a partially built config list) still has to
+                    // become collectable. Marking it for destruction lets
+                    // _eglInternalCleanup unlink it below; returning from here
+                    // instead made every failed get/terminate cycle leak a display
+                    // node and its config list for the lifetime of the process.
+                    walkerDpy->destroy = EGL_TRUE;
 
-                    if (!walkerDpy->initialized || walkerDpy->destroy)
-                    {
-                        // A display that was never initialized (or whose eglInitialize
-                        // failed, leaving a partially built config list) still has to
-                        // become collectable. Marking it for destruction lets
-                        // _eglInternalCleanup unlink it below; returning from here
-                        // instead made every failed get/terminate cycle leak a display
-                        // node and its config list for the lifetime of the process.
-                        walkerDpy->destroy = EGL_TRUE;
-
-                        success = EGL_TRUE;
-
-                        break;
-                    }
-
+                    success = EGL_TRUE;
+                }
+                else
+                {
                     // EGL 1.5 §3.2: eglTerminate marks all resources of the display
                     // for destruction. Without this the surface/context lists never
                     // empty, so the display itself is never released and its config
@@ -221,8 +258,6 @@ extern "C"
 
                     success = EGL_TRUE;
                 }
-
-                walkerDpy = walkerDpy->next;
             }
         }
 
@@ -254,96 +289,89 @@ extern "C"
         }
 
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-        EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+        EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
 
-        while (walkerDpy)
+        if (!walkerDpy)
         {
-            if (reinterpret_cast<EGLDisplay>(walkerDpy) == dpy)
-            {
-                guard_t _{walkerDpy->mutex};
-
-                if (!walkerDpy->initialized || walkerDpy->destroy)
-                {
-                    g_localStorage.error = EGL_NOT_INITIALIZED;
-
-                    return 0;
-                }
-
-                g_localStorage.error = EGL_SUCCESS;
-
-                switch (name)
-                {
-                case EGL_CLIENT_APIS:
-                {
-                    bool glOK = (g_GL_max_supported_version[0] > 0);
-                    bool esOK = (g_ES_max_supported_version[0] > 0);
-                    if (glOK && esOK)
-                        return "OpenGL OpenGL_ES";
-                    if (glOK)
-                        return "OpenGL";
-                    if (esOK)
-                        return "OpenGL_ES";
-                    return "";
-                }
-                case EGL_VENDOR:
-                {
-                    return _EGL_VENDOR;
-                }
-                case EGL_VERSION:
-                {
-                    return _EGL_VERSION;
-                }
-                case EGL_EXTENSIONS:
-                {
-                    static thread_local char extBuf[2048];
-                    extBuf[0]          = '\0';
-                    uint32_t hdr       = walkerDpy->supportedHDRColorspaces;
-                    auto     appendExt = [&](const char* s)
-                    {
-                        size_t len = strlen(extBuf);
-                        snprintf(extBuf + len, sizeof(extBuf) - len, "%s%s", len ? " " : "", s);
-                    };
-                    appendExt("EGL_KHR_gl_colorspace");
-                    appendExt("EGL_KHR_create_context");
-                    appendExt("EGL_EXT_client_extensions");
-                    if (hdr & EGL_HDR_CS_SCRGB_LINEAR_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_scrgb_linear");
-                    if (hdr & EGL_HDR_CS_SCRGB_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_scrgb");
-                    if (hdr & EGL_HDR_CS_BT2020_PQ_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_bt2020_pq");
-                    if (hdr & EGL_HDR_CS_BT2020_LINEAR_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_bt2020_linear");
-                    if (hdr & EGL_HDR_CS_BT2020_HLG_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_bt2020_hlg");
-                    if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_display_p3");
-                    if (hdr & EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_display_p3_linear");
-                    // Passthrough is a distinct colorspace, not just display_p3; it
-                    // has its own bit which the backends have to set to advertise it.
-                    if (hdr & EGL_HDR_CS_DISPLAY_P3_PASSTHROUGH_BIT)
-                        appendExt("EGL_EXT_gl_colorspace_display_p3_passthrough");
-                    if (hdr)
-                    {
-                        appendExt("EGL_EXT_surface_SMPTE2086_metadata");
-                        appendExt("EGL_EXT_surface_CTA861_3_metadata");
-                    }
-                    return extBuf;
-                }
-                default:
-                    break; // Unrecognized attribute; ignored.
-                }
-
-                g_localStorage.error = EGL_BAD_PARAMETER;
-
-                return 0;
-            }
-
-            walkerDpy = walkerDpy->next;
+            return 0;
         }
 
-        g_localStorage.error = EGL_BAD_DISPLAY;
+        guard_t _{walkerDpy->mutex};
+
+        if (!walkerDpy->initialized || walkerDpy->destroy)
+        {
+            g_localStorage.error = EGL_NOT_INITIALIZED;
+
+            return 0;
+        }
+
+        g_localStorage.error = EGL_SUCCESS;
+
+        switch (name)
+        {
+        case EGL_CLIENT_APIS:
+        {
+            bool glOK = (g_GL_max_supported_version[0] > 0);
+            bool esOK = (g_ES_max_supported_version[0] > 0);
+            if (glOK && esOK)
+                return "OpenGL OpenGL_ES";
+            if (glOK)
+                return "OpenGL";
+            if (esOK)
+                return "OpenGL_ES";
+            return "";
+        }
+        case EGL_VENDOR:
+        {
+            return _EGL_VENDOR;
+        }
+        case EGL_VERSION:
+        {
+            return _EGL_VERSION;
+        }
+        case EGL_EXTENSIONS:
+        {
+            static thread_local char extBuf[EXTENSION_BUFFER_SIZE];
+            extBuf[0]          = '\0';
+            uint32_t hdr       = walkerDpy->supportedHDRColorspaces;
+            auto     appendExt = [&](const char* s)
+            {
+                size_t len = strlen(extBuf);
+                snprintf(extBuf + len, sizeof(extBuf) - len, "%s%s", len ? " " : "", s);
+            };
+            appendExt("EGL_KHR_gl_colorspace");
+            appendExt("EGL_KHR_create_context");
+            appendExt("EGL_EXT_client_extensions");
+            if (hdr & EGL_HDR_CS_SCRGB_LINEAR_BIT)
+                appendExt("EGL_EXT_gl_colorspace_scrgb_linear");
+            if (hdr & EGL_HDR_CS_SCRGB_BIT)
+                appendExt("EGL_EXT_gl_colorspace_scrgb");
+            if (hdr & EGL_HDR_CS_BT2020_PQ_BIT)
+                appendExt("EGL_EXT_gl_colorspace_bt2020_pq");
+            if (hdr & EGL_HDR_CS_BT2020_LINEAR_BIT)
+                appendExt("EGL_EXT_gl_colorspace_bt2020_linear");
+            if (hdr & EGL_HDR_CS_BT2020_HLG_BIT)
+                appendExt("EGL_EXT_gl_colorspace_bt2020_hlg");
+            if (hdr & EGL_HDR_CS_DISPLAY_P3_BIT)
+                appendExt("EGL_EXT_gl_colorspace_display_p3");
+            if (hdr & EGL_HDR_CS_DISPLAY_P3_LINEAR_BIT)
+                appendExt("EGL_EXT_gl_colorspace_display_p3_linear");
+            // Passthrough is a distinct colorspace, not just display_p3; it
+            // has its own bit which the backends have to set to advertise it.
+            if (hdr & EGL_HDR_CS_DISPLAY_P3_PASSTHROUGH_BIT)
+                appendExt("EGL_EXT_gl_colorspace_display_p3_passthrough");
+            if (hdr)
+            {
+                appendExt("EGL_EXT_surface_SMPTE2086_metadata");
+                appendExt("EGL_EXT_surface_CTA861_3_metadata");
+            }
+            return extBuf;
+        }
+        default:
+            break; // Unrecognized attribute; ignored.
+        }
+
+        g_localStorage.error = EGL_BAD_PARAMETER;
 
         return 0;
     }
@@ -367,43 +395,27 @@ extern "C"
         if (g_localStorage.currentDpy)
         {
             auto            _rl       = g_globalStorage.placeRootDpy_readlock();
-            EGLDisplayImpl* walkerDpy = g_globalStorage.rootDpy;
+            EGLDisplayImpl* walkerDpy = _eglFindCurrentDisplay();
 
-            while (walkerDpy)
+            if (walkerDpy)
             {
-                if (walkerDpy == g_localStorage.currentDpy)
+                guard_t _{walkerDpy->mutex};
+
+                __makeCurrent(walkerDpy, nullptr, nullptr);
+
+                // Drop this thread's references so the objects may be freed.
+                // _eglReleaseBindingRefs holds the draw == read single-reference
+                // rule; its comment covers why the decrement is conditional.
+                _eglReleaseBindingRefs(g_localStorage.currentDraw, g_localStorage.currentRead, g_localStorage.currentCtx);
+
+                if (walkerDpy->currentCtx == g_localStorage.currentCtx)
                 {
-                    guard_t _{walkerDpy->mutex};
-
-                    __makeCurrent(walkerDpy, nullptr, nullptr);
-
-                    // Drop this thread's references so the objects may be freed.
-                    // _eglMakeCurrent only takes a second reference when the read
-                    // surface differs from the draw surface, so releasing has to use
-                    // the same rule. Decrementing unconditionally drove refCount to
-                    // -1 for the usual draw == read case, and _eglInternalCleanup only
-                    // frees a surface at refCount == 0, so the surface then leaked
-                    // forever (and a later make-current could hand out a dangling one).
-                    if (g_localStorage.currentDraw != EGL_NO_SURFACE_IMPL)
-                        g_localStorage.currentDraw->refCount--;
-                    if (g_localStorage.currentRead != EGL_NO_SURFACE_IMPL && g_localStorage.currentRead != g_localStorage.currentDraw)
-                        g_localStorage.currentRead->refCount--;
-                    if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
-                        g_localStorage.currentCtx->refCount--;
-
-                    if (walkerDpy->currentCtx == g_localStorage.currentCtx)
-                    {
-                        walkerDpy->currentDraw = EGL_NO_SURFACE_IMPL;
-                        walkerDpy->currentRead = EGL_NO_SURFACE_IMPL;
-                        walkerDpy->currentCtx  = EGL_NO_CONTEXT_IMPL;
-                    }
-
-                    released = EGL_TRUE;
-
-                    break;
+                    walkerDpy->currentDraw = EGL_NO_SURFACE_IMPL;
+                    walkerDpy->currentRead = EGL_NO_SURFACE_IMPL;
+                    walkerDpy->currentCtx  = EGL_NO_CONTEXT_IMPL;
                 }
 
-                walkerDpy = walkerDpy->next;
+                released = EGL_TRUE;
             }
         }
 
