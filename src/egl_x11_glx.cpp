@@ -78,6 +78,13 @@ __PFN_glClientWaitSync glClientWaitSync_PTR = nullptr;
 __PFN_glWaitSync       glWaitSync_PTR       = nullptr;
 __PFN_glGetSynciv      glGetSynciv_PTR      = nullptr;
 
+// Core GL state used for the EGL 1.5 surface color space: GL_FRAMEBUFFER_SRGB
+// is the only per-bind lever GLX offers (verified on Mesa: with the enable a
+// 0.5 gray clear stores 188, without it 128, regardless of the fbconfig).
+typedef void (*__PFN_glEnableDisable)(unsigned int);
+static __PFN_glEnableDisable glEnable_PTR  = nullptr;
+static __PFN_glEnableDisable glDisable_PTR = nullptr;
+
 // Core GLX functions
 static PFNGLXGETPROCADDRESSARBPROC     s_glXGetProcAddressARB     = nullptr;
 static PFNGLXCREATENEWCONTEXTPROC      s_glXCreateNewContext      = nullptr;
@@ -112,6 +119,56 @@ static int glxErrorHandler(Display*, XErrorEvent*)
 }
 
 // ── Helper: look up a GLXFBConfig by its GLX_FBCONFIG_ID ─────────────────────
+
+//  --- Helper: find the sRGB variant of a linear fbconfig ---
+// EGL 1.5 selects the color space per surface. The EGL config list only
+// contains linear fbconfigs (the sRGB variants are filtered out during
+// enumeration to prevent accidental gamma rendering), so when a surface
+// explicitly requests EGL_GL_COLORSPACE_SRGB the matching sRGB fbconfig is
+// looked up here. Matching is on the full framebuffer layout (color, depth,
+// stencil, double buffer); the X visual is shared between the variants.
+static GLXFBConfig __glxSRGBVariantFBConfig(Display* dpy, int screen, GLXFBConfig linearFb)
+{
+    int r = 0, g = 0, b = 0, a = 0, d = 0, s = 0, db = 0;
+    s_glXGetFBConfigAttrib(dpy, linearFb, GLX_RED_SIZE, &r);
+    s_glXGetFBConfigAttrib(dpy, linearFb, GLX_GREEN_SIZE, &g);
+    s_glXGetFBConfigAttrib(dpy, linearFb, GLX_BLUE_SIZE, &b);
+    s_glXGetFBConfigAttrib(dpy, linearFb, GLX_ALPHA_SIZE, &a);
+    s_glXGetFBConfigAttrib(dpy, linearFb, GLX_DEPTH_SIZE, &d);
+    s_glXGetFBConfigAttrib(dpy, linearFb, GLX_STENCIL_SIZE, &s);
+    s_glXGetFBConfigAttrib(dpy, linearFb, GLX_DOUBLEBUFFER, &db);
+
+    int nall = 0;
+    GLXFBConfig* all = s_glXGetFBConfigs(dpy, screen, &nall);
+    if (!all)
+        return nullptr;
+
+    for (int i = 0; i < nall; ++i)
+    {
+        int srgb = 0;
+        s_glXGetFBConfigAttrib(dpy, all[i], 0x20B2 /* GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB */, &srgb);
+        if (!srgb)
+            continue;
+
+        int sr = 0, sg = 0, sb = 0, sa = 0, sd = 0, ss = 0, sdb = 0;
+        s_glXGetFBConfigAttrib(dpy, all[i], GLX_RED_SIZE, &sr);
+        s_glXGetFBConfigAttrib(dpy, all[i], GLX_GREEN_SIZE, &sg);
+        s_glXGetFBConfigAttrib(dpy, all[i], GLX_BLUE_SIZE, &sb);
+        s_glXGetFBConfigAttrib(dpy, all[i], GLX_ALPHA_SIZE, &sa);
+        s_glXGetFBConfigAttrib(dpy, all[i], GLX_DEPTH_SIZE, &sd);
+        s_glXGetFBConfigAttrib(dpy, all[i], GLX_STENCIL_SIZE, &ss);
+        s_glXGetFBConfigAttrib(dpy, all[i], GLX_DOUBLEBUFFER, &sdb);
+
+        if (sr == r && sg == g && sb == b && sa == a && sd == d && ss == s && sdb == db)
+        {
+            GLXFBConfig fb = all[i];
+            XFree(all);
+            return fb;
+        }
+    }
+    XFree(all);
+    return nullptr;
+}
 
 static GLXFBConfig __glxFBConfigById(Display* dpy, int screen, int id)
 {
@@ -206,6 +263,8 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
 
     // GLX sync pointers (safe before a current context)
     glFinish_PTR         = reinterpret_cast<__PFN_glFinish>(s_glXGetProcAddressARB((const GLubyte*)"glFinish"));
+    glEnable_PTR         = reinterpret_cast<__PFN_glEnableDisable>(s_glXGetProcAddressARB((const GLubyte*)"glEnable"));
+    glDisable_PTR        = reinterpret_cast<__PFN_glEnableDisable>(s_glXGetProcAddressARB((const GLubyte*)"glDisable"));
     glFenceSync_PTR      = reinterpret_cast<__PFN_glFenceSync>(s_glXGetProcAddressARB((const GLubyte*)"glFenceSync"));
     glDeleteSync_PTR     = reinterpret_cast<__PFN_glDeleteSync>(s_glXGetProcAddressARB((const GLubyte*)"glDeleteSync"));
     glClientWaitSync_PTR = reinterpret_cast<__PFN_glClientWaitSync>(s_glXGetProcAddressARB((const GLubyte*)"glClientWaitSync"));
@@ -733,10 +792,28 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl*         walkerDpy,
     if (!nativeContextContainer)
         return (EGLBoolean)s_glXMakeContextCurrent(dpy, None, None, nullptr);
 
-    return (EGLBoolean)s_glXMakeContextCurrent(dpy,
-                                               nativeSurfaceContainer->drawable,
-                                               nativeSurfaceContainer->drawable,
-                                               nativeContextContainer->ctx);
+    const EGLBoolean result = (EGLBoolean)s_glXMakeContextCurrent(dpy,
+                                                                  nativeSurfaceContainer->drawable,
+                                                                  nativeSurfaceContainer->drawable,
+                                                                  nativeContextContainer->ctx);
+    if (result && nativeContextContainer->ctx)
+    {
+        // EGL 1.5 core makes the color space a *surface* attribute, but GLX
+        // has no per-surface colorspace: the encoding follows the bound
+        // context's GL_FRAMEBUFFER_SRGB state. Set it at every bind so an
+        // sRGB surface encodes (clears and fragments) and a linear surface
+        // stays linear, independent of the context's fbconfig. ES profile
+        // contexts have no such cap, where the call is a harmless no-op.
+        if (glEnable_PTR && glDisable_PTR)
+        {
+            if (nativeSurfaceContainer->glColorspace == EGL_GL_COLORSPACE_SRGB)
+                glEnable_PTR(0x8DB9 /* GL_FRAMEBUFFER_SRGB */);
+            else
+                glDisable_PTR(0x8DB9 /* GL_FRAMEBUFFER_SRGB */);
+        }
+    }
+
+    return result;
 }
 
 // ── Surfaces ──────────────────────────────────────────────────────────────────
@@ -867,6 +944,22 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
     }
 #endif
 
+    // EGL_KHR_gl_colorspace: switch to the sRGB variant of this fbconfig
+    // when explicitly requested. The EGL config list only holds linear
+    // fbconfigs (sRGB variants are filtered during enumeration), so without
+    // this swap an sRGB request would silently render linear. Per the
+    // extension, a color space the config does not support is EGL_BAD_MATCH.
+    if (parsedColorspace == EGL_GL_COLORSPACE_SRGB)
+    {
+        GLXFBConfig srgbFb = __glxSRGBVariantFBConfig(dpy, screen, fb);
+        if (!srgbFb)
+        {
+            *error = EGL_BAD_MATCH;
+            return EGL_FALSE;
+        }
+        fb = srgbFb;
+    }
+
     // Query window geometry
     Window       root;
     int          x, y;
@@ -905,6 +998,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
     newSurface->nativeSurfaceContainer.hdr         = nullptr;
     newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLX;
     newSurface->nativeSurfaceContainer.glesSurface = nullptr;
+    newSurface->nativeSurfaceContainer.glColorspace = parsedColorspace;
 
 #ifdef LINUX_VK
     {
@@ -1015,6 +1109,22 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl*       newSurface,
         }
     }
 
+    // EGL_KHR_gl_colorspace: switch to the sRGB variant of this fbconfig
+    // when explicitly requested. The EGL config list only holds linear
+    // fbconfigs (sRGB variants are filtered during enumeration), so without
+    // this swap an sRGB request would silently render linear. Per the
+    // extension, a color space the config does not support is EGL_BAD_MATCH.
+    if (pbufColorspace == EGL_GL_COLORSPACE_SRGB)
+    {
+        GLXFBConfig srgbFb = __glxSRGBVariantFBConfig(dpy, screen, fb);
+        if (!srgbFb)
+        {
+            *error = EGL_BAD_MATCH;
+            return EGL_FALSE;
+        }
+        fb = srgbFb;
+    }
+
     const int pbufAttribs[] = {
         GLX_PBUFFER_WIDTH, width,
         GLX_PBUFFER_HEIGHT, height,
@@ -1058,6 +1168,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl*       newSurface,
     newSurface->nativeSurfaceContainer.hdr         = nullptr;
     newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLX;
     newSurface->nativeSurfaceContainer.glesSurface = nullptr;
+    newSurface->nativeSurfaceContainer.glColorspace = pbufColorspace;
 
     return EGL_TRUE;
 }
@@ -1087,7 +1198,11 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl*       newSurface,
         return EGL_FALSE;
     }
 
-    EGLint glColorspace = EGL_GL_COLORSPACE_LINEAR;
+    // EGL 1.5, section 3.5.4: pixmap EGL_GL_COLORSPACE has "the same meaning
+    // and default values as when used with eglCreatePlatformWindowSurface" -
+    // the window default is linear. (System Mesa agrees; only the later
+    // registry man pages changed the pixmap default to sRGB.)
+    EGLint pixmapColorspace = EGL_GL_COLORSPACE_LINEAR;
     if (attrib_list)
     {
         EGLint i = 0;
@@ -1097,8 +1212,11 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl*       newSurface,
             switch (attrib_list[i])
             {
             case EGL_GL_COLORSPACE:
+                // EGL 1.5 core. Unlike window and pbuffer surfaces, which
+                // default to linear, the pixmap default color space is sRGB
+                // (mirroring the EGL_VG_COLORSPACE sRGB convention).
                 if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB)
-                    glColorspace = value;
+                    pixmapColorspace = value;
                 else
                 {
                     *error = EGL_BAD_ATTRIBUTE;
@@ -1156,7 +1274,7 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl*       newSurface,
     newSurface->largestPbuffer                     = EGL_FALSE;
     newSurface->textureFormat                      = EGL_NO_TEXTURE;
     newSurface->textureTarget                      = EGL_NO_TEXTURE;
-    newSurface->glColorspace                       = glColorspace;
+    newSurface->glColorspace                       = pixmapColorspace;
     newSurface->initialized                        = EGL_TRUE;
     newSurface->destroy                            = EGL_FALSE;
     newSurface->pixmap                             = pixmap;
@@ -1165,6 +1283,9 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl*       newSurface,
     newSurface->nativeSurfaceContainer.hdr         = nullptr;
     newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLX;
     newSurface->nativeSurfaceContainer.glesSurface = nullptr;
+    // Drives the GL_FRAMEBUFFER_SRGB toggle at bind time; pixmaps cannot
+    // switch fbconfigs the way window/pbuffer creation does.
+    newSurface->nativeSurfaceContainer.glColorspace = pixmapColorspace;
 
     return EGL_TRUE;
 }

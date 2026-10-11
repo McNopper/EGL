@@ -49,6 +49,14 @@ __PFN_glClientWaitSync glClientWaitSync_PTR = NULL;
 __PFN_glWaitSync       glWaitSync_PTR       = NULL;
 __PFN_glGetSynciv      glGetSynciv_PTR      = NULL;
 
+// Core GL state used for the EGL 1.5 surface color space: with WGL the sRGB
+// pixel format selects the capability, but the conversion itself is toggled
+// by GL_FRAMEBUFFER_SRGB (WGL_ARB_framebuffer_sRGB) - set it per bound
+// surface so linear and sRGB surfaces behave identically to the GLX backend.
+typedef void(__stdcall* __PFN_glEnableDisable)(unsigned int);
+static __PFN_glEnableDisable glEnable_PTR  = NULL;
+static __PFN_glEnableDisable glDisable_PTR = NULL;
+
 __PFN_wglCreateContext  wglCreateContext_PTR  = NULL;
 __PFN_wglDeleteContext  wglDeleteContext_PTR  = NULL;
 __PFN_wglMakeCurrent    wglMakeCurrent_PTR    = NULL;
@@ -214,6 +222,8 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
         (PFNWGLGETEXTENSIONSSTRINGARBPROC)
             __getProcAddress("wglGetExtensionsStringARB");
     glFinish_PTR         = reinterpret_cast<__PFN_glFinish>(__getProcAddress("glFinish"));
+    glEnable_PTR         = reinterpret_cast<__PFN_glEnableDisable>(__getProcAddress("glEnable"));
+    glDisable_PTR        = reinterpret_cast<__PFN_glEnableDisable>(__getProcAddress("glDisable"));
     glFenceSync_PTR      = reinterpret_cast<__PFN_glFenceSync>(__getProcAddress("glFenceSync"));
     glDeleteSync_PTR     = reinterpret_cast<__PFN_glDeleteSync>(__getProcAddress("glDeleteSync"));
     glClientWaitSync_PTR = reinterpret_cast<__PFN_glClientWaitSync>(__getProcAddress("glClientWaitSync"));
@@ -613,6 +623,14 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
         // WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
         0};
 
+    // WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB is only understood when the driver
+    // exposes WGL(ARB|EXT)_framebuffer_sRGB; without it the attribute makes
+    // wglChoosePixelFormatARB fail outright (see the window path).
+    if (!walkerDpy->srgbFramebufferSupported)
+    {
+        iattribs[28] = 0;
+    }
+
     EGLint pbuf_attribs[] = {
         WGL_PBUFFER_LARGEST_EXT, GL_FALSE,
         0};
@@ -647,9 +665,11 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
             }
             else if (value == EGL_GL_COLORSPACE_SRGB)
             {
-                // sRGB is a per config capability. Requesting it on a config that cannot
-                // present it is an EGL_BAD_MATCH rather than a silent downgrade to linear.
-                if (!walkerConfig->srgbCapable)
+                // EGL_GL_COLORSPACE is core EGL 1.5. sRGB is delivered by
+                // asking the pixel-format chooser for an sRGB-capable format;
+                // without the driver extension there is no sRGB format at all,
+                // which is EGL_BAD_MATCH rather than a silent linear downgrade.
+                if (!walkerDpy->srgbFramebufferSupported)
                 {
                     *error = EGL_BAD_MATCH;
 
@@ -668,9 +688,13 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
                      value == EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT ||
                      value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT)
             {
-                // HDR colorspaces stored but no Vulkan surface for offscreen buffers
-                iattribs[29]   = GL_FALSE;
-                pbufColorspace = value;
+                // HDR colorspaces present via Vulkan and are window-surface
+                // only (EGL_EXT_gl_colorspace_*); an offscreen pbuffer cannot
+                // deliver them. Match the GLX backend and reject instead of
+                // silently handing back a linear buffer.
+                *error = EGL_BAD_ATTRIBUTE;
+
+                return EGL_FALSE;
             }
             else
             {
@@ -788,6 +812,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
     newSurface->pbuf                       = pbuf;
     newSurface->nativeSurfaceContainer.hdc = hdc;
     newSurface->nativeSurfaceContainer.hdr = nullptr;
+    newSurface->nativeSurfaceContainer.glColorspace = pbufColorspace;
 
     return EGL_TRUE;
 }
@@ -868,6 +893,15 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
         // WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
         0};
 
+    // WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB is only understood when the driver
+    // exposes WGL(ARB|EXT)_framebuffer_sRGB. Passing it to
+    // wglChoosePixelFormatARB on a software / RDP / stripped driver fails
+    // surface creation outright, so terminate the list before the attribute.
+    if (!walkerDpy->srgbFramebufferSupported)
+    {
+        template_attrib_list[28] = 0;
+    }
+
     EGLint parsedColorspace = EGL_GL_COLORSPACE_LINEAR;
 
     if (attrib_list)
@@ -889,9 +923,12 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
                 }
                 else if (value == EGL_GL_COLORSPACE_SRGB)
                 {
-                    // sRGB is a per config capability. Requesting it on a config that cannot
-                    // present it is an EGL_BAD_MATCH rather than a silent downgrade to linear.
-                    if (!walkerConfig->srgbCapable)
+                    // EGL_GL_COLORSPACE is core EGL 1.5. sRGB is delivered by
+                    // asking the pixel-format chooser for an sRGB-capable
+                    // format; without the driver extension there is no sRGB
+                    // format at all, which is EGL_BAD_MATCH per the spec
+                    // rather than a silent downgrade to linear.
+                    if (!walkerDpy->srgbFramebufferSupported)
                     {
                         ReleaseDC(win, hdc);
 
@@ -1079,6 +1116,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
     newSurface->win                                 = win;
     newSurface->nativeSurfaceContainer.hdc          = hdc;
     newSurface->nativeSurfaceContainer.hdr          = nullptr;
+    newSurface->nativeSurfaceContainer.glColorspace = parsedColorspace;
     newSurface->nativeSurfaceContainer.backend      = EGL_BACKEND_WGL;
     newSurface->nativeSurfaceContainer.angleSurface = nullptr;
 
@@ -1188,24 +1226,22 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
         return EGL_FALSE;
     }
 
-    EGLint glColorspace = EGL_GL_COLORSPACE_LINEAR;
+    // EGL 1.5, section 3.5.4: pixmap EGL_GL_COLORSPACE has "the same meaning
+    // and default values as when used with eglCreatePlatformWindowSurface" -
+    // the window default is linear. (System Mesa agrees; only the later
+    // registry man pages changed the pixmap default to sRGB.)
+    EGLint pixmapColorspace = EGL_GL_COLORSPACE_LINEAR;
     if (attrib_list)
     {
         EGLint i = 0;
         while (attrib_list[i] != EGL_NONE)
         {
-            EGLint attrib = attrib_list[i];
-            EGLint value  = attrib_list[i + 1];
-            switch (attrib)
+            EGLint value = attrib_list[i + 1];
+            switch (attrib_list[i])
             {
             case EGL_GL_COLORSPACE:
-                if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB ||
-                    value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT || value == EGL_GL_COLORSPACE_SCRGB_EXT ||
-                    value == EGL_GL_COLORSPACE_BT2020_PQ_EXT || value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
-                    value == EGL_GL_COLORSPACE_BT2020_HLG_EXT ||
-                    value == EGL_GL_COLORSPACE_DISPLAY_P3_EXT || value == EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT ||
-                    value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT)
-                    glColorspace = value;
+                if (value == EGL_GL_COLORSPACE_LINEAR || value == EGL_GL_COLORSPACE_SRGB)
+                    pixmapColorspace = value;
                 else
                 {
                     *error = EGL_BAD_ATTRIBUTE;
@@ -1274,13 +1310,16 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl* newSurface, EGLNativePixmapType
     newSurface->largestPbuffer     = EGL_FALSE;
     newSurface->textureFormat      = EGL_NO_TEXTURE;
     newSurface->textureTarget      = EGL_NO_TEXTURE;
-    newSurface->glColorspace       = glColorspace;
+    newSurface->glColorspace       = pixmapColorspace;
 
     newSurface->initialized                = EGL_TRUE;
     newSurface->destroy                    = EGL_FALSE;
     newSurface->pixmap                     = pixmap;
     newSurface->nativeSurfaceContainer.hdc = memDC;
     newSurface->nativeSurfaceContainer.hdr = nullptr;
+    // Drives the GL_FRAMEBUFFER_SRGB toggle at bind time; the memory DC
+    // keeps the config's linear pixel format.
+    newSurface->nativeSurfaceContainer.glColorspace = pixmapColorspace;
 
     return EGL_TRUE;
 }
@@ -1463,6 +1502,25 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
             continue;
         }
 
+        // Skip sRGB-capable pixel formats, mirroring the GLX backend: they
+        // render gamma-encoded, but EGL exposes sRGB as a per-surface
+        // attribute (EGL_GL_COLORSPACE_SRGB, core EGL 1.5) - never as a
+        // config property. Ordinary configs must render linear; the sRGB
+        // variant is selected at surface creation by the pixel-format
+        // chooser (WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB).
+        if (walkerDpy->srgbFramebufferSupported)
+        {
+            int srgbCapable = 0;
+            if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, &srgbCapable, error))
+            {
+                return EGL_FALSE;
+            }
+            if (srgbCapable)
+            {
+                continue;
+            }
+        }
+
         //
 
         EGLConfigImpl* newConfig = reinterpret_cast<EGLConfigImpl*>(malloc(sizeof(EGLConfigImpl)));
@@ -1585,19 +1643,11 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
         //
 
-        // sRGB capability is per pixel format, not per driver: NVIDIA for example exposes it
-        // on every 8 bit per component format and on none of the 10 bit ones. Without the
-        // extension the attribute cannot be queried at all, so report EGL_FALSE.
+        // sRGB-capable pixel formats are filtered during enumeration (see
+        // above); ordinary EGL configs always render linear. sRGB is
+        // selected per surface via EGL_GL_COLORSPACE_SRGB (core EGL 1.5),
+        // which maps to WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB in the chooser.
         newConfig->srgbCapable = EGL_FALSE;
-        if (walkerDpy->srgbFramebufferSupported)
-        {
-            if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, &value, error))
-            {
-                return EGL_FALSE;
-            }
-
-            newConfig->srgbCapable = value ? EGL_TRUE : EGL_FALSE;
-        }
 
         //
 
@@ -1799,6 +1849,21 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
         return (EGLBoolean)wglMakeCurrent_PTR(NULL, NULL);
 
     BOOL res = (EGLBoolean)wglMakeCurrent_PTR(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
+    if (res && nativeContextContainer->ctx)
+    {
+        // EGL 1.5 core makes the color space a *surface* attribute. WGL
+        // delivers sRGB through the pixel format, but the conversion toggle
+        // is GL_FRAMEBUFFER_SRGB (WGL_ARB_framebuffer_sRGB) - set it at every
+        // bind so behavior matches the GLX backend exactly: sRGB surfaces
+        // encode clears and fragments, linear surfaces stay linear.
+        if (glEnable_PTR && glDisable_PTR)
+        {
+            if (nativeSurfaceContainer->glColorspace == EGL_GL_COLORSPACE_SRGB)
+                glEnable_PTR(0x8DB9 /* GL_FRAMEBUFFER_SRGB */);
+            else
+                glDisable_PTR(0x8DB9 /* GL_FRAMEBUFFER_SRGB */);
+        }
+    }
     return res;
 }
 

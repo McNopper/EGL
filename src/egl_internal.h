@@ -78,6 +78,7 @@ typedef struct _NativeSurfaceContainer
     NativeHDRSurfaceContainer* hdr;          // NULL for sRGB/linear; non-NULL for HDR Vulkan surfaces
     NativeBackend              backend;      // 0 = WGL (default), 1 = ANGLE
     void*                      angleSurface; // EGLSurface from ANGLE when backend == ANGLE
+    int32_t                    glColorspace; // EGL_GL_COLORSPACE_SRGB or LINEAR (EGLint == int32_t); drives GL_FRAMEBUFFER_SRGB at bind
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer
@@ -136,6 +137,7 @@ typedef struct _NativeSurfaceContainer
     NativeHDRSurfaceContainer* vk;          // non-NULL for GLX-path Wayland surfaces (Vulkan present)
     NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
     void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
+    int32_t                    glColorspace; // EGL_GL_COLORSPACE_SRGB or LINEAR (EGLint == int32_t); drives GL_FRAMEBUFFER_SRGB at bind
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer
@@ -180,6 +182,7 @@ typedef struct _NativeSurfaceContainer
     NativeHDRSurfaceContainer* hdr;         // NULL = SDR (GLX); non-NULL = Vulkan HDR
     NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
     void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
+    int32_t                    glColorspace; // EGL_GL_COLORSPACE_SRGB or LINEAR (EGLint == int32_t); drives GL_FRAMEBUFFER_SRGB at bind
 } NativeSurfaceContainer;
 
 typedef struct _NativeContextContainer
