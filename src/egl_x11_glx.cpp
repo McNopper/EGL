@@ -25,6 +25,7 @@
  */
 
 #include "egl_common.h"
+#include <cstdio>
 #include "eglctxinternals.h"
 
 // The GL_BGRA readback format is core since GL 1.2 but is not in every GL
@@ -117,17 +118,39 @@ static GLXFBConfig __glxFBConfigById(Display* dpy, int screen, int id)
     const int    attribs[] = {GLX_FBCONFIG_ID, id, None};
     int          n         = 0;
     GLXFBConfig* fbs       = s_glXChooseFBConfig(dpy, screen, attribs, &n);
-    if (!fbs)
-        return nullptr;
-    if (n == 0)
+    fflush(stderr);
+    if (fbs)
     {
+        if (n > 0)
+        {
+            GLXFBConfig fb = fbs[0];
+            XFree(fbs);
+            return fb;
+        }
         // A non-NULL array with no entries still has to be released.
         XFree(fbs);
-        return nullptr;
     }
-    GLXFBConfig fb = fbs[0];
-    XFree(fbs);
-    return fb;
+
+    // glXChooseFBConfig(GLX_FBCONFIG_ID, ...) does not return non-visual
+    // configs (pbuffer/pixmap-only) on every implementation, although
+    // glXGetFBConfigs lists them. Scan the full list as a fallback.
+    int nall = 0;
+    GLXFBConfig* all = s_glXGetFBConfigs(dpy, screen, &nall);
+    if (!all)
+        return nullptr;
+    for (int i = 0; i < nall; ++i)
+    {
+        int fid = 0;
+        s_glXGetFBConfigAttrib(dpy, all[i], GLX_FBCONFIG_ID, &fid);
+        if (fid == id)
+        {
+            GLXFBConfig fb = all[i];
+            XFree(all);
+            return fb;
+        }
+    }
+    XFree(all);
+    return nullptr;
 }
 
 // ── Helper: load a symbol from libGL via dlsym ────────────────────────────────

@@ -44,9 +44,11 @@ extern "C"
             g_localStorage.error = EGL_NOT_INITIALIZED;
             return EGL_NO_SYNC;
         }
+        // EGL 1.5 §3.8.1: EGL_BAD_PARAMETER if type is not a recognised type
+        // (EGL_BAD_ATTRIBUTE is for unrecognised attribute names/values).
         if (type != EGL_SYNC_FENCE)
         {
-            g_localStorage.error = EGL_BAD_ATTRIBUTE;
+            g_localStorage.error = EGL_BAD_PARAMETER;
             return EGL_NO_SYNC;
         }
         // EGL 1.5 §3.8.1: EGL_BAD_MATCH if no current context.
