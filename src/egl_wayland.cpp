@@ -1201,7 +1201,14 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
             walkerDpy->rootConfig = newConfig;
         lastConfig = newConfig;
 
-        newConfig->drawToWindow  = (drawableType & GLX_WINDOW_BIT) ? EGL_TRUE : EGL_FALSE;
+        int db = 0;
+        s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_DOUBLEBUFFER, &db);
+        newConfig->doubleBuffer = db ? EGL_TRUE : EGL_FALSE;
+
+        // EGL 1.5 section 3.5.1: window surfaces are back-buffered, so only a
+        // double-buffered fbconfig may advertise EGL_WINDOW_BIT (same rule as
+        // the X11 backend - see the comment there).
+        newConfig->drawToWindow  = ((drawableType & GLX_WINDOW_BIT) && newConfig->doubleBuffer) ? EGL_TRUE : EGL_FALSE;
         newConfig->drawToPixmap  = EGL_FALSE; // Wayland: pixmaps not exposed
         newConfig->drawToPBuffer = (drawableType & GLX_PBUFFER_BIT) ? EGL_TRUE : EGL_FALSE;
         newConfig->surfaceType   = 0;
@@ -1225,10 +1232,6 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
         int fbid = 0;
         s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_FBCONFIG_ID, &fbid);
         newConfig->configId = fbid;
-
-        int db = 0;
-        s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_DOUBLEBUFFER, &db);
-        newConfig->doubleBuffer = db ? EGL_TRUE : EGL_FALSE;
 
         s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_RED_SIZE, &newConfig->redSize);
         s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_GREEN_SIZE, &newConfig->greenSize);

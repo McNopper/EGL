@@ -706,25 +706,13 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
                 iattribs[29]   = GL_TRUE;
                 pbufColorspace = EGL_GL_COLORSPACE_SRGB;
             }
-            else if (value == EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT ||
-                     value == EGL_GL_COLORSPACE_SCRGB_EXT ||
-                     value == EGL_GL_COLORSPACE_BT2020_PQ_EXT ||
-                     value == EGL_GL_COLORSPACE_BT2020_LINEAR_EXT ||
-                     value == EGL_GL_COLORSPACE_BT2020_HLG_EXT ||
-                     value == EGL_GL_COLORSPACE_DISPLAY_P3_EXT ||
-                     value == EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT ||
-                     value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT)
-            {
-                // HDR colorspaces present via Vulkan and are window-surface
-                // only (EGL_EXT_gl_colorspace_*); an offscreen pbuffer cannot
-                // deliver them. Match the GLX backend and reject instead of
-                // silently handing back a linear buffer.
-                *error = EGL_BAD_ATTRIBUTE;
-
-                return EGL_FALSE;
-            }
             else
             {
+                // Only linear and sRGB can be delivered by an offscreen buffer.
+                // The HDR colorspaces (EGL_EXT_gl_colorspace_*) present via
+                // Vulkan and are window-surface only, so they are rejected
+                // like any other unknown value - as the GLX backend does -
+                // instead of silently handing back a linear buffer.
                 *error = EGL_BAD_ATTRIBUTE;
                 return EGL_FALSE;
             }
@@ -905,7 +893,14 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
         WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
         WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
         WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-        WGL_DOUBLE_BUFFER_ARB, walkerConfig->doubleBuffer ? GL_TRUE : GL_FALSE,
+        // EGL 1.5 section 3.5.1: EGL_RENDER_BUFFER defaults to EGL_BACK_BUFFER
+        // for a window surface. That must not follow the native format behind
+        // the config: buffering is not an eglChooseConfig criterion, so a
+        // config backed by a single-buffered pixel format can be chosen, and
+        // on such a window eglSwapBuffers has nothing to swap - nothing
+        // flushes the client API either, so the window stays blank until the
+        // context is released. An explicit EGL_RENDER_BUFFER overrides slot 7.
+        WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
         WGL_COLOR_BITS_ARB, 32,
         WGL_RED_BITS_EXT, 8,
         WGL_GREEN_BITS_EXT, 8,

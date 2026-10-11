@@ -320,18 +320,18 @@ extern "C"
             bool                     vgOK = false;
 #endif
 
-            s_clientApis[0] = 0;
+            s_clientApis[0] = '\0';
+            auto appendApi  = [&](const char* s)
+            {
+                size_t len = strlen(s_clientApis);
+                snprintf(s_clientApis + len, sizeof(s_clientApis) - len, "%s%s", len ? " " : "", s);
+            };
             if (glOK)
-                strcat(s_clientApis, "OpenGL ");
+                appendApi("OpenGL");
             if (esOK)
-                strcat(s_clientApis, "OpenGL_ES ");
+                appendApi("OpenGL_ES");
             if (vgOK)
-                strcat(s_clientApis, "OpenVG ");
-
-            // Trim the trailing space.
-            size_t len = strlen(s_clientApis);
-            if (len > 0)
-                s_clientApis[len - 1] = 0;
+                appendApi("OpenVG");
 
             return s_clientApis;
         }

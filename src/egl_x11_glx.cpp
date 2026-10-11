@@ -1598,8 +1598,21 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
             walkerDpy->rootConfig = newConfig;
         lastConfig = newConfig;
 
+        // Double-buffer
+        int db = 0;
+        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_DOUBLEBUFFER, &db);
+        newConfig->doubleBuffer = db ? EGL_TRUE : EGL_FALSE;
+
         // Surface type bitmask
-        newConfig->drawToWindow  = (drawableType & GLX_WINDOW_BIT) ? EGL_TRUE : EGL_FALSE;
+        // EGL 1.5 section 3.5.1: a window surface renders into the back buffer
+        // by default, and GLX takes a window's buffering from the fbconfig it is
+        // bound through - there is no per-surface override. A single-buffered
+        // fbconfig therefore cannot back a window surface and must not
+        // advertise EGL_WINDOW_BIT: buffering is not an eglChooseConfig
+        // criterion, so otherwise the spec-sorted first match for a window
+        // request could be single-buffered, and eglSwapBuffers would have no
+        // back buffer to post.
+        newConfig->drawToWindow  = ((drawableType & GLX_WINDOW_BIT) && newConfig->doubleBuffer) ? EGL_TRUE : EGL_FALSE;
         newConfig->drawToPixmap  = (drawableType & GLX_PIXMAP_BIT) ? EGL_TRUE : EGL_FALSE;
         newConfig->drawToPBuffer = (drawableType & GLX_PBUFFER_BIT) ? EGL_TRUE : EGL_FALSE;
         newConfig->surfaceType   = 0;
@@ -1627,11 +1640,6 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
         int fbid = 0;
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_FBCONFIG_ID, &fbid);
         newConfig->configId = fbid;
-
-        // Double-buffer
-        int db = 0;
-        s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_DOUBLEBUFFER, &db);
-        newConfig->doubleBuffer = db ? EGL_TRUE : EGL_FALSE;
 
         // Color channel sizes
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_RED_SIZE, &newConfig->redSize);

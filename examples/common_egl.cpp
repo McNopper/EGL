@@ -142,6 +142,18 @@ EGLApp* egl_app_create(const EGLint* config_attribs,
         return nullptr;
     }
 
+    // EGL 1.5 section 3.5.1: a window surface renders to the back buffer unless
+    // asked otherwise. On a single-buffered one eglSwapBuffers has nothing to
+    // post, so the window stays blank while the example appears to run fine -
+    // no conformance test enforces the default, so check it here.
+    EGLint render_buffer = EGL_NONE;
+    if (!eglQuerySurface(app->dpy, app->surf, EGL_RENDER_BUFFER, &render_buffer) ||
+        render_buffer != EGL_BACK_BUFFER)
+    {
+        fprintf(stderr, "default window surface is not back-buffered: EGL_RENDER_BUFFER = 0x%x\n", render_buffer);
+        return nullptr;
+    }
+
     static const EGLint default_ctx_attribs_gl[]  = { EGL_NONE };
     static const EGLint default_ctx_attribs_es3[] = {
         EGL_CONTEXT_MAJOR_VERSION, 3,
