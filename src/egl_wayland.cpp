@@ -1061,9 +1061,16 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
         }
     }
 #endif
-    const EGLint esMask = esSupported
-                              ? (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT)
-                              : 0;
+    // Advertise exactly what the native layer can deliver (see the X11
+    // backend): ES 1.x exists only behind a real GLES1 implementation.
+    const EGLint esMask = (esSupported
+                               ? ((g_ES_max_supported_version[0] >= 3 ? EGL_OPENGL_ES3_BIT : 0) |
+                                  (g_ES_max_supported_version[0] >= 2 ? EGL_OPENGL_ES2_BIT : 0))
+                               : 0)
+#ifdef EGL_LINUX_ENABLE_GLES
+                              | (gles_isAvailable() ? EGL_OPENGL_ES_BIT : 0)
+#endif
+        ;
 
     walkerDpy->srgbFramebufferSupported =
         (strstr(glxExts, "GLX_ARB_framebuffer_sRGB") != nullptr ||

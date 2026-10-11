@@ -1419,12 +1419,15 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
     const int render_texture_supported = strstr(extensions_str, "WGL_ARB_render_texture") != NULL;
     const int ES_supported             = strstr(extensions_str, "WGL_EXT_create_context_es_profile") != NULL;
-    EGLint    ES_mask                  = ES_supported * (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+    // Advertise exactly what the native layer can deliver: the WGL ES profile
+    // and ANGLE both create ES 2.0+ contexts; neither provides ES 1.x, so the
+    // EGL_OPENGL_ES_BIT is only added behind a real GLES1 implementation.
+    EGLint    ES_mask                  = ES_supported ? (EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT) : 0;
 #ifdef EGL_WIN_ENABLE_ANGLE
-    // ANGLE provides real ES contexts independent of WGL — advertise the bits
+    // ANGLE provides real ES contexts independent of WGL - advertise the bits
     // on every config so eglChooseConfig with EGL_OPENGL_ES*_BIT can match.
     if (angle_isAvailable())
-        ES_mask |= (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
+        ES_mask |= (EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT);
 #endif
 
     walkerDpy->srgbFramebufferSupported =

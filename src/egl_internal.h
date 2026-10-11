@@ -611,6 +611,29 @@ void       _eglVGNotifySwap(EGLContextImpl* walkerCtx);
 #endif
 #endif /* EGL_ENABLE_OPENVG */
 
+//  --- Platform native-handle unwrapping ---
+// eglCreatePlatformWindowSurface/Pixmap receive the platform native handle
+// as void*. Per EGL_EXT_platform_x11 the X11 platform passes a POINTER to the
+// Window/Pixmap id, while Win32 and Wayland pass the handle value itself.
+// The difference belongs here with the other platform helpers.
+inline EGLNativeWindowType __unwrapNativeWindow(void* nativeWindow)
+{
+#if defined(USE_X11)
+    return *reinterpret_cast<EGLNativeWindowType*>(nativeWindow);
+#else
+    return reinterpret_cast<EGLNativeWindowType>(nativeWindow);
+#endif
+}
+
+inline EGLNativePixmapType __unwrapNativePixmap(void* nativePixmap)
+{
+#if defined(USE_X11)
+    return *reinterpret_cast<EGLNativePixmapType*>(nativePixmap);
+#else
+    return reinterpret_cast<EGLNativePixmapType>(nativePixmap);
+#endif
+}
+
 // ── Platform inline helpers ──────────────────────────────────────────────────
 // These keep all platform #ifdef logic inside this header so that the
 // platform-agnostic core files (egl_display.cpp etc.) stay portable.

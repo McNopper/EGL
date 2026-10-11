@@ -609,7 +609,7 @@ extern "C"
             return EGL_NO_SURFACE;
         }
 
-        return _eglCreateWindowSurface(dpy, config, reinterpret_cast<EGLNativeWindowType>(native_window), converted);
+        return _eglCreateWindowSurface(dpy, config, __unwrapNativeWindow(native_window), converted);
     }
 
     EGLSurface _eglCreatePlatformPixmapSurface(EGLDisplay dpy, EGLConfig config, void* native_pixmap, const EGLAttrib* attrib_list)
@@ -623,7 +623,7 @@ extern "C"
             return EGL_NO_SURFACE;
         }
 
-        return _eglCreatePixmapSurface(dpy, config, reinterpret_cast<EGLNativePixmapType>(native_pixmap), converted);
+        return _eglCreatePixmapSurface(dpy, config, __unwrapNativePixmap(native_pixmap), converted);
     }
 
     EGLBoolean _eglBindTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer)

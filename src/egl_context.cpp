@@ -548,7 +548,11 @@ extern "C"
 
                             free(ctxList);
 
-                            *error = EGL_BAD_ALLOC;
+                            // A native context that cannot be created is a
+                            // surface/context compatibility failure - only an
+                            // exhausted allocator is EGL_BAD_ALLOC (eglMakeCurrent
+                            // does not even list it).
+                            *error = EGL_BAD_MATCH;
 
                             return nullptr;
                         }
@@ -573,7 +577,9 @@ extern "C"
             {
                 free(ctxList);
 
-                *error = EGL_BAD_ALLOC;
+                // See above: native-context creation failure is EGL_BAD_MATCH,
+                // EGL_BAD_ALLOC is reserved for the malloc above.
+                *error = EGL_BAD_MATCH;
 
                 return nullptr;
             }

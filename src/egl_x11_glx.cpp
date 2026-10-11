@@ -200,6 +200,14 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
 
     int screen = DefaultScreen(c->display);
 
+    // X errors are asynchronous and can be raised inside libGL (DRI3/SHM
+    // transfers) at call boundaries we do not control. The default Xlib
+    // handler is print-and-die, so make this process survive X protocol
+    // errors: record them in s_glxErrorOccurred instead. Scoped guards below
+    // reset and restore the same handler around individual risky calls.
+    XSetErrorHandler(glxErrorHandler);
+    s_glxErrorOccurred = 0;
+
     // Choose a minimal FBConfig for the dummy context
     static const int kDummyFBAttribs[] = {
         GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
@@ -795,7 +803,12 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
         Window       root;
         int          x, y;
         unsigned int w, h, bw, depth;
-        if (!XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth))
+        auto* geomHandler4   = XSetErrorHandler(glxErrorHandler);
+        s_glxErrorOccurred = 0;
+        XSync(dpy, False);
+        const bool geomOk4 = XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth) && !s_glxErrorOccurred;
+        XSetErrorHandler(geomHandler4);
+        if (!geomOk4)
         {
             // The drawable is unusable - drop the GLES surface created above.
             gles_destroySurface(surf);
@@ -835,7 +848,12 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
     Window       root;
     int          x, y;
     unsigned int w, h, bw, depth;
-    if (!XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth))
+    auto* geomHandler3   = XSetErrorHandler(glxErrorHandler);
+        s_glxErrorOccurred = 0;
+        XSync(dpy, False);
+        const bool geomOk3 = XGetGeometry(dpy, (Drawable)win, &root, &x, &y, &w, &h, &bw, &depth) && !s_glxErrorOccurred;
+        XSetErrorHandler(geomHandler3);
+        if (!geomOk3)
     {
         *error = EGL_BAD_NATIVE_WINDOW;
         return EGL_FALSE;
@@ -1087,7 +1105,12 @@ EGLBoolean __createPixmapSurface(EGLSurfaceImpl*       newSurface,
     Window       root;
     int          x, y;
     unsigned int w, h, bw, depth;
-    if (!XGetGeometry(dpy, (Drawable)pixmap, &root, &x, &y, &w, &h, &bw, &depth))
+    auto* geomHandler2   = XSetErrorHandler(glxErrorHandler);
+        s_glxErrorOccurred = 0;
+        XSync(dpy, False);
+        const bool geomOk2 = XGetGeometry(dpy, (Drawable)pixmap, &root, &x, &y, &w, &h, &bw, &depth) && !s_glxErrorOccurred;
+        XSetErrorHandler(geomHandler2);
+        if (!geomOk2)
     {
         // The GLX pixmap created above must not leak.
         s_glXDestroyPixmap(dpy, glxPix);
@@ -1168,7 +1191,12 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy,
     Window       root;
     int          px, py;
     unsigned int pw = 0, ph = 0, pbw = 0, pdepth = 0;
-    if (!XGetGeometry(dpy, (Drawable)target, &root, &px, &py, &pw, &ph, &pbw, &pdepth))
+    auto* geomHandler1   = XSetErrorHandler(glxErrorHandler);
+        s_glxErrorOccurred = 0;
+        XSync(dpy, False);
+        const bool geomOk1 = XGetGeometry(dpy, (Drawable)target, &root, &px, &py, &pw, &ph, &pbw, &pdepth) && !s_glxErrorOccurred;
+        XSetErrorHandler(geomHandler1);
+        if (!geomOk1)
         return EGL_FALSE;
 
     // We read back 8-bit BGRA, so only the packed 32-bit-per-pixel depths can be
@@ -1249,7 +1277,27 @@ EGLBoolean __copyBuffers(const EGLDisplayImpl* walkerDpy,
         return EGL_FALSE;
     }
 
+    auto* callHandler_putimage0 = XSetErrorHandler(glxErrorHandler);
+
+    s_glxErrorOccurred = 0;
+
+    XSync(dpy, False);
+
     XPutImage(dpy, (Drawable)target, gc, img, 0, 0, 0, 0, width, height);
+
+    XSync(dpy, False);
+
+    const bool callOk_putimage0 = !s_glxErrorOccurred;
+
+    XSetErrorHandler(callHandler_putimage0);
+
+    if (!callOk_putimage0)
+
+    {
+
+        return EGL_FALSE;
+
+    }
     XFreeGC(dpy, gc);
     XDestroyImage(img);
 
@@ -1293,9 +1341,18 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
                              || gles_isAvailable()
 #endif
         ;
-    const EGLint esMask = esSupported
-                              ? (EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT)
-                              : 0;
+    // Advertise exactly what the native layer can deliver: GLX ES profiles
+    // create ES 2.0+ contexts, and OpenGL ES 1.x exists only behind a real
+    // GLES1 implementation (the GLES delegation). Claiming ES 1.0 without it
+    // makes eglCreateContext accept contexts that then fail at eglMakeCurrent.
+    const EGLint esMask = (esSupported
+                               ? ((g_ES_max_supported_version[0] >= 3 ? EGL_OPENGL_ES3_BIT : 0) |
+                                  (g_ES_max_supported_version[0] >= 2 ? EGL_OPENGL_ES2_BIT : 0))
+                               : 0)
+#ifdef EGL_LINUX_ENABLE_GLES
+                              | (gles_isAvailable() ? EGL_OPENGL_ES_BIT : 0)
+#endif
+        ;
 
     walkerDpy->srgbFramebufferSupported =
         (strstr(glxExts, "GLX_ARB_framebuffer_sRGB") != nullptr ||
@@ -1478,7 +1535,17 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 #endif
 
     Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
+    auto* callHandler_swap0 = XSetErrorHandler(glxErrorHandler);
+    s_glxErrorOccurred = 0;
+    XSync(dpy, False);
     s_glXSwapBuffers(dpy, walkerSurface->nativeSurfaceContainer.drawable);
+    XSync(dpy, False);
+    const bool callOk_swap0 = !s_glxErrorOccurred;
+    XSetErrorHandler(callHandler_swap0);
+    if (!callOk_swap0)
+    {
+        return EGL_FALSE;
+    }
     return EGL_TRUE;
 }
 
@@ -1535,7 +1602,27 @@ EGLBoolean __presentVGBuffer(const EGLDisplayImpl* walkerDpy, const EGLSurfaceIm
         return EGL_FALSE;
     }
 
+    auto* callHandler_putimage1 = XSetErrorHandler(glxErrorHandler);
+
+    s_glxErrorOccurred = 0;
+
+    XSync(dpy, False);
+
     XPutImage(dpy, walkerSurface->win, gc, img, 0, 0, 0, 0, (unsigned int)width, (unsigned int)height);
+
+    XSync(dpy, False);
+
+    const bool callOk_putimage1 = !s_glxErrorOccurred;
+
+    XSetErrorHandler(callHandler_putimage1);
+
+    if (!callOk_putimage1)
+
+    {
+
+        return EGL_FALSE;
+
+    }
     XFreeGC(dpy, gc);
     XDestroyImage(img);
 
