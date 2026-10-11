@@ -16,8 +16,24 @@ concurrency:
 # Linux backend combinations. No macOS job - the library implements WGL,
 # X11/GLX and Wayland backends and CMake fails by design on any other platform.
 jobs:
+  # The release entry is created exactly once, ahead of the matrix: having
+  # every matrix leg do "view or create" raced on the tag push (HTTP 422
+  # "tag_name already exists" for the loser, whose upload then never ran).
+  release:
+    name: Create the release entry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the GitHub release for the tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+
   build:
     name: ${{ matrix.platform }}
+    needs: release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -106,13 +122,12 @@ jobs:
           cp LICENSE THIRD-PARTY.md README.md "$stage/"
           ( cd "$stage" && cmake -E tar cfz "../../dist/$name.tar.gz" --format=gnutar . )
 
-      # The release entry is normally created together with the tag; the
-      # fallback create keeps a bare-tag push self-sufficient.
+      # The release entry is created by the `release` job (needs: release) -
+      # this step only uploads. A bare-tag push still yields the release; a
+      # tag with an existing release just gets its archives attached.
       - name: Attach archives to the GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
           gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
