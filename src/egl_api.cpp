@@ -203,6 +203,11 @@ extern "C"
 
             if (!__presentVGBuffer(walkerDpy, walkerSurface))
             {
+                // EGL 1.5 §3.10.4: a failed post means the native window is no
+                // longer valid. Returning EGL_FALSE without an error code would
+                // leave eglGetError() reporting EGL_SUCCESS.
+                g_localStorage.error = EGL_BAD_NATIVE_WINDOW;
+
                 return EGL_FALSE;
             }
 
@@ -214,6 +219,11 @@ extern "C"
 
         if (!__swapBuffers(walkerDpy, walkerSurface))
         {
+            // EGL 1.5 §3.10.4: a failed post means the native window is no
+            // longer valid. Returning EGL_FALSE without an error code would
+            // leave eglGetError() reporting EGL_SUCCESS.
+            g_localStorage.error = EGL_BAD_NATIVE_WINDOW;
+
             return EGL_FALSE;
         }
 

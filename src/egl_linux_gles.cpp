@@ -61,6 +61,7 @@ struct GlesState
 {
     void* libEGL{nullptr};
     void* libGLES{nullptr};
+    void* libWaylandEgl{nullptr};
 
     PFN_eglGetDisplay            eglGetDisplay{nullptr};
     PFN_eglGetPlatformDisplayEXT eglGetPlatformDisplayEXT{nullptr};
@@ -83,6 +84,30 @@ struct GlesState
     int   esMax[2]{0, 0};
 };
 
+// libwayland-egl: the wl_egl_window of the Wayland platform is created and
+// owned by that library - wayland-egl-core.h declares the create / destroy /
+// resize entry points and keeps the struct layout private. The ES delegation
+// therefore mirrors the application's native window through those entry
+// points instead of handing our own struct to the system EGL, which would
+// read it with Mesa's layout.
+typedef void* (*PFN_wl_egl_window_create)(void*, int, int);
+typedef void (*PFN_wl_egl_window_destroy)(void*);
+typedef void (*PFN_wl_egl_window_resize)(void*, int, int, int, int);
+
+PFN_wl_egl_window_create  wlEglWindowCreate{nullptr};
+PFN_wl_egl_window_destroy wlEglWindowDestroy{nullptr};
+PFN_wl_egl_window_resize  wlEglWindowResize{nullptr};
+
+// Handle handed back to the caller: the system surface plus, on Wayland, the
+// libwayland-egl window that must mirror the native window's size.
+struct GlesSurface
+{
+    void* eglSurface{nullptr};
+    void* wlEglWindow{nullptr}; // NULL outside Wayland
+    int   width{0};
+    int   height{0};
+};
+
 GlesState g;
 
 template <typename T>
@@ -90,6 +115,22 @@ static bool resolveSym(void* lib, T& out, const char* name)
 {
     out = reinterpret_cast<T>(dlsym(lib, name));
     return out != nullptr;
+}
+
+static bool loadWaylandEgl()
+{
+    if (wlEglWindowCreate)
+        return true;
+    if (!g.libWaylandEgl)
+    {
+        g.libWaylandEgl = dlopen("libwayland-egl.so.1", RTLD_LAZY | RTLD_LOCAL);
+        if (!g.libWaylandEgl)
+            g.libWaylandEgl = dlopen("libwayland-egl.so", RTLD_LAZY | RTLD_LOCAL);
+    }
+    return g.libWaylandEgl &&
+           resolveSym(g.libWaylandEgl, wlEglWindowCreate, "wl_egl_window_create") &&
+           resolveSym(g.libWaylandEgl, wlEglWindowDestroy, "wl_egl_window_destroy") &&
+           resolveSym(g.libWaylandEgl, wlEglWindowResize, "wl_egl_window_resize");
 }
 
 static bool chooseDefaultConfig(int* outVersion)
@@ -265,6 +306,14 @@ extern "C"
             dlclose(g.libGLES);
             g.libGLES = nullptr;
         }
+        if (g.libWaylandEgl)
+        {
+            dlclose(g.libWaylandEgl);
+            g.libWaylandEgl = nullptr;
+            wlEglWindowCreate  = nullptr;
+            wlEglWindowDestroy = nullptr;
+            wlEglWindowResize  = nullptr;
+        }
         if (g.libEGL)
         {
             dlclose(g.libEGL);
@@ -284,18 +333,60 @@ extern "C"
             return EGL_FALSE;
 
         static const int surfaceAttribs[] = {SYSGL_EGL_NONE};
-        *out_surface                      = g.eglCreateWindowSurface(g.display, g.config, win, surfaceAttribs);
-        return *out_surface ? EGL_TRUE : EGL_FALSE;
+        void*            eglSurface        = g.eglCreateWindowSurface(g.display, g.config, win, surfaceAttribs);
+        if (!eglSurface)
+            return EGL_FALSE;
+
+        auto* s        = new GlesSurface{};
+        s->eglSurface  = eglSurface;
+        *out_surface   = s;
+        return EGL_TRUE;
     }
 
-    EGLBoolean gles_createWindowSurfaceWayland(void* wlEglWin, void** out_surface)
+    EGLBoolean gles_createWindowSurfaceWayland(void* wlSurface, int width, int height, void** out_surface)
     {
-        if (!g.ready || !out_surface)
+        if (!g.ready || !out_surface || !wlSurface)
+            return EGL_FALSE;
+        if (!loadWaylandEgl())
+            return EGL_FALSE;
+
+        // The system EGL expects a wl_egl_window created by libwayland-egl;
+        // pass it that instead of our own native-window struct.
+        void* wlEglWindow = wlEglWindowCreate(wlSurface, width, height);
+        if (!wlEglWindow)
             return EGL_FALSE;
 
         static const int surfaceAttribs[] = {SYSGL_EGL_NONE};
-        *out_surface                      = g.eglCreateWindowSurface(g.display, g.config, wlEglWin, surfaceAttribs);
-        return *out_surface ? EGL_TRUE : EGL_FALSE;
+        void*            eglSurface        = g.eglCreateWindowSurface(g.display, g.config, wlEglWindow, surfaceAttribs);
+        if (!eglSurface)
+        {
+            wlEglWindowDestroy(wlEglWindow);
+            return EGL_FALSE;
+        }
+
+        auto* s        = new GlesSurface{};
+        s->eglSurface  = eglSurface;
+        s->wlEglWindow = wlEglWindow;
+        s->width       = width;
+        s->height      = height;
+        *out_surface   = s;
+        return EGL_TRUE;
+    }
+
+    EGLBoolean gles_resizeWindowWayland(void* surface, int width, int height)
+    {
+        auto* s = static_cast<GlesSurface*>(surface);
+        if (!s || !s->wlEglWindow || width <= 0 || height <= 0)
+            return EGL_FALSE;
+
+        // EGL 1.5 section 3.10.1.1: the swap detects a native-window resize.
+        if (width != s->width || height != s->height)
+        {
+            wlEglWindowResize(s->wlEglWindow, width, height, 0, 0);
+            s->width  = width;
+            s->height = height;
+        }
+        return EGL_TRUE;
     }
 
     EGLBoolean gles_createContext(EGLint major, EGLint minor, void* share, void** out_context)
@@ -321,14 +412,16 @@ extern "C"
             return EGL_FALSE;
         if (!context && !surface)
             return (EGLBoolean)g.eglMakeCurrent(g.display, nullptr, nullptr, nullptr);
-        return (EGLBoolean)g.eglMakeCurrent(g.display, surface, surface, context);
+        auto* s = static_cast<GlesSurface*>(surface);
+        return (EGLBoolean)g.eglMakeCurrent(g.display, s->eglSurface, s->eglSurface, context);
     }
 
     EGLBoolean gles_swapBuffers(void* surface)
     {
         if (!g.ready || !surface)
             return EGL_FALSE;
-        return (EGLBoolean)g.eglSwapBuffers(g.display, surface);
+        auto* s = static_cast<GlesSurface*>(surface);
+        return (EGLBoolean)g.eglSwapBuffers(g.display, s->eglSurface);
     }
 
     EGLBoolean gles_swapInterval(EGLint interval)
@@ -342,7 +435,12 @@ extern "C"
     {
         if (!g.ready || !surface)
             return EGL_FALSE;
-        return (EGLBoolean)g.eglDestroySurface(g.display, surface);
+        auto* s = static_cast<GlesSurface*>(surface);
+        if (s->wlEglWindow)
+            wlEglWindowDestroy(s->wlEglWindow);
+        void* eglSurface = s->eglSurface;
+        delete s;
+        return (EGLBoolean)g.eglDestroySurface(g.display, eglSurface);
     }
 
     EGLBoolean gles_destroyContext(void* context)

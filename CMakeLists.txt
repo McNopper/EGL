@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(EGL VERSION 1.0.14 LANGUAGES C CXX)
+project(EGL VERSION 1.0.15 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,6 +62,15 @@ elseif(UNIX)
             OUTPUT_VARIABLE WAYLAND_PROTOCOLS_DIR
             OUTPUT_STRIP_TRAILING_WHITESPACE)
         set(XDG_SHELL_XML "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml")
+        if(NOT EXISTS "${XDG_SHELL_XML}")
+            # wayland-scanner would only fail at build time with an opaque
+            # "No such file" - and an empty pkgdatadir silently mangles the
+            # path. Fail here, where the cause is still visible.
+            message(FATAL_ERROR
+                "wayland-protocols xdg-shell.xml not found (looked at "
+                "'${XDG_SHELL_XML}'). Install wayland-protocols and make sure "
+                "pkg-config can find it (PKG_CONFIG_PATH).")
+        endif()
         set(XDG_SHELL_HDR "${CMAKE_BINARY_DIR}/xdg-shell-client-protocol.h")
         set(XDG_SHELL_SRC "${CMAKE_BINARY_DIR}/xdg-shell-protocol.c")
         add_custom_command(

@@ -29,7 +29,7 @@
 
 #define _EGL_VENDOR "Norbert Nopper"
 
-#define _EGL_VERSION "1.5 Version 1.0.14"
+#define _EGL_VERSION "1.5 Version 1.0.15"
 
 #include <stdlib.h>
 #include <string.h>
@@ -121,6 +121,10 @@ struct wl_egl_window
 // Forward declaration; full definition is in egl_linux_vk.h
 typedef struct _NativeHDRSurfaceContainer NativeHDRSurfaceContainer;
 
+// Forward declaration; full definition is private to egl_wayland.cpp
+// (software presentation over wl_shm).
+typedef struct _NativeShmPresenter NativeShmPresenter;
+
 // Backend tag: GLX is the default desktop OpenGL path; GLES delegates to the
 // system libEGL (Mesa / vendor) when EGL_WAYLAND_ENABLE_GLES is set.
 typedef enum
@@ -135,6 +139,7 @@ typedef struct _NativeSurfaceContainer
     GLXFBConfig                glxConfig;
     struct wl_egl_window*      eglWindow;   // Wayland window; eglWindow->surface used for VK
     NativeHDRSurfaceContainer* vk;          // non-NULL for GLX-path Wayland surfaces (Vulkan present)
+    NativeShmPresenter*        shmPresent;  // non-NULL when presenting through wl_shm (software path)
     NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
     void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
     int32_t                    glColorspace; // EGL_GL_COLORSPACE_SRGB or LINEAR (EGLint == int32_t); drives GL_FRAMEBUFFER_SRGB at bind

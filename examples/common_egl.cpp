@@ -52,6 +52,11 @@ struct AppBuilder
 
         delete app;
     }
+
+    // Owns app - copying would double-delete it.
+    AppBuilder()                             = default;
+    AppBuilder(const AppBuilder&)            = delete;
+    AppBuilder& operator=(const AppBuilder&) = delete;
 };
 
 } // namespace

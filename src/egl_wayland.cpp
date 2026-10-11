@@ -1,11 +1,13 @@
 /**
- * EGL Wayland backend — GLX (XWayland) for GL context + Vulkan for ALL presentation.
+ * EGL Wayland backend — GLX (XWayland) for GL context + Vulkan for HDR presentation.
  *
  * Design:
  *   - walkerDpy->display_id  = wl_display* (Wayland compositor connection)
  *   - s_x11Display           = X11 Display* opened on XWayland ($DISPLAY)
  *   - All GL operations use s_x11Display + GLXPbuffer (offscreen; no real X window).
- *   - All swapBuffers go through Vulkan (even SDR), using VK_KHR_wayland_surface.
+ *   - swapBuffers presents through Vulkan (VK_KHR_wayland_surface) when the
+ *     driver provides GL/Vulkan interop, and through wl_shm (software copy)
+ *     for linear / sRGB / OpenVG surfaces otherwise.
  *
  * The MIT License (MIT)
  *
@@ -41,6 +43,8 @@
 #include <dlfcn.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/mman.h>
 
 // ── Function pointer type declarations ────────────────────────────────────────
 
@@ -73,6 +77,10 @@ __PFN_glDeleteSync     glDeleteSync_PTR     = nullptr;
 __PFN_glClientWaitSync glClientWaitSync_PTR = nullptr;
 __PFN_glWaitSync       glWaitSync_PTR       = nullptr;
 __PFN_glGetSynciv      glGetSynciv_PTR      = nullptr;
+
+// Readback for the software wl_shm presentation path.
+typedef void (*PFNGLREADPIXELSPROC)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
+static PFNGLREADPIXELSPROC s_glReadPixels = nullptr;
 
 // Core GLX functions
 static PFNGLXGETPROCADDRESSARBPROC     s_glXGetProcAddressARB     = nullptr;
@@ -182,6 +190,7 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
     glClientWaitSync_PTR = reinterpret_cast<__PFN_glClientWaitSync>(s_glXGetProcAddressARB((const GLubyte*)"glClientWaitSync"));
     glWaitSync_PTR       = reinterpret_cast<__PFN_glWaitSync>(s_glXGetProcAddressARB((const GLubyte*)"glWaitSync"));
     glGetSynciv_PTR      = reinterpret_cast<__PFN_glGetSynciv>(s_glXGetProcAddressARB((const GLubyte*)"glGetSynciv"));
+    s_glReadPixels       = reinterpret_cast<PFNGLREADPIXELSPROC>(s_glXGetProcAddressARB((const GLubyte*)"glReadPixels"));
 
     // Open XWayland X11 display (uses $DISPLAY set by Wayland compositor / XWayland)
     s_x11Display = XOpenDisplay(getenv("DISPLAY"));
@@ -662,6 +671,8 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl*         walkerDpy,
 #endif
 
     // Use GLXPbuffer as the read+draw surface for all GL operations
+    if (!nativeSurfaceContainer)
+        return EGL_FALSE;
     return (EGLBoolean)s_glXMakeContextCurrent(s_x11Display,
                                                nativeSurfaceContainer->glxPbuffer,
                                                nativeSurfaceContainer->glxPbuffer,
@@ -669,6 +680,265 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl*         walkerDpy,
 }
 
 // ── Surfaces ──────────────────────────────────────────────────────────────────
+
+// ── Software presentation over wl_shm ────────────────────────────────────────
+//
+// Window presentation normally goes through Vulkan (see egl_linux_vk.h), which
+// needs GL/Vulkan external-memory interop. A driver without those extensions
+// (Mesa's lavapipe, for instance) cannot use it, and every window surface would
+// fail to create. Linear and sRGB color spaces can be presented in software
+// with the same visible result: the GLXPbuffer (or the OpenVG pixel buffer) is
+// copied into WL_SHM_FORMAT_XRGB8888 buffers and committed to the
+// application's wl_surface. HDR color spaces cannot be carried by wl_shm and
+// are rejected like any color space the surface cannot present (EGL_BAD_MATCH,
+// EGL_KHR_gl_colorspace).
+
+struct ShmSlot
+{
+    struct wl_buffer* buf;
+    void*             data;
+    bool              busy;
+};
+
+struct _NativeShmPresenter
+{
+    struct wl_display*     wlDpy;
+    struct wl_surface*     wlSurface;
+    struct wl_event_queue* queue; // private: buffer release events must never
+                                  // reach the application's own listeners
+    struct wl_shm*         shm;
+    struct wl_shm_pool*    pool;
+    int                    poolFd;
+    size_t                 slotStride; // mmap offsets must be page-aligned, so
+                                        // a slot is stride-sized, w*h*4 usable
+    int                    width;
+    int                    height;
+    ShmSlot                slot[2]; // one buffer may still be held by the
+                                    // compositor when the next frame is ready
+    void*                  scratch; // GL readback staging (bottom-up rows)
+    size_t                 scratchBytes;
+};
+
+// Staging buffer for the GL readback, sized to the current window.
+static void* __shmPresenterScratch(_NativeShmPresenter* p, int w, int h)
+{
+    const size_t bytes = (size_t)w * (size_t)h * 4;
+    if (p->scratchBytes < bytes)
+    {
+        free(p->scratch);
+        p->scratch = malloc(bytes);
+        p->scratchBytes = p->scratch ? bytes : 0;
+    }
+    return p->scratch;
+}
+
+static void __shmBufferRelease(void* data, struct wl_buffer* /*buf*/)
+{
+    static_cast<ShmSlot*>(data)->busy = false;
+}
+
+static const struct wl_buffer_listener s_shmBufferListener = {__shmBufferRelease};
+
+static void __shmGlobal(void* data, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t /*ver*/)
+{
+    auto* p = static_cast<_NativeShmPresenter*>(data);
+    if (!p->shm && strcmp(iface, "wl_shm") == 0)
+        p->shm = static_cast<struct wl_shm*>(wl_registry_bind(reg, name, &wl_shm_interface, 1));
+}
+
+static const struct wl_registry_listener s_shmRegistryListener = {
+    __shmGlobal,
+    [](void*, struct wl_registry*, uint32_t) {}};
+
+static EGLBoolean __shmAllocBuffers(_NativeShmPresenter* p, int w, int h)
+{
+    const size_t slotBytes = (size_t)w * (size_t)h * 4;
+
+    // mmap offsets must be page-aligned, so the pool slots are padded to the
+    // page size; the buffers themselves keep the tight w*4 row stride.
+    const long   pageSize   = sysconf(_SC_PAGESIZE);
+    const size_t slotStride = ((slotBytes + (size_t)pageSize - 1) / (size_t)pageSize) * (size_t)pageSize;
+    p->slotStride = slotStride;
+
+    p->poolFd = memfd_create("egl-wl-shm", 0);
+    if (p->poolFd < 0)
+    {
+        return EGL_FALSE;
+    }
+    if (ftruncate(p->poolFd, (off_t)(slotStride * 2)) != 0)
+    {
+        close(p->poolFd);
+        p->poolFd = -1;
+        return EGL_FALSE;
+    }
+
+    p->pool = wl_shm_create_pool(p->shm, p->poolFd, (int)(slotStride * 2));
+    if (!p->pool)
+    {
+        close(p->poolFd);
+        p->poolFd = -1;
+        return EGL_FALSE;
+    }
+
+    for (int i = 0; i < 2; ++i)
+    {
+        p->slot[i].data = mmap(nullptr, slotBytes, PROT_READ | PROT_WRITE, MAP_SHARED, p->poolFd, (off_t)((size_t)i * slotStride));
+        if (p->slot[i].data == MAP_FAILED)
+        {
+            p->slot[i].data = nullptr;
+            return EGL_FALSE;
+        }
+        p->slot[i].buf = wl_shm_pool_create_buffer(p->pool, (int)((size_t)i * slotStride), w, h, w * 4, WL_SHM_FORMAT_XRGB8888);
+        if (!p->slot[i].buf)
+        {
+            return EGL_FALSE;
+        }
+        p->slot[i].busy = false;
+        wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(p->slot[i].buf), p->queue);
+        wl_buffer_add_listener(p->slot[i].buf, &s_shmBufferListener, &p->slot[i]);
+    }
+
+    p->width  = w;
+    p->height = h;
+    return EGL_TRUE;
+}
+
+static void __shmFreeBuffers(_NativeShmPresenter* p)
+{
+    const size_t slotBytes = (size_t)p->width * (size_t)p->height * 4;
+
+    for (int i = 0; i < 2; ++i)
+    {
+        if (p->slot[i].buf)
+            wl_buffer_destroy(p->slot[i].buf);
+        if (p->slot[i].data)
+            munmap(p->slot[i].data, slotBytes);
+        p->slot[i].buf  = nullptr;
+        p->slot[i].data = nullptr;
+        p->slot[i].busy = false;
+    }
+    if (p->pool)
+        wl_shm_pool_destroy(p->pool);
+    if (p->poolFd >= 0)
+        close(p->poolFd);
+    p->pool   = nullptr;
+    p->poolFd = -1;
+}
+
+static void __shmPresenterDestroy(NativeShmPresenter* p)
+{
+    if (!p)
+        return;
+    __shmFreeBuffers(p);
+    free(p->scratch);
+    if (p->shm)
+        wl_shm_destroy(p->shm);
+    // Only safe once every proxy that was attached to it is gone.
+    if (p->queue)
+        wl_event_queue_destroy(p->queue);
+    free(p);
+}
+
+static NativeShmPresenter* __shmPresenterCreate(const EGLDisplayImpl* walkerDpy, EGLNativeWindowType win, int w, int h)
+{
+    auto* eglWin = reinterpret_cast<struct wl_egl_window*>(win);
+    if (!walkerDpy || !eglWin || !eglWin->surface || w <= 0 || h <= 0)
+        return nullptr;
+
+    auto* p = static_cast<_NativeShmPresenter*>(calloc(1, sizeof(_NativeShmPresenter)));
+    if (!p)
+        return nullptr;
+
+    p->wlDpy     = reinterpret_cast<struct wl_display*>(walkerDpy->display_id);
+    p->wlSurface = eglWin->surface;
+    p->poolFd    = -1;
+
+    // Bind wl_shm on a private queue (see the note in __initialize): the
+    // application's default event queue must never be dispatched from inside
+    // EGL entry points.
+    p->queue = wl_display_create_queue(p->wlDpy);
+    if (!p->queue)
+    {
+        free(p);
+        return nullptr;
+    }
+
+    struct wl_registry* reg = wl_display_get_registry(p->wlDpy);
+    wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(reg), p->queue);
+    wl_registry_add_listener(reg, &s_shmRegistryListener, p);
+    wl_display_roundtrip_queue(p->wlDpy, p->queue);
+    wl_registry_destroy(reg);
+
+    if (!p->shm || __shmAllocBuffers(p, w, h) != EGL_TRUE)
+    {
+        __shmPresenterDestroy(p);
+        return nullptr;
+    }
+
+    return p;
+}
+
+static EGLBoolean __shmPresenterPresent(NativeShmPresenter* p, const void* src, EGLint srcStride, bool srcBottomUp, int w, int h)
+{
+    if (!p || !src || w <= 0 || h <= 0)
+        return EGL_FALSE;
+
+    // EGL 1.5 section 3.10.1.1: detect a native-window resize and resize the
+    // surface before copying its pixels to the native window.
+    if (w != p->width || h != p->height)
+    {
+        __shmFreeBuffers(p);
+        if (__shmAllocBuffers(p, w, h) != EGL_TRUE)
+            return EGL_FALSE;
+    }
+
+    // Collect buffer releases without dispatching the application's queue.
+    wl_display_dispatch_queue_pending(p->wlDpy, p->queue);
+
+    ShmSlot* slot = nullptr;
+    for (int i = 0; i < 2; ++i)
+        if (!p->slot[i].busy)
+        {
+            slot = &p->slot[i];
+            break;
+        }
+    if (!slot)
+    {
+        // Both buffers are still held by the compositor; their release events
+        // arrive on the private queue only, so wait for them there. The
+        // compositor dying ends the wait with an error instead of a hang.
+        if (wl_display_dispatch_queue(p->wlDpy, p->queue) < 0)
+            return EGL_FALSE;
+        for (int i = 0; i < 2; ++i)
+            if (!p->slot[i].busy)
+            {
+                slot = &p->slot[i];
+                break;
+            }
+        if (!slot)
+            return EGL_FALSE;
+    }
+
+    // WL_SHM_FORMAT_XRGB8888 is B,G,R,X per pixel - byte-identical to the
+    // VG_sARGB_8888 and BGRA GL sources. Only the row order differs: Wayland
+    // is top-down, GL reads back and OpenVG renders bottom-up.
+    auto* dst = static_cast<char*>(slot->data);
+    for (int row = 0; row < h; ++row)
+    {
+        const char* srcRow = static_cast<const char*>(src) + (srcBottomUp ? (size_t)(h - 1 - row) : (size_t)row) * (size_t)srcStride;
+        memcpy(dst + (size_t)row * (size_t)w * 4, srcRow, (size_t)w * 4);
+    }
+
+    slot->busy = true;
+    wl_surface_attach(p->wlSurface, slot->buf, 0, 0);
+    wl_surface_damage(p->wlSurface, 0, 0, w, h);
+    wl_surface_commit(p->wlSurface);
+
+    if (wl_display_flush(p->wlDpy) < 0)
+        return EGL_FALSE;
+
+    return EGL_TRUE;
+}
 
 EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
                                  EGLNativeWindowType   win,
@@ -750,7 +1020,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
     if (g_localStorage.api == EGL_OPENGL_ES_API && gles_isAvailable())
     {
         void* glesSurf = nullptr;
-        if (gles_createWindowSurfaceWayland(static_cast<void*>(eglWin), &glesSurf) != EGL_TRUE || !glesSurf)
+        if (gles_createWindowSurfaceWayland(static_cast<void*>(eglWin->surface), (int)w, (int)h, &glesSurf) != EGL_TRUE || !glesSurf)
         {
             *error = EGL_BAD_ALLOC;
             return EGL_FALSE;
@@ -778,6 +1048,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
         newSurface->nativeSurfaceContainer.glxConfig   = nullptr;
         newSurface->nativeSurfaceContainer.eglWindow   = eglWin;
         newSurface->nativeSurfaceContainer.vk          = nullptr;
+        newSurface->nativeSurfaceContainer.shmPresent  = nullptr;
         newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLES;
         newSurface->nativeSurfaceContainer.glesSurface = glesSurf;
         return EGL_TRUE;
@@ -801,20 +1072,34 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
         return EGL_FALSE;
     }
 
-    // Create Vulkan surface + swapchain for all presentation (SDR and HDR)
-    auto* vk = static_cast<NativeHDRSurfaceContainer*>(malloc(sizeof(NativeHDRSurfaceContainer)));
-    if (!vk)
+    // Presentation goes through a Vulkan swapchain when the driver provides
+    // GL/Vulkan interop; linear and sRGB additionally have a software wl_shm
+    // path. An HDR color space is carried by the swapchain only. A config that
+    // allows OpenVG always presents in software: the VG pixel buffer is client
+    // memory and the X11 and Windows backends copy it with XPutImage / GDI as
+    // well, never through Vulkan.
+    NativeShmPresenter*        shm = nullptr;
+    NativeHDRSurfaceContainer* vk  = nullptr;
+
+    const bool hdrColorspace = (parsedColorspace != EGL_GL_COLORSPACE_LINEAR && parsedColorspace != EGL_GL_COLORSPACE_SRGB);
+    const bool vgConfig      = (walkerConfig->renderableType & EGL_OPENVG_BIT) != 0;
+
+    if (!vgConfig)
     {
-        s_glXDestroyPbuffer(s_x11Display, pbuf);
-        *error = EGL_BAD_ALLOC;
-        return EGL_FALSE;
+        vk = static_cast<NativeHDRSurfaceContainer*>(malloc(sizeof(NativeHDRSurfaceContainer)));
+        // walkerDpy->display_id is the wl_display* — used by __vkCreateHDRSurface for VK_KHR_wayland_surface
+        if (!vk || __vkCreateHDRSurface(vk, win, walkerDpy->display_id, parsedColorspace, w, h) != EGL_TRUE)
+        {
+            free(vk);
+            vk = nullptr;
+        }
     }
 
-    // walkerDpy->display_id is the wl_display* — used by __vkCreateHDRSurface for VK_KHR_wayland_surface
-    if (__vkCreateHDRSurface(vk, win, walkerDpy->display_id,
-                             parsedColorspace, w, h) != EGL_TRUE)
+    if (!vk && !hdrColorspace)
+        shm = __shmPresenterCreate(walkerDpy, win, (int)w, (int)h);
+
+    if (!vk && !shm)
     {
-        free(vk);
         s_glXDestroyPbuffer(s_x11Display, pbuf);
         *error = EGL_BAD_ALLOC;
         return EGL_FALSE;
@@ -842,6 +1127,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
     newSurface->nativeSurfaceContainer.glxConfig   = fb;
     newSurface->nativeSurfaceContainer.eglWindow   = eglWin;
     newSurface->nativeSurfaceContainer.vk          = vk;
+    newSurface->nativeSurfaceContainer.shmPresent  = shm;
     newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLX;
     newSurface->nativeSurfaceContainer.glesSurface = nullptr;
 
@@ -997,6 +1283,8 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpyType, const EGLSurfaceImpl* 
         __vkDestroyHDRSurface(surface->nativeSurfaceContainer.vk);
         free(surface->nativeSurfaceContainer.vk);
     }
+
+    __shmPresenterDestroy(surface->nativeSurfaceContainer.shmPresent);
 
     if (surface->drawToPBuffer && s_glXDestroyPbuffer)
         s_glXDestroyPbuffer(s_x11Display, surface->nativeSurfaceContainer.glxPbuffer);
@@ -1298,8 +1586,45 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 
 #ifdef EGL_WAYLAND_ENABLE_GLES
     if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+    {
+        // EGL 1.5 section 3.10.1.1: the swap detects a native-window resize and
+        // mirrors it into the libwayland-egl window behind the delegated surface.
+        auto* eglWin = reinterpret_cast<struct wl_egl_window*>(walkerSurface->win);
+        gles_resizeWindowWayland(walkerSurface->nativeSurfaceContainer.glesSurface,
+                                 eglWin->width > 0 ? eglWin->width : 1,
+                                 eglWin->height > 0 ? eglWin->height : 1);
         return gles_swapBuffers(walkerSurface->nativeSurfaceContainer.glesSurface);
+    }
 #endif
+
+    // Software presentation through wl_shm (no GL/Vulkan interop available).
+    if (walkerSurface->nativeSurfaceContainer.shmPresent)
+    {
+        auto* p = walkerSurface->nativeSurfaceContainer.shmPresent;
+
+        // EGL 1.5 section 3.10.3: posting performs an implicit flush; the
+        // readback must also see every rendered command.
+        if (glFinish_PTR)
+            glFinish_PTR();
+
+        if (!s_glReadPixels)
+            return EGL_FALSE;
+
+        // EGL 1.5 section 3.10.1.1: the swap detects a native-window resize.
+        auto* eglWin = reinterpret_cast<struct wl_egl_window*>(walkerSurface->win);
+        const int w  = eglWin->width > 0 ? eglWin->width : 1;
+        const int h  = eglWin->height > 0 ? eglWin->height : 1;
+
+        void* scratch = __shmPresenterScratch(p, w, h);
+        if (!scratch)
+            return EGL_FALSE;
+
+        // GL_BGRA / UNSIGNED_BYTE yields B,G,R,X bytes per pixel - the
+        // XRGB8888 memory layout wl_shm expects (the alpha byte is ignored).
+        s_glReadPixels(0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, scratch);
+
+        return __shmPresenterPresent(p, scratch, w * 4, true, w, h);
+    }
 
     // All Wayland window surfaces use Vulkan for presentation.
     if (walkerSurface->nativeSurfaceContainer.vk)
@@ -1317,12 +1642,22 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 #ifdef EGL_ENABLE_OPENVG
 EGLBoolean __presentVGBuffer(const EGLDisplayImpl* /*walkerDpy*/, const EGLSurfaceImpl* walkerSurface)
 {
-    // Software OpenVG presentation over wl_shm is not implemented yet - the
-    // Wayland backend presents GL through Vulkan. The buffer is rendered but
-    // not shown; the Windows and X11 backends present.
-    (void)walkerSurface;
+    if (!walkerSurface || !walkerSurface->vgBuffer)
+        return EGL_FALSE;
 
-    return EGL_FALSE;
+    NativeShmPresenter* p = walkerSurface->nativeSurfaceContainer.shmPresent;
+    if (!p)
+        return EGL_FALSE;
+
+    const int width  = walkerSurface->width;
+    const int height = walkerSurface->height;
+    if (width <= 0 || height <= 0)
+        return EGL_FALSE;
+
+    // The VG pixel buffer is VG_sARGB_8888 (B,G,R,X) - the XRGB8888 wl_shm
+    // layout - and OpenVG renders bottom-up, Wayland is top-down. Same
+    // straight row-flipped copy as the X11 and Windows backends.
+    return __shmPresenterPresent(p, walkerSurface->vgBuffer, walkerSurface->vgStride, true, width, height);
 }
 #endif
 

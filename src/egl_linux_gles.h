@@ -49,10 +49,19 @@ extern "C"
     EGLBoolean gles_createWindowSurface(void* win, void** out_surface);
 
     /**
-     * Create a system EGL window surface for the given wl_egl_window*.
-     * out_surface receives the opaque EGLSurface pointer.
+     * Create a system EGL window surface on Wayland for the given wl_surface
+     * and size. The native window is mirrored through libwayland-egl
+     * (wl_egl_window_create) - the system EGL expects that library's
+     * wl_egl_window, whose struct layout is private. out_surface receives a
+     * handle for gles_makeCurrent / gles_swapBuffers / gles_destroySurface.
      */
-    EGLBoolean gles_createWindowSurfaceWayland(void* wlEglWin, void** out_surface);
+    EGLBoolean gles_createWindowSurfaceWayland(void* wlSurface, int width, int height, void** out_surface);
+
+    /**
+     * Mirror a native-window resize into the libwayland-egl window behind a
+     * Wayland surface (EGL 1.5 section 3.10.1.1). No-op when unchanged.
+     */
+    EGLBoolean gles_resizeWindowWayland(void* surface, int width, int height);
 
     /**
      * Create a system EGL ES context. major/minor select the requested ES version.
