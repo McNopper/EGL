@@ -190,7 +190,7 @@ extern "C"
         {EGL_SAMPLES,                 offsetof(EGLConfigImpl, samples),               PARSE_NON_NEGATIVE,      MATCH_NOT_LESS},
         {EGL_STENCIL_SIZE,            offsetof(EGLConfigImpl, stencilSize),           PARSE_NON_NEGATIVE,      MATCH_NOT_LESS},
         {EGL_SURFACE_TYPE,            offsetof(EGLConfigImpl, surfaceType),           PARSE_SURFACE_MASK,      MATCH_SUBSET_DC},
-        {EGL_TRANSPARENT_TYPE,        offsetof(EGLConfigImpl, transparentType),       PARSE_TRANSPARENT_TYPE,  MATCH_EQUAL_ALWAYS},
+        {EGL_TRANSPARENT_TYPE,        offsetof(EGLConfigImpl, transparentType),       PARSE_TRANSPARENT_TYPE,  MATCH_EQUAL_DC},
         {EGL_TRANSPARENT_RED_VALUE,   offsetof(EGLConfigImpl, transparentRedValue),   PARSE_NON_NEGATIVE,      MATCH_EQUAL_DC_IF_TRANSPARENT},
         {EGL_TRANSPARENT_GREEN_VALUE, offsetof(EGLConfigImpl, transparentGreenValue), PARSE_NON_NEGATIVE,      MATCH_EQUAL_DC_IF_TRANSPARENT},
         {EGL_TRANSPARENT_BLUE_VALUE,  offsetof(EGLConfigImpl, transparentBlueValue),  PARSE_NON_NEGATIVE,      MATCH_EQUAL_DC_IF_TRANSPARENT},
@@ -432,17 +432,10 @@ extern "C"
                 continue;
             }
 
-            // EGL_DOUBLEBUFFER is not a choose criterion (the parse phase rejects
-            // it), so the template keeps the EGL_TRUE default and only
-            // double-buffered configs match - the hand-written filter did the same.
-            if (config.doubleBuffer != EGL_DONT_CARE && config.doubleBuffer != walkerConfig->doubleBuffer)
-            {
-                walkerConfig = walkerConfig->next;
-
-                continue;
-            }
-
-            //
+            // EGL_DOUBLEBUFFER is query-only (eglGetConfigAttrib); it is not a
+            // valid eglChooseConfig criterion and must never filter. The legacy
+            // hand-written filter only returned double-buffered configs here -
+            // that dropped every single-buffered config from the result.
 
             configsOnStack[configIndex] = walkerConfig;
 
