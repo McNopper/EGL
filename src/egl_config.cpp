@@ -178,12 +178,13 @@ extern "C"
         {EGL_CONFORMANT,              offsetof(EGLConfigImpl, conformant),            PARSE_CONFORMANT_MASK,   MATCH_SUBSET_DC},
         {EGL_DEPTH_SIZE,              offsetof(EGLConfigImpl, depthSize),             PARSE_NON_NEGATIVE,      MATCH_NOT_LESS},
         {EGL_GREEN_SIZE,              offsetof(EGLConfigImpl, greenSize),             PARSE_NON_NEGATIVE,      MATCH_NOT_LESS},
-        {EGL_LEVEL,                   offsetof(EGLConfigImpl, level),                 PARSE_NONE,              MATCH_EQUAL_ALWAYS},
+        {EGL_LEVEL,                   offsetof(EGLConfigImpl, level),                 PARSE_NONE,              MATCH_EQUAL_DC},
         {EGL_LUMINANCE_SIZE,          offsetof(EGLConfigImpl, luminanceSize),         PARSE_NON_NEGATIVE,      MATCH_NOT_LESS},
         {EGL_MATCH_NATIVE_PIXMAP,     offsetof(EGLConfigImpl, matchNativePixmap),     PARSE_NONE,              MATCH_EQUAL_NE_NONE},
         {EGL_MAX_SWAP_INTERVAL,       offsetof(EGLConfigImpl, maxSwapInterval),       PARSE_NON_NEGATIVE,      MATCH_EQUAL_DC},
         {EGL_MIN_SWAP_INTERVAL,       offsetof(EGLConfigImpl, minSwapInterval),       PARSE_NON_NEGATIVE,      MATCH_EQUAL_DC},
         {EGL_NATIVE_RENDERABLE,       offsetof(EGLConfigImpl, nativeRenderable),      PARSE_BOOLEAN,           MATCH_EQUAL_DC},
+        {EGL_NATIVE_VISUAL_TYPE,      offsetof(EGLConfigImpl, nativeVisualType),      PARSE_NONE,              MATCH_EQUAL_DC},
         {EGL_RED_SIZE,                offsetof(EGLConfigImpl, redSize),               PARSE_NON_NEGATIVE,      MATCH_NOT_LESS},
         {EGL_RENDERABLE_TYPE,         offsetof(EGLConfigImpl, renderableType),        PARSE_RENDERABLE_MASK,   MATCH_SUBSET_DC},
         {EGL_SAMPLE_BUFFERS,          offsetof(EGLConfigImpl, sampleBuffers),         PARSE_NON_NEGATIVE,      MATCH_NOT_LESS},
@@ -330,6 +331,7 @@ extern "C"
 
         _eglInternalSetDefaultConfig(&config);
         config.configCaveat = EGL_DONT_CARE; // dont care for this attribute since it cant be queried on both WGL and GLX
+        config.nativeVisualType = EGL_DONT_CARE; // query-only default is DONT_CARE; filtering here would drop valid configs
 
         // More pairs than distinct legal attributes cannot exist. A fully
         // populated legal list ends on exactly that many pairs, so only more

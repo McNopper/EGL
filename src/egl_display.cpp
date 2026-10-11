@@ -355,7 +355,9 @@ extern "C"
             };
             appendExt("EGL_KHR_gl_colorspace");
             appendExt("EGL_KHR_create_context");
-            appendExt("EGL_EXT_client_extensions");
+            // EGL_EXT_client_extensions is CLIENT-only (queried with
+            // EGL_NO_DISPLAY); it must not appear here - the two extension
+            // strings are required to be disjoint.
             if (hdr & EGL_HDR_CS_SCRGB_LINEAR_BIT)
                 appendExt("EGL_EXT_gl_colorspace_scrgb_linear");
             if (hdr & EGL_HDR_CS_SCRGB_BIT)
