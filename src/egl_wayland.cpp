@@ -1203,8 +1203,16 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
         if (newConfig->drawToPBuffer)
             newConfig->surfaceType |= EGL_PBUFFER_BIT;
 
-        newConfig->conformant      = EGL_OPENGL_BIT | esMask;
-        newConfig->renderableType  = EGL_OPENGL_BIT | esMask;
+        // The OpenVG provider (see eglvg.h) renders into these configs as well.
+
+#ifdef EGL_ENABLE_OPENVG
+        const EGLint vg_mask = _eglGetVGProvider() ? EGL_OPENVG_BIT : 0;
+#else
+        const EGLint vg_mask = 0;
+#endif
+
+        newConfig->conformant      = EGL_OPENGL_BIT | esMask | vg_mask;
+        newConfig->renderableType  = EGL_OPENGL_BIT | esMask | vg_mask;
         newConfig->colorBufferType = EGL_RGB_BUFFER;
 
         int fbid = 0;
@@ -1295,6 +1303,18 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
         glFinish_PTR();
     return EGL_TRUE;
 }
+
+#ifdef EGL_ENABLE_OPENVG
+EGLBoolean __presentVGBuffer(const EGLDisplayImpl* /*walkerDpy*/, const EGLSurfaceImpl* walkerSurface)
+{
+    // Software OpenVG presentation over wl_shm is not implemented yet - the
+    // Wayland backend presents GL through Vulkan. The buffer is rendered but
+    // not shown; the Windows and X11 backends present.
+    (void)walkerSurface;
+
+    return EGL_FALSE;
+}
+#endif
 
 EGLBoolean __swapInterval(const EGLDisplayImpl* /*walkerDpy*/, EGLint interval)
 {

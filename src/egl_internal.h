@@ -1,4 +1,4 @@
-﻿/**
+/**
  * EGL windows desktop implementation.
  *
  * The MIT License (MIT)
@@ -374,6 +374,13 @@ typedef struct _EGLSurfaceImpl
         EGLNativePixmapType pixmap;
     };
 
+#ifdef EGL_ENABLE_OPENVG
+    // OpenVG client API: software pixel buffer (see eglvg.h), allocated when an
+    // OpenVG context is made current on this surface. Zero otherwise.
+    void*  vgBuffer;
+    EGLint vgStride;
+#endif
+
     NativeSurfaceContainer nativeSurfaceContainer;
 
     struct _EGLSurfaceImpl* next;
@@ -421,6 +428,12 @@ typedef struct _EGLContextImpl
 
     // Number of thread bindings (eglMakeCurrent) currently holding this context.
     EGLint refCount;
+
+#ifdef EGL_ENABLE_OPENVG
+    // OpenVG client API: the provider-side context (see eglvg.h). Zero for
+    // GL/ES contexts.
+    void* vgContext;
+#endif
 
 } EGLContextImpl;
 
@@ -564,6 +577,12 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
 
 EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface);
 
+#ifdef EGL_ENABLE_OPENVG
+// Presents the software OpenVG pixel buffer (surface->vgBuffer) of a window
+// surface. Only called when an OpenVG context is current on the surface.
+EGLBoolean __presentVGBuffer(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface);
+#endif
+
 EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval);
 
 EGLBoolean __bindTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint buffer);
@@ -571,6 +590,26 @@ EGLBoolean __bindTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl*
 EGLBoolean __releaseTexImage(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint buffer);
 
 EGLBoolean __getPlatformDependentHandles(void* out, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer);
+
+#ifdef EGL_ENABLE_OPENVG
+#if __cplusplus
+extern "C"
+{
+#endif
+
+// OpenVG provider seam (implemented in egl_vg.cpp; the provider itself is
+// registered through eglSetVGProvider, declared in eglvg.h).
+const struct EGLVGProvider* _eglGetVGProvider(void);
+EGLBoolean _eglVGCreateContext(EGLContextImpl* walkerCtx);
+void       _eglVGDestroyContext(EGLContextImpl* walkerCtx);
+void       _eglVGFreeSurfaceBuffer(EGLSurfaceImpl* walkerSurface);
+EGLBoolean _eglVGMakeCurrent(EGLContextImpl* walkerCtx, EGLSurfaceImpl* walkerSurface);
+void       _eglVGNotifySwap(EGLContextImpl* walkerCtx);
+
+#ifdef __cplusplus
+}
+#endif
+#endif /* EGL_ENABLE_OPENVG */
 
 // ── Platform inline helpers ──────────────────────────────────────────────────
 // These keep all platform #ifdef logic inside this header so that the

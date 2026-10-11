@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(EGL VERSION 1.0.11 LANGUAGES C CXX)
+project(EGL VERSION 1.0.12 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -133,6 +133,12 @@ else()
     message(FATAL_ERROR "EGL: Unsupported platform. Supported: WIN32, UNIX")
 endif()
 
+# OpenVG client API seam (see src/eglvg.h): a provider registers at startup
+# and EGL handles configs, contexts, surfaces and presentation. Opt-in - the
+# OpenGL examples do not use OpenVG; McNopper/OpenVG_Library switches this on
+# for its consumers. With it off the library behaves exactly as before.
+option(EGL_ENABLE_OPENVG "Enable the OpenVG client API seam" OFF)
+
 set(EGL_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/egl.c
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_globals.cpp
@@ -150,6 +156,10 @@ set(EGL_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/eglext.h
     ${CMAKE_CURRENT_LIST_DIR}/include/EGL/eglplatform.h
     ${CMAKE_CURRENT_LIST_DIR}/include/KHR/khrplatform.h)
+
+if(EGL_ENABLE_OPENVG)
+    list(APPEND EGL_SOURCES ${CMAKE_CURRENT_LIST_DIR}/src/egl_vg.cpp)
+endif()
 
 add_library(EGL STATIC
     ${EGL_SOURCES})
@@ -204,6 +214,9 @@ target_include_directories(EGL PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/include)
 target_compile_definitions(EGL PUBLIC KHRONOS_STATIC) # PUBLIC - make it go down to every target linking EGL
 add_definitions(-DEGLAPI=)
+if(EGL_ENABLE_OPENVG)
+    add_definitions(-DEGL_ENABLE_OPENVG)
+endif()
 # The example applications are optional. Consumers that vendor this library
 # only want the EGL static library, and the examples depend on test asset
 # paths and would otherwise build 11+ extra executables.

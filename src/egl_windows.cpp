@@ -1507,8 +1507,16 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
         }
 
         //
-        newConfig->conformant     = (EGL_OPENGL_BIT | ES_mask);
-        newConfig->renderableType = (EGL_OPENGL_BIT | ES_mask);
+        // The OpenVG provider (see eglvg.h) renders into these configs as well.
+
+#ifdef EGL_ENABLE_OPENVG
+        const EGLint vg_mask = _eglGetVGProvider() ? EGL_OPENVG_BIT : 0;
+#else
+        const EGLint vg_mask = 0;
+#endif
+
+        newConfig->conformant      = EGL_OPENGL_BIT | ES_mask | vg_mask;
+        newConfig->renderableType  = EGL_OPENGL_BIT | ES_mask | vg_mask;
         newConfig->surfaceType    = 0;
         if (newConfig->drawToWindow)
         {
@@ -1811,6 +1819,41 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 
     return (EGLBoolean)SwapBuffers(walkerSurface->nativeSurfaceContainer.hdc);
 }
+
+#ifdef EGL_ENABLE_OPENVG
+EGLBoolean __presentVGBuffer(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface)
+{
+    (void)walkerDpy;
+
+    if (!walkerSurface || !walkerSurface->vgBuffer)
+    {
+        return EGL_FALSE;
+    }
+
+    HDC hdc = walkerSurface->nativeSurfaceContainer.hdc;
+
+    if (!hdc)
+    {
+        return EGL_FALSE;
+    }
+
+    // VG_sARGB_8888 is the natural 32-bit DIB layout (B,G,R,A bytes). OpenVG
+    // renders bottom-up like a positive-height DIB, so the rows are handed to
+    // GDI unmodified.
+    BITMAPINFO bi;
+    memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth       = walkerSurface->width;
+    bi.bmiHeader.biHeight      = walkerSurface->height;
+    bi.bmiHeader.biPlanes      = 1;
+    bi.bmiHeader.biBitCount    = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+
+    int scanLines = SetDIBitsToDevice(hdc, 0, 0, (UINT)walkerSurface->width, (UINT)walkerSurface->height, 0, 0, 0, (UINT)walkerSurface->height, walkerSurface->vgBuffer, &bi, DIB_RGB_COLORS);
+
+    return (scanLines != 0) ? EGL_TRUE : EGL_FALSE;
+}
+#endif
 
 EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 {

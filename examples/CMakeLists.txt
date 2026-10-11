@@ -37,6 +37,25 @@ add_egl_example(display_p3_linear)
 add_egl_example(display_p3_passthrough)
 add_egl_example(green_window)
 
+if(EGL_ENABLE_OPENVG)
+
+# OpenVG provider seam smoke: a stub provider renders green through
+# eglBindAPI(EGL_OPENVG_API), proving the EGL side of the OpenVG client API
+# (configs, contexts, surfaces, presentation) without any OpenVG implementation.
+set(vg_name vg_clear)
+add_executable(${vg_name}
+    ${CMAKE_CURRENT_SOURCE_DIR}/${vg_name}/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/common_egl.cpp
+    ${PLATFORM_SOURCES})
+set_target_properties(${vg_name} PROPERTIES
+    OUTPUT_NAME                      "${vg_name}${EGL_BACKEND_SUFFIX}"
+    RUNTIME_OUTPUT_DIRECTORY         ${CMAKE_SOURCE_DIR}/bin
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG   ${CMAKE_SOURCE_DIR}/bin
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
+target_link_libraries(${vg_name} PRIVATE EGL ${PLATFORM_LIBS})
+
+endif()
+
 # OpenGL ES variant of green_window (Windows + ANGLE only).
 if(WIN32 AND EGL_HAS_ANGLE)
     set(es_name green_window)

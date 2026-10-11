@@ -1368,8 +1368,16 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
             newConfig->surfaceType |= EGL_PBUFFER_BIT;
 
         // Renderable type
-        newConfig->conformant      = EGL_OPENGL_BIT | esMask;
-        newConfig->renderableType  = EGL_OPENGL_BIT | esMask;
+        // The OpenVG provider (see eglvg.h) renders into these configs as well.
+
+#ifdef EGL_ENABLE_OPENVG
+        const EGLint vg_mask = _eglGetVGProvider() ? EGL_OPENVG_BIT : 0;
+#else
+        const EGLint vg_mask = 0;
+#endif
+
+        newConfig->conformant      = EGL_OPENGL_BIT | esMask | vg_mask;
+        newConfig->renderableType  = EGL_OPENGL_BIT | esMask | vg_mask;
         newConfig->colorBufferType = EGL_RGB_BUFFER;
 
         // FBConfig ID (used to retrieve the GLXFBConfig later)
@@ -1473,6 +1481,70 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
     s_glXSwapBuffers(dpy, walkerSurface->nativeSurfaceContainer.drawable);
     return EGL_TRUE;
 }
+
+#ifdef EGL_ENABLE_OPENVG
+EGLBoolean __presentVGBuffer(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface)
+{
+    if (!walkerDpy || !walkerSurface || !walkerSurface->vgBuffer)
+        return EGL_FALSE;
+
+    Display* dpy    = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int      width  = walkerSurface->width;
+    int      height = walkerSurface->height;
+
+    if (width <= 0 || height <= 0)
+        return EGL_FALSE;
+
+    XWindowAttributes wa;
+    if (!XGetWindowAttributes(dpy, walkerSurface->win, &wa))
+        return EGL_FALSE;
+
+    // For the usual 32-bit TrueColor visuals the XImage layout is exactly
+    // VG_sARGB_8888 (B,G,R,X bytes); only the row order differs - OpenVG
+    // renders bottom-up, X is top-down.
+    XImage* img = XCreateImage(dpy, wa.visual, wa.depth, ZPixmap, 0, nullptr, (unsigned int)width, (unsigned int)height, 32, 0);
+    if (!img)
+        return EGL_FALSE;
+
+    if (img->bits_per_pixel != 32)
+    {
+        XDestroyImage(img);
+        return EGL_FALSE;
+    }
+
+    const size_t stride = (size_t)img->bytes_per_line;
+
+    auto* rows = static_cast<char*>(malloc(stride * (size_t)height));
+    if (!rows)
+    {
+        XDestroyImage(img);
+        return EGL_FALSE;
+    }
+
+    const char* srcRows = static_cast<const char*>(walkerSurface->vgBuffer);
+    for (int row = 0; row < height; ++row)
+        memcpy(rows + (size_t)row * stride, srcRows + (size_t)(height - 1 - row) * (size_t)walkerSurface->vgStride, (size_t)width * 4);
+
+    // XDestroyImage frees img->data as well.
+    img->data = rows;
+
+    GC gc = XCreateGC(dpy, walkerSurface->win, 0, nullptr);
+    if (!gc)
+    {
+        XDestroyImage(img);
+        return EGL_FALSE;
+    }
+
+    XPutImage(dpy, walkerSurface->win, gc, img, 0, 0, 0, 0, (unsigned int)width, (unsigned int)height);
+    XFreeGC(dpy, gc);
+    XDestroyImage(img);
+
+    // Surface any X error here rather than on an unrelated later call.
+    XSync(dpy, False);
+
+    return EGL_TRUE;
+}
+#endif
 
 EGLBoolean __swapInterval(const EGLDisplayImpl* walkerDpy, EGLint interval)
 {

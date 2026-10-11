@@ -1,4 +1,4 @@
-﻿#include "egl_common.h"
+#include "egl_common.h"
 
 thread_local LocalStorage g_localStorage =
     {EGL_SUCCESS, EGL_OPENGL_ES_API, EGL_NO_CONTEXT_IMPL, nullptr, EGL_NO_SURFACE_IMPL, EGL_NO_SURFACE_IMPL};
@@ -54,6 +54,10 @@ void _eglInternalCleanup()
                 // the surface is current to any thread.
                 __destroySurface(walkerDpy->display_id, walkerSurface);
 
+#ifdef EGL_ENABLE_OPENVG
+                _eglVGFreeSurfaceBuffer(walkerSurface);
+#endif
+
                 free(walkerSurface);
 
                 continue;
@@ -83,6 +87,13 @@ void _eglInternalCleanup()
 
                     free(deleteCtxList);
                 }
+
+#ifdef EGL_ENABLE_OPENVG
+                if (walkerCtx->clientAPI == EGL_OPENVG_API)
+                {
+                    _eglVGDestroyContext(walkerCtx);
+                }
+#endif
 
                 free(walkerCtx);
 

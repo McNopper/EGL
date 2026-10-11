@@ -70,6 +70,13 @@ extern "C"
                 return EGL_NO_CONTEXT;
             }
         }
+#ifdef EGL_ENABLE_OPENVG
+        else if (g_localStorage.api == EGL_OPENVG_API)
+        {
+            // OpenVG contexts have no version selection; the provider owns the
+            // context semantics.
+        }
+#endif
         else
         {
             g_localStorage.error = EGL_BAD_MATCH;
@@ -120,6 +127,25 @@ extern "C"
             g_localStorage.error = EGL_BAD_CONFIG;
             return EGL_NO_CONTEXT;
         }
+#ifdef EGL_ENABLE_OPENVG
+        if (g_localStorage.api == EGL_OPENVG_API && (walkerConfig->renderableType & EGL_OPENVG_BIT) == 0)
+        {
+            g_localStorage.error = EGL_BAD_CONFIG;
+            return EGL_NO_CONTEXT;
+        }
+        if (g_localStorage.api == EGL_OPENVG_API)
+        {
+            // OpenVG contexts accept no attribute list.
+            if (attrib_list && attrib_list[0] != EGL_NONE)
+            {
+                g_localStorage.error = EGL_BAD_ATTRIBUTE;
+                return EGL_NO_CONTEXT;
+            }
+
+            memset(target_attrib_list, 0, sizeof(target_attrib_list));
+        }
+        else
+#endif
         if (!__processAttribList(g_localStorage.api, target_attrib_list, attrib_list, &g_localStorage.error))
         {
             return EGL_NO_CONTEXT;
@@ -174,6 +200,18 @@ extern "C"
         newCtx->minorVersion = requested_version[1];
 
         newCtx->refCount = 0;
+#ifdef EGL_ENABLE_OPENVG
+        newCtx->vgContext = 0;
+
+        if (g_localStorage.api == EGL_OPENVG_API && !_eglVGCreateContext(newCtx))
+        {
+            g_localStorage.error = EGL_BAD_ALLOC;
+
+            free(newCtx);
+
+            return EGL_NO_CONTEXT;
+        }
+#endif
 
         newCtx->next       = walkerDpy->rootCtx;
         walkerDpy->rootCtx = newCtx;
@@ -666,25 +704,51 @@ extern "C"
                     nativeSurfaceContainer = &currentDraw->nativeSurfaceContainer;
                 }
 
-                if (currentCtx != EGL_NO_CONTEXT)
+#ifdef EGL_ENABLE_OPENVG
+                if (currentCtx != EGL_NO_CONTEXT_IMPL && currentCtx->clientAPI == EGL_OPENVG_API)
                 {
-                    EGLContextListImpl* ctxList = _eglGetOrCreateContextList(walkerDpy, currentCtx, currentDraw, &g_localStorage.error);
+                    // OpenVG contexts bind through the VG provider (see eglvg.h);
+                    // there is no native GL context behind them.
+                    success = _eglVGMakeCurrent(currentCtx, currentDraw);
 
-                    if (!ctxList)
+                    if (!success)
                     {
+                        g_localStorage.error = EGL_BAD_MATCH;
+
                         return EGL_FALSE;
                     }
-
-                    nativeContextContainer = &ctxList->nativeContextContainer;
                 }
-
-                success = __makeCurrent(walkerDpy, nativeSurfaceContainer, nativeContextContainer);
-
-                if (!success)
+                else
+#endif
                 {
-                    g_localStorage.error = EGL_BAD_MATCH;
+#ifdef EGL_ENABLE_OPENVG
+                    if (previousCtx != EGL_NO_CONTEXT_IMPL && previousCtx->clientAPI == EGL_OPENVG_API)
+                    {
+                        // Switching away from an OpenVG context unbinds the provider.
+                        _eglVGMakeCurrent(EGL_NO_CONTEXT_IMPL, EGL_NO_SURFACE_IMPL);
+                    }
+#endif
 
-                    return EGL_FALSE;
+                    if (currentCtx != EGL_NO_CONTEXT)
+                    {
+                        EGLContextListImpl* ctxList = _eglGetOrCreateContextList(walkerDpy, currentCtx, currentDraw, &g_localStorage.error);
+
+                        if (!ctxList)
+                        {
+                            return EGL_FALSE;
+                        }
+
+                        nativeContextContainer = &ctxList->nativeContextContainer;
+                    }
+
+                    success = __makeCurrent(walkerDpy, nativeSurfaceContainer, nativeContextContainer);
+
+                    if (!success)
+                    {
+                        g_localStorage.error = EGL_BAD_MATCH;
+
+                        return EGL_FALSE;
+                    }
                 }
 
                 walkerDpy->currentDraw = currentDraw;

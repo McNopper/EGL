@@ -1,11 +1,17 @@
-﻿#include "egl_common.h"
+#include "egl_common.h"
 
 extern "C"
 {
 
     EGLBoolean _eglBindAPI(EGLenum api)
     {
+#ifdef EGL_ENABLE_OPENVG
+        // OpenVG is only bindable when a provider implementation is registered
+        // (see eglvg.h); without one EGL behaves as before.
+        if (api == EGL_OPENGL_API || api == EGL_OPENGL_ES_API || (api == EGL_OPENVG_API && _eglGetVGProvider()))
+#else
         if (api == EGL_OPENGL_API || api == EGL_OPENGL_ES_API)
+#endif
         {
             g_localStorage.api = api;
 
@@ -187,6 +193,24 @@ extern "C"
 
             return EGL_FALSE;
         }
+
+#ifdef EGL_ENABLE_OPENVG
+        // OpenVG contexts present their software pixel buffer instead of the
+        // native GL swapchain (see eglvg.h).
+        if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL && g_localStorage.currentCtx->clientAPI == EGL_OPENVG_API)
+        {
+            _eglVGNotifySwap(g_localStorage.currentCtx);
+
+            if (!__presentVGBuffer(walkerDpy, walkerSurface))
+            {
+                return EGL_FALSE;
+            }
+
+            g_localStorage.error = EGL_SUCCESS;
+
+            return EGL_TRUE;
+        }
+#endif
 
         if (!__swapBuffers(walkerDpy, walkerSurface))
         {

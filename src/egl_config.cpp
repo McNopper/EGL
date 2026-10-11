@@ -451,7 +451,6 @@ extern "C"
             configIndex++;
         }
 
-                if (walkerConfig)
         if (walkerConfig)
         {
             // More matches than the stack buffer holds. Truncating silently

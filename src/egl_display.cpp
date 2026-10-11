@@ -1,4 +1,4 @@
-﻿#include "egl_common.h"
+#include "egl_common.h"
 #include <cstring>
 #include <cstdio>
 #include <new>
@@ -311,15 +311,29 @@ extern "C"
         {
         case EGL_CLIENT_APIS:
         {
-            bool glOK = (g_GL_max_supported_version[0] > 0);
-            bool esOK = (g_ES_max_supported_version[0] > 0);
-            if (glOK && esOK)
-                return "OpenGL OpenGL_ES";
+            static thread_local char s_clientApis[64];
+            bool                     glOK = (g_GL_max_supported_version[0] > 0);
+            bool                     esOK = (g_ES_max_supported_version[0] > 0);
+#ifdef EGL_ENABLE_OPENVG
+            bool                     vgOK = (_eglGetVGProvider() != 0);
+#else
+            bool                     vgOK = false;
+#endif
+
+            s_clientApis[0] = 0;
             if (glOK)
-                return "OpenGL";
+                strcat(s_clientApis, "OpenGL ");
             if (esOK)
-                return "OpenGL_ES";
-            return "";
+                strcat(s_clientApis, "OpenGL_ES ");
+            if (vgOK)
+                strcat(s_clientApis, "OpenVG ");
+
+            // Trim the trailing space.
+            size_t len = strlen(s_clientApis);
+            if (len > 0)
+                s_clientApis[len - 1] = 0;
+
+            return s_clientApis;
         }
         case EGL_VENDOR:
         {
