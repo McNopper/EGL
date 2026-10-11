@@ -186,6 +186,17 @@ extern "C"
             return EGL_FALSE;
         }
 
+        // When this library is itself libEGL.so (shared builds), the dlopen
+        // above returns OUR OWN module and the delegation would call back into
+        // this very library - eglGetDisplay then self-deadlocks in the one-time
+        // bootstrap. Detect the self-load and treat the system GLES backend as
+        // unavailable; a static build keeps delegating to the real system EGL.
+        PFN_eglInitialize selfInitialize = reinterpret_cast<PFN_eglInitialize>(dlsym(RTLD_DEFAULT, "eglInitialize"));
+        if (selfInitialize && selfInitialize == g.eglInitialize)
+        {
+            gles_terminate();
+            return EGL_FALSE;
+        }
         // Optional: only used to consume error codes between config probes. A
         // stripped libEGL missing it is no reason to disable the whole ES path.
         resolveSym(g.libEGL, g.eglGetError, "eglGetError");
