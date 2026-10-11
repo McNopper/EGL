@@ -1419,6 +1419,22 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
         if (!drawableType)
             continue;
 
+        // Skip sRGB-capable fbconfigs: they render with gamma encoding
+        // unconditionally, but EGL exposes sRGB as a per-surface attribute
+        // (EGL_GL_COLORSPACE_SRGB), not as a config property. Exposing them
+        // as ordinary configs makes every clear render in sRGB while the
+        // application expects linear. They are only relevant when a surface
+        // explicitly requests EGL_GL_COLORSPACE_SRGB.
+        int srgbCapable = 0;
+        if (s_glXGetProcAddressARB)
+        {
+            // GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB may be missing in the
+            // glxtokens on older headers; use the raw value.
+            s_glXGetFBConfigAttrib(dpy, fbs[i], 0x20B2 /* GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB */, &srgbCapable);
+        }
+        if (srgbCapable)
+            continue;
+
         EGLConfigImpl* newConfig = reinterpret_cast<EGLConfigImpl*>(malloc(sizeof(EGLConfigImpl)));
         if (!newConfig)
         {
