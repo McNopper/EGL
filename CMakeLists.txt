@@ -161,7 +161,17 @@ if(EGL_ENABLE_OPENVG)
     list(APPEND EGL_SOURCES ${CMAKE_CURRENT_LIST_DIR}/src/egl_vg.cpp)
 endif()
 
-add_library(EGL STATIC
+# The library type: STATIC by default (vendored through FetchContent), SHARED
+# on request - a dlopen-able libEGL.so is how system EGLs ship, and the
+# conformance runs load it that way.
+if(EGL_BUILD_SHARED)
+    set(EGL_LIBRARY_TYPE SHARED)
+else()
+    set(EGL_LIBRARY_TYPE STATIC)
+endif()
+option(EGL_BUILD_SHARED "Build EGL as a shared library (libEGL.so)" OFF)
+
+add_library(EGL ${EGL_LIBRARY_TYPE}
     ${EGL_SOURCES})
 
 # No-op at the default settings; raises the level and/or makes it fatal when
