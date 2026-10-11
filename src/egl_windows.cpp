@@ -649,13 +649,9 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
         // WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
         0};
 
-    // WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB is only understood when the driver
-    // exposes WGL(ARB|EXT)_framebuffer_sRGB; without it the attribute makes
-    // wglChoosePixelFormatARB fail outright (see the window path).
-    if (!walkerDpy->srgbFramebufferSupported)
-    {
-        iattribs[28] = 0;
-    }
+    // See the window path: the sRGB attribute stays terminated by default and
+    // is only re-opened for an explicit EGL_GL_COLORSPACE_SRGB surface.
+    iattribs[28] = 0;
 
     EGLint pbuf_attribs[] = {
         WGL_PBUFFER_LARGEST_EXT, GL_FALSE,
@@ -686,14 +682,18 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
         case EGL_GL_COLORSPACE:
             if (value == EGL_GL_COLORSPACE_LINEAR)
             {
+                // Linear renders on any format (see the template note); keep
+                // the sRGB attribute closed even after an earlier SRGB pair.
+                iattribs[28]   = 0;
                 iattribs[29]   = GL_FALSE;
                 pbufColorspace = EGL_GL_COLORSPACE_LINEAR;
             }
             else if (value == EGL_GL_COLORSPACE_SRGB)
             {
-                // EGL_GL_COLORSPACE is core EGL 1.5. sRGB is delivered by
-                // asking the pixel-format chooser for an sRGB-capable format;
-                // without the driver extension there is no sRGB format at all,
+                // EGL_GL_COLORSPACE is core EGL 1.5. sRGB is delivered by an
+                // sRGB-capable pixel format plus the GL_FRAMEBUFFER_SRGB
+                // enable that __makeCurrent sets for this surface; without the
+                // driver extension there is no sRGB-capable format at all,
                 // which is EGL_BAD_MATCH rather than a silent linear downgrade.
                 if (!walkerDpy->srgbFramebufferSupported)
                 {
@@ -702,6 +702,7 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl* newSurface, const EGLint* attr
                     return EGL_FALSE;
                 }
 
+                iattribs[28]   = WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB;
                 iattribs[29]   = GL_TRUE;
                 pbufColorspace = EGL_GL_COLORSPACE_SRGB;
             }
@@ -919,14 +920,14 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
         // WGL_STEREO_ARB, 0 ? GL_TRUE:GL_FALSE,
         0};
 
-    // WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB is only understood when the driver
-    // exposes WGL(ARB|EXT)_framebuffer_sRGB. Passing it to
-    // wglChoosePixelFormatARB on a software / RDP / stripped driver fails
-    // surface creation outright, so terminate the list before the attribute.
-    if (!walkerDpy->srgbFramebufferSupported)
-    {
-        template_attrib_list[28] = 0;
-    }
+    // The sRGB pixel-format attribute is only understood when the driver
+    // exposes WGL(ARB|EXT)_framebuffer_sRGB, and is only needed for an sRGB
+    // surface: WGL sRGB-capable formats render linear until
+    // GL_FRAMEBUFFER_SRGB is enabled, and __makeCurrent sets that enable per
+    // surface color space, so linear surfaces may use any format. Keep the
+    // list terminated by default; the EGL_GL_COLORSPACE_SRGB handling below
+    // re-opens the attribute slot when an sRGB surface is requested.
+    template_attrib_list[28] = 0;
 
     EGLint parsedColorspace = EGL_GL_COLORSPACE_LINEAR;
 
@@ -944,16 +945,21 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
             {
                 if (value == EGL_GL_COLORSPACE_LINEAR)
                 {
+                    // Linear renders on any format (see the template note);
+                    // keep the sRGB attribute closed even after an earlier
+                    // SRGB pair.
+                    template_attrib_list[28] = 0;
                     template_attrib_list[29] = GL_FALSE;
                     parsedColorspace         = EGL_GL_COLORSPACE_LINEAR;
                 }
                 else if (value == EGL_GL_COLORSPACE_SRGB)
                 {
                     // EGL_GL_COLORSPACE is core EGL 1.5. sRGB is delivered by
-                    // asking the pixel-format chooser for an sRGB-capable
-                    // format; without the driver extension there is no sRGB
-                    // format at all, which is EGL_BAD_MATCH per the spec
-                    // rather than a silent downgrade to linear.
+                    // an sRGB-capable pixel format plus the GL_FRAMEBUFFER_SRGB
+                    // enable that __makeCurrent sets for this surface; without
+                    // the driver extension there is no sRGB-capable format at
+                    // all, which is EGL_BAD_MATCH per the spec rather than a
+                    // silent downgrade to linear.
                     if (!walkerDpy->srgbFramebufferSupported)
                     {
                         ReleaseDC(win, hdc);
@@ -963,6 +969,7 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
                         return EGL_FALSE;
                     }
 
+                    template_attrib_list[28] = WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB;
                     template_attrib_list[29] = GL_TRUE;
                     parsedColorspace         = EGL_GL_COLORSPACE_SRGB;
                 }
@@ -976,6 +983,9 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl* newSurface, EGLNativeWindowType
                          value == EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT)
                 {
                     // HDR colorspaces use Vulkan for presentation; WGL framebuffer stays linear
+                    // HDR presents via Vulkan; the WGL framebuffer stays
+                    // linear (any format - see the template note).
+                    template_attrib_list[28] = 0;
                     template_attrib_list[29] = GL_FALSE;
                     parsedColorspace         = value;
                 }
@@ -1528,25 +1538,6 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
             continue;
         }
 
-        // Skip sRGB-capable pixel formats, mirroring the GLX backend: they
-        // render gamma-encoded, but EGL exposes sRGB as a per-surface
-        // attribute (EGL_GL_COLORSPACE_SRGB, core EGL 1.5) - never as a
-        // config property. Ordinary configs must render linear; the sRGB
-        // variant is selected at surface creation by the pixel-format
-        // chooser (WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB).
-        if (walkerDpy->srgbFramebufferSupported)
-        {
-            int srgbCapable = 0;
-            if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, &srgbCapable, error))
-            {
-                return EGL_FALSE;
-            }
-            if (srgbCapable)
-            {
-                continue;
-            }
-        }
-
         //
 
         EGLConfigImpl* newConfig = reinterpret_cast<EGLConfigImpl*>(malloc(sizeof(EGLConfigImpl)));
@@ -1669,11 +1660,23 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
 
         //
 
-        // sRGB-capable pixel formats are filtered during enumeration (see
-        // above); ordinary EGL configs always render linear. sRGB is
-        // selected per surface via EGL_GL_COLORSPACE_SRGB (core EGL 1.5),
-        // which maps to WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB in the chooser.
+        // sRGB capability is per pixel format, not per driver: NVIDIA for example
+        // exposes it on nearly every 8 bit per component format. Unlike GLX,
+        // where an sRGB fbconfig gamma-encodes unconditionally, a WGL
+        // sRGB-capable format renders linear until GL_FRAMEBUFFER_SRGB is
+        // enabled - and __makeCurrent sets that enable per surface color space -
+        // so no formats are filtered from the enumeration. Without the driver
+        // extension the attribute cannot be queried at all, so report EGL_FALSE.
         newConfig->srgbCapable = EGL_FALSE;
+        if (walkerDpy->srgbFramebufferSupported)
+        {
+            if (!__queryWglAttrib(nativeLocalStorageContainer, currentPixelFormat, WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, &value, error))
+            {
+                return EGL_FALSE;
+            }
+
+            newConfig->srgbCapable = value ? EGL_TRUE : EGL_FALSE;
+        }
 
         //
 
