@@ -582,13 +582,39 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
         // The template is written by fixed slot, so nothing here grows with the
         // input length; this is purely a cap on the number of accepted attributes.
         // There are exactly 7 distinct EGL context attributes and the switch above
-        // handles all of them, so a fully specified legal list must be accepted —
+        // handles all of them, so a fully specified legal list must be accepted -
         // the check has to fire only *after* the 7th pair, not at it.
         if (attribListIndex > CONTEXT_ATTRIB_LIST_MAX_PAIRS * 2)
         {
             *error = EGL_BAD_ATTRIBUTE;
 
             return EGL_FALSE;
+        }
+    }
+
+    if (api == EGL_OPENGL_API)
+    {
+        if (template_attrib_list[1] == 3 && template_attrib_list[3] == 1)
+        {
+            // EGL 1.5 section 3.7.1.1: for a requested OpenGL 3.1 context the
+            // implementation may return exactly 3.1 or "the core profile of
+            // version 3.2 or greater" - nothing else. A driver that upgrades
+            // every pre-3.2 request to its highest compatibility context hands
+            // back a version outside that set, so a 3.1 request is sent as 3.2
+            // core to stay inside it. The profile mask is ignored below 3.2
+            // anyway (section 3.7.1.2), so overwriting it is spec-conformant.
+            template_attrib_list[3] = 2;
+            template_attrib_list[9] = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+        }
+        else if (template_attrib_list[1] < 3 || (template_attrib_list[1] == 3 && template_attrib_list[3] < 2))
+        {
+            // EGL 1.5 section 3.7.1.2: the profile mask is ignored for
+            // requested versions below 3.2 - do not forward it to WGL. Shift
+            // the trailing reset-strategy pair down over the profile pair.
+            template_attrib_list[8]  = template_attrib_list[10];
+            template_attrib_list[9]  = template_attrib_list[11];
+            template_attrib_list[10] = 0;
+            template_attrib_list[11] = 0;
         }
     }
 

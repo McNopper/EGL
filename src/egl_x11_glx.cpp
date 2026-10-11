@@ -691,6 +691,32 @@ EGLBoolean __processAttribList(EGLenum api, EGLint* target_attrib_list, const EG
         }
     }
 
+    if (api == EGL_OPENGL_API)
+    {
+        if (tmpl[1] == 3 && tmpl[3] == 1)
+        {
+            // EGL 1.5 section 3.7.1.1: for a requested OpenGL 3.1 context the
+            // implementation may return exactly 3.1 or "the core profile of
+            // version 3.2 or greater" - nothing else. Mesa upgrades every
+            // pre-3.2 request to its highest *compatibility* context, which is
+            // outside that set, so a 3.1 request must be sent as 3.2 core to
+            // stay inside it. The profile mask is ignored below 3.2 anyway
+            // (section 3.7.1.2), so overwriting it here is spec-conformant.
+            tmpl[3] = 2;
+            tmpl[7] = GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
+        }
+        else if (tmpl[1] < 3 || (tmpl[1] == 3 && tmpl[3] < 2))
+        {
+            // EGL 1.5 section 3.7.1.2: the profile mask is ignored for
+            // requested versions below 3.2 - do not forward it to GLX. Shift
+            // the trailing reset-strategy pair down over the profile pair.
+            tmpl[6] = tmpl[8];
+            tmpl[7] = tmpl[9];
+            tmpl[8] = 0;
+            tmpl[9] = 0;
+        }
+    }
+
     memcpy(target_attrib_list, tmpl, CONTEXT_ATTRIB_LIST_SIZE * sizeof(EGLint));
     return EGL_TRUE;
 }
