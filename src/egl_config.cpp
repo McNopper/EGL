@@ -333,11 +333,6 @@ extern "C"
         config.configCaveat = EGL_DONT_CARE; // dont care for this attribute since it cant be queried on both WGL and GLX
         config.nativeVisualType = EGL_DONT_CARE; // query-only default is DONT_CARE; filtering here would drop valid configs
 
-        // More pairs than distinct legal attributes cannot exist. A fully
-        // populated legal list ends on exactly that many pairs, so only more
-        // than that is an error.
-        const EGLint maxPairs = (EGLint)(sizeof(s_chooseConfigDescs) / sizeof(s_chooseConfigDescs[0]));
-
         EGLint attribListIndex = 0;
 
         while (attrib_list[attribListIndex] != EGL_NONE)
@@ -368,7 +363,11 @@ extern "C"
 
             attribListIndex += 2;
 
-            if (attribListIndex > 2 * maxPairs)
+            // EGL 1.5 §3.4.1: an attribute may appear more than once - only the
+            // last value counts (the loop above naturally overwrites, so the
+            // last one wins). The pair count therefore says nothing about
+            // legality; only a runaway list without EGL_NONE is a problem.
+            if (attribListIndex > 2 * 1024)
             {
                 g_localStorage.error = EGL_BAD_ATTRIBUTE;
 
