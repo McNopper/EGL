@@ -481,6 +481,23 @@ extern "C"
     // creating it on first use - gathering the shared context's entry, which is
     // created for the chain predecessor when none exists yet. Returns nullptr
     // with *error set on failure.
+    EGLContextListImpl* _eglFindContextList(EGLContextImpl* walkerCtx, EGLSurfaceImpl* walkerDraw)
+    {
+        EGLContextListImpl* ctxList = walkerCtx->rootCtxList;
+
+        while (ctxList)
+        {
+            if (ctxList->surface == walkerDraw)
+            {
+                return ctxList;
+            }
+
+            ctxList = ctxList->next;
+        }
+
+        return nullptr;
+    }
+
     static EGLContextListImpl* _eglGetOrCreateContextList(EGLDisplayImpl* walkerDpy, EGLContextImpl* currentCtx, EGLSurfaceImpl* currentDraw, EGLint* error)
     {
         EGLContextListImpl* ctxList = currentCtx->rootCtxList;

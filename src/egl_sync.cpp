@@ -1,5 +1,6 @@
 ﻿#include "egl_common.h"
 #include <new>
+#include <vector>
 
 extern "C"
 {
@@ -79,6 +80,7 @@ extern "C"
         newSync->type   = EGL_SYNC_FENCE;
         newSync->glSync = glSync;
         std::lock_guard<std::mutex> lk(walkerDpy->mutex);
+        newSync->ctxList = _eglFindContextList(g_localStorage.currentCtx, g_localStorage.currentDraw);
         newSync->next       = walkerDpy->rootSync;
         walkerDpy->rootSync = newSync;
         g_localStorage.error = EGL_SUCCESS;
@@ -158,6 +160,22 @@ extern "C"
             g_localStorage.error = EGL_BAD_MATCH;
             return EGL_FALSE;
         }
+
+        bool borrowed = false;
+
+        // EGL 1.5 section 3.8.1.3: the wait is valid without a current
+        // context - only the flush bit is ignored then. The fence belongs to
+        // the binding that created it, so borrow that binding through the
+        // platform hook and release it afterwards, leaving the thread as it
+        // was.
+        if (g_localStorage.currentCtx == EGL_NO_CONTEXT_IMPL && walkerSync->ctxList)
+        {
+            if (__makeCurrent(walkerDpy, &walkerSync->ctxList->surface->nativeSurfaceContainer, &walkerSync->ctxList->nativeContextContainer))
+            {
+                borrowed = true;
+            }
+        }
+
         GLbitfield glFlags = (flags & EGL_SYNC_FLUSH_COMMANDS_BIT) ? GL_SYNC_FLUSH_COMMANDS_BIT_GL : 0;
         GLenum     result  = 0;
         if (timeout == EGL_FOREVER)
@@ -177,6 +195,13 @@ extern "C"
         {
             result = glClientWaitSync_PTR(walkerSync->glSync, glFlags, (unsigned long long)timeout);
         }
+
+        if (borrowed)
+        {
+            // Restore the context-free state the caller had.
+            __makeCurrent(walkerDpy, nullptr, nullptr);
+        }
+
         switch (result)
         {
         case GL_ALREADY_SIGNALED_GL:
@@ -289,6 +314,69 @@ extern "C"
         glWaitSync_PTR(walkerSync->glSync, 0, GL_TIMEOUT_IGNORED_GL);
         g_localStorage.error = EGL_SUCCESS;
         return EGL_TRUE;
+    }
+
+    // EGL_KHR_fence_sync and EGL_KHR_wait_sync: the KHR entry points predate
+    // EGL 1.5 and pass the attribute list and the queried values as EGLint
+    // instead of EGLAttrib; they are otherwise identical to the core sync
+    // functions, which carry the whole validation.
+    EGLSyncKHR _eglCreateSyncKHR(EGLDisplay dpy, EGLenum type, const EGLint* attrib_list)
+    {
+        // The extension specifies EGL_BAD_ATTRIBUTE for a type it does not
+        // define; the core 1.5 function says EGL_BAD_PARAMETER (the error
+        // was deliberately changed for the core, spec change log Bug 11963).
+        if (type != EGL_SYNC_FENCE_KHR)
+        {
+            g_localStorage.error = EGL_BAD_ATTRIBUTE;
+            return EGL_NO_SYNC_KHR;
+        }
+
+        std::vector<EGLAttrib> converted;
+
+        if (attrib_list)
+        {
+            for (const EGLint* walker = attrib_list; walker[0] != EGL_NONE; walker += 2)
+            {
+                converted.push_back(static_cast<EGLAttrib>(walker[0]));
+                converted.push_back(static_cast<EGLAttrib>(walker[1]));
+            }
+        }
+
+        converted.push_back(EGL_NONE);
+
+        return _eglCreateSync(dpy, type, converted.data());
+    }
+
+    EGLBoolean _eglDestroySyncKHR(EGLDisplay dpy, EGLSyncKHR sync)
+    {
+        return _eglDestroySync(dpy, sync);
+    }
+
+    EGLint _eglClientWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout)
+    {
+        return _eglClientWaitSync(dpy, sync, flags, timeout);
+    }
+
+    EGLBoolean _eglGetSyncAttribKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint attribute, EGLint* value)
+    {
+        EGLAttrib value64 = 0;
+
+        if (!_eglGetSyncAttrib(dpy, sync, attribute, &value64))
+        {
+            return EGL_FALSE;
+        }
+
+        if (value)
+        {
+            *value = static_cast<EGLint>(value64);
+        }
+
+        return EGL_TRUE;
+    }
+
+    EGLint _eglWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags)
+    {
+        return _eglWaitSync(dpy, sync, flags) ? EGL_TRUE : EGL_FALSE;
     }
 
 } // extern "C"

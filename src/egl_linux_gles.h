@@ -75,6 +75,27 @@ extern "C"
     EGLBoolean gles_destroySurface(void* surface);
     EGLBoolean gles_destroyContext(void* context);
 
+    /**
+     * Create a system EGLImage in a delegated ES context. The system stack's
+     * image consumption entry points dereference the handle with its own
+     * object model, so images of such contexts must live there. out_error
+     * receives the system EGL error code when creation fails.
+     */
+    EGLBoolean gles_createImageKHR(void* context, EGLenum target, EGLClientBuffer buffer, const EGLint* attrib_list, void** out_image, EGLint* out_error);
+
+    /** Destroy a system EGLImage. */
+    EGLBoolean gles_destroyImageKHR(void* image);
+
+    /**
+     * Consume a system EGLImage in the current system context
+     * (GL_OES_EGL_image). No-ops when the system GLES library does not
+     * export the entry point.
+     */
+    void gles_imageTargetTexture2D(EGLenum target, void* image);
+
+    /** Same as gles_imageTargetTexture2D for renderbuffers. */
+    void gles_imageTargetRenderbufferStorage(EGLenum target, void* image);
+
 #ifdef __cplusplus
 }
 #endif

@@ -28,6 +28,10 @@ typedef int (*PFN_eglTerminate)(void* dpy);
 typedef int (*PFN_eglChooseConfig)(void* dpy, const int* attrib_list, void** configs, int config_size, int* num_config);
 typedef int (*PFN_eglBindAPI)(unsigned int api);
 typedef void* (*PFN_eglCreateContext)(void* dpy, void* config, void* share, const int* attrib_list);
+typedef void* (*PFN_eglCreateImageKHR)(void* dpy, void* ctx, unsigned int target, void* buffer, const int* attrib_list);
+typedef int (*PFN_eglDestroyImageKHR)(void* dpy, void* image);
+typedef void (*PFN_glEGLImageTargetTexture2DOES)(unsigned int target, void* image);
+typedef void (*PFN_glEGLImageTargetRenderbufferStorageOES)(unsigned int target, void* image);
 typedef void* (*PFN_eglCreateWindowSurface)(void* dpy, void* config, void* win, const int* attrib_list);
 typedef int (*PFN_eglMakeCurrent)(void* dpy, void* draw, void* read, void* ctx);
 typedef int (*PFN_eglSwapBuffers)(void* dpy, void* surface);
@@ -76,6 +80,10 @@ struct GlesState
     PFN_eglSwapInterval          eglSwapInterval{nullptr};
     PFN_eglDestroyContext        eglDestroyContext{nullptr};
     PFN_eglDestroySurface        eglDestroySurface{nullptr};
+    PFN_eglCreateImageKHR        eglCreateImageKHR{nullptr};
+    PFN_eglDestroyImageKHR       eglDestroyImageKHR{nullptr};
+    PFN_glEGLImageTargetTexture2DOES        glEGLImageTargetTexture2DOES{nullptr};
+    PFN_glEGLImageTargetRenderbufferStorageOES glEGLImageTargetRenderbufferStorageOES{nullptr};
     PFN_eglGetError              eglGetError{nullptr};
 
     void* display{nullptr};
@@ -241,6 +249,17 @@ extern "C"
         // Optional: only used to consume error codes between config probes. A
         // stripped libEGL missing it is no reason to disable the whole ES path.
         resolveSym(g.libEGL, g.eglGetError, "eglGetError");
+
+        // Optional: EGLImage delegation. A system EGL without the KHR image
+        // entry points keeps the ES path; it just cannot create images.
+        resolveSym(g.libEGL, g.eglCreateImageKHR, "eglCreateImageKHR");
+        resolveSym(g.libEGL, g.eglDestroyImageKHR, "eglDestroyImageKHR");
+
+        // Optional: image consumption entry points of the system GLES
+        // library (GL_OES_EGL_image); they operate on the current context,
+        // which is a system context whenever the delegation is in use.
+        resolveSym(g.libGLES, g.glEGLImageTargetTexture2DOES, "glEGLImageTargetTexture2DOES");
+        resolveSym(g.libGLES, g.glEGLImageTargetRenderbufferStorageOES, "glEGLImageTargetRenderbufferStorageOES");
 
         resolveSym(g.libEGL, g.eglGetPlatformDisplayEXT, "eglGetPlatformDisplayEXT");
 
@@ -448,6 +467,48 @@ extern "C"
         if (!g.ready || !context)
             return EGL_FALSE;
         return (EGLBoolean)g.eglDestroyContext(g.display, context);
+    }
+
+    EGLBoolean gles_createImageKHR(void* context, EGLenum target, EGLClientBuffer buffer, const EGLint* attrib_list, void** out_image, EGLint* out_error)
+    {
+        if (!g.ready || !out_image || !g.eglCreateImageKHR)
+            return EGL_FALSE;
+
+        void* image = g.eglCreateImageKHR(g.display, context, target, buffer, attrib_list);
+
+        if (out_error)
+            *out_error = g.eglGetError ? g.eglGetError() : EGL_SUCCESS;
+
+        if (!image)
+            return EGL_FALSE;
+
+        *out_image = image;
+
+        return EGL_TRUE;
+    }
+
+    EGLBoolean gles_destroyImageKHR(void* image)
+    {
+        if (!g.ready || !image || !g.eglDestroyImageKHR)
+            return EGL_FALSE;
+
+        return (EGLBoolean)g.eglDestroyImageKHR(g.display, image);
+    }
+
+    void gles_imageTargetTexture2D(EGLenum target, void* image)
+    {
+        if (!g.ready || !g.glEGLImageTargetTexture2DOES)
+            return;
+
+        g.glEGLImageTargetTexture2DOES(target, image);
+    }
+
+    void gles_imageTargetRenderbufferStorage(EGLenum target, void* image)
+    {
+        if (!g.ready || !g.glEGLImageTargetRenderbufferStorageOES)
+            return;
+
+        g.glEGLImageTargetRenderbufferStorageOES(target, image);
     }
 
 } // extern "C"

@@ -452,6 +452,11 @@ typedef struct _EGLImageImpl
 
     EGLClientBuffer buffer;
 
+    // EGLImage of the delegated GLES stack when the creating context runs
+    // there: that stack's consumption entry points dereference the handle
+    // with their own object model. NULL for images of this object model only.
+    void* glesImage;
+
     struct _EGLImageImpl* next;
 
 } EGLImageImpl;
@@ -462,6 +467,11 @@ typedef struct _EGLSyncImpl
     EGLenum type;
 
     void* glSync;
+
+    // The binding this fence was issued into. eglClientWaitSync is valid
+    // without a current context (EGL 1.5 section 3.8.1.3); the wait then
+    // borrows this binding through the platform hook.
+    EGLContextListImpl* ctxList;
 
     struct _EGLSyncImpl* next;
 
@@ -542,11 +552,25 @@ extern "C"
 
     EGLContextImpl* _eglFindContext(EGLDisplayImpl* walkerDpy, EGLContext ctx);
 
+    // The list node of a binding: a context carries one native context per
+    // surface it was made current with, so the node of (ctx, draw) is the
+    // one the current binding uses. No error is set - callers report their
+    // own when this returns null.
+    EGLContextListImpl* _eglFindContextList(EGLContextImpl* walkerCtx, EGLSurfaceImpl* walkerDraw);
+
     EGLSurfaceImpl* _eglFindSurface(EGLDisplayImpl* walkerDpy, EGLSurface surface);
 
     EGLSyncImpl* _eglFindSync(EGLDisplayImpl* walkerDpy, EGLSync sync);
 
     EGLImageImpl* _eglFindImage(EGLDisplayImpl* walkerDpy, EGLImage image);
+
+    // GL_OES_EGL_image consumption entry points. They carry this library's
+    // EGLImage handles, so they are implemented here rather than forwarded
+    // to the client loader, which could not interpret the handles (see
+    // egl_image.cpp for the behaviour).
+    void _glEGLImageTargetTexture2DOES(GLenum target, void* image);
+
+    void _glEGLImageTargetRenderbufferStorageOES(GLenum target, void* image);
 
     // Releases a thread binding's references (defined in egl_context.cpp; the
     // draw == read single-reference rule is documented there).

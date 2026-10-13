@@ -1,3 +1,6 @@
+// The pre-1.5 KHR entry point prototypes (EGL_KHR_fence_sync,
+// EGL_KHR_wait_sync, EGL_KHR_image_base) for the proc table below.
+#define EGL_EGLEXT_PROTOTYPES
 #include "egl_common.h"
 
 extern "C"
@@ -295,8 +298,9 @@ extern "C"
 
         // EGL 1.5 allows eglGetProcAddress to return core EGL entry points, and many
         // loaders (glad, libepoxy, ...) rely on it. Resolve the exported egl* names
-        // here; only names whose signature matches the core function are listed
-        // (extension variants with different signatures fall through to the GL loader).
+        // here: the core functions plus their pre-1.5 extension aliases
+        // (EGL_KHR_fence_sync, EGL_KHR_wait_sync, EGL_KHR_image_base), whose
+        // signatures differ in the attribute types, are wrapped above.
         struct EglProc
         {
             const char*                              name;
@@ -356,12 +360,37 @@ extern "C"
             EGL_PROC(eglGetPlatformDisplay),
             EGL_PROC(eglCreatePlatformWindowSurface),
             EGL_PROC(eglCreatePlatformPixmapSurface),
+            // EGL_KHR_fence_sync / EGL_KHR_wait_sync: the pre-1.5 names of
+            // the core sync functions, with EGLint signatures.
+            EGL_PROC(eglCreateSyncKHR),
+            EGL_PROC(eglDestroySyncKHR),
+            EGL_PROC(eglClientWaitSyncKHR),
+            EGL_PROC(eglGetSyncAttribKHR),
+            EGL_PROC(eglWaitSyncKHR),
+            // EGL_KHR_image_base: the pre-1.5 name of the core image
+            // functions, with an EGLint attribute list.
+            EGL_PROC(eglCreateImageKHR),
+            EGL_PROC(eglDestroyImageKHR),
+            // GL_OES_EGL_image consumption: the handles are this library's
+            // EGLImages, so the entry points are implemented here (see
+            // egl_image.cpp) instead of forwarded to the client loader.
+            {"glEGLImageTargetTexture2DOES", reinterpret_cast<__eglMustCastToProperFunctionPointerType>(&_glEGLImageTargetTexture2DOES)},
+            {"glEGLImageTargetRenderbufferStorageOES", reinterpret_cast<__eglMustCastToProperFunctionPointerType>(&_glEGLImageTargetRenderbufferStorageOES)},
         };
 #undef EGL_PROC
 
         for (const auto& p : k_eglProcs)
             if (strcmp(p.name, procname) == 0)
                 return p.fn;
+
+        // Unsupported names of the "egl" namespace belong to this library's
+        // own API surface and must stay NULL: deferring them to the client
+        // loader would return another EGL implementation's entry point,
+        // which cannot know our handles (dEQP resolves eglCreateImageKHR
+        // before any display exists and calls it unguarded). The answer must
+        // not depend on what the GL/GLES delegation has loaded either.
+        if (strncmp(procname, "egl", 3) == 0)
+            return nullptr;
 
         // Not a core EGL entry point — defer to the client (GL/GLES) loader.
         return __getProcAddress(procname);

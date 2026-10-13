@@ -1,5 +1,9 @@
 ﻿#include "egl_common.h"
+#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
+#include "egl_linux_gles.h"
+#endif
 #include <new>
+#include <vector>
 
 extern "C"
 {
@@ -99,6 +103,46 @@ extern "C"
         }
         newImage->target = target;
         newImage->buffer = buffer;
+
+#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
+        // Contexts whose GL runs in the delegated GLES stack create their
+        // images there as well: that stack's image consumption entry points
+        // dereference the handle with their own object model. GLX-backed
+        // contexts - including ES contexts on pbuffer surfaces - keep the
+        // bookkeeping image; their consumption entry points are not handed
+        // out at all (see _eglGetProcAddress).
+        EGLContextListImpl* ctxList = _eglFindContextList(walkerCtx, g_localStorage.currentDraw);
+
+        if (ctxList && ctxList->nativeContextContainer.backend == EGL_BACKEND_GLES)
+        {
+            // The image source attributes are small tokens, levels and
+            // offsets; the narrowing to EGLint is lossless for them.
+            std::vector<EGLint> converted;
+
+            if (attrib_list)
+            {
+                for (const EGLAttrib* walker = attrib_list; walker[0] != EGL_NONE; walker += 2)
+                {
+                    converted.push_back(static_cast<EGLint>(walker[0]));
+                    converted.push_back(static_cast<EGLint>(walker[1]));
+                }
+            }
+
+            converted.push_back(EGL_NONE);
+
+            EGLint glesError = EGL_SUCCESS;
+
+            if (gles_createImageKHR(ctxList->nativeContextContainer.glesCtx, target, buffer, converted.data(), &newImage->glesImage, &glesError) != EGL_TRUE)
+            {
+                delete newImage;
+
+                g_localStorage.error = glesError != EGL_SUCCESS ? glesError : EGL_BAD_ALLOC;
+
+                return EGL_NO_IMAGE;
+            }
+        }
+#endif
+
         newImage->next       = walkerDpy->rootImage;
         walkerDpy->rootImage = newImage;
         g_localStorage.error = EGL_SUCCESS;
@@ -125,6 +169,14 @@ extern "C"
         {
             if (reinterpret_cast<EGLImage>(walker) == image)
             {
+#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
+                // The delegated image goes away with the stack that created
+                // it; this node only tracked it.
+                if (walker->glesImage)
+                {
+                    gles_destroyImageKHR(walker->glesImage);
+                }
+#endif
                 if (prev)
                     prev->next = walker->next;
                 else
@@ -138,6 +190,72 @@ extern "C"
         }
         g_localStorage.error = EGL_BAD_PARAMETER;
         return EGL_FALSE;
+    }
+
+    // EGL_KHR_image_base: eglCreateImageKHR is identical to eglCreateImage
+    // except for the attribute list type; the EGLint pairs widen one to one.
+    EGLImageKHR _eglCreateImageKHR(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLint* attrib_list)
+    {
+        std::vector<EGLAttrib> converted;
+
+        if (attrib_list)
+        {
+            for (const EGLint* walker = attrib_list; walker[0] != EGL_NONE; walker += 2)
+            {
+                converted.push_back(static_cast<EGLAttrib>(walker[0]));
+                converted.push_back(static_cast<EGLAttrib>(walker[1]));
+            }
+        }
+
+        converted.push_back(EGL_NONE);
+
+        return _eglCreateImage(dpy, ctx, target, buffer, converted.data());
+    }
+
+    EGLBoolean _eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image)
+    {
+        return _eglDestroyImage(dpy, image);
+    }
+
+    // GL_OES_EGL_image consumption entry points. They cannot be forwarded to
+    // the client loader: that implementation could not interpret this
+    // library's image handles. Consumption runs through the delegated GLES
+    // stack when both the current context and the image live there;
+    // GLX-backed contexts have no EGLImage interop at all (GLX defines
+    // none), and the call is accepted without effect for them - the
+    // operation is not advertised for such contexts.
+    void _glEGLImageTargetTexture2DOES(GLenum target, void* image)
+    {
+#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
+        EGLImageImpl* walkerImage = reinterpret_cast<EGLImageImpl*>(image);
+
+        if (walkerImage && walkerImage->glesImage && g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
+        {
+            EGLContextListImpl* ctxList = _eglFindContextList(g_localStorage.currentCtx, g_localStorage.currentDraw);
+
+            if (ctxList && ctxList->nativeContextContainer.backend == EGL_BACKEND_GLES)
+            {
+                gles_imageTargetTexture2D(target, walkerImage->glesImage);
+            }
+        }
+#endif
+    }
+
+    void _glEGLImageTargetRenderbufferStorageOES(GLenum target, void* image)
+    {
+#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
+        EGLImageImpl* walkerImage = reinterpret_cast<EGLImageImpl*>(image);
+
+        if (walkerImage && walkerImage->glesImage && g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
+        {
+            EGLContextListImpl* ctxList = _eglFindContextList(g_localStorage.currentCtx, g_localStorage.currentDraw);
+
+            if (ctxList && ctxList->nativeContextContainer.backend == EGL_BACKEND_GLES)
+            {
+                gles_imageTargetRenderbufferStorage(target, walkerImage->glesImage);
+            }
+        }
+#endif
     }
 
 } // extern "C"

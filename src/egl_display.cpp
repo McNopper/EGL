@@ -355,6 +355,17 @@ extern "C"
             };
             appendExt("EGL_KHR_gl_colorspace");
             appendExt("EGL_KHR_create_context");
+            // Core-promoted functionality of EGL 1.5 this implementation
+            // carries: fence and wait syncs over the GL sync objects, and
+            // EGLImages from every GL texture and renderbuffer target, each
+            // also reachable through its pre-1.5 KHR entry point.
+            appendExt("EGL_KHR_fence_sync");
+            appendExt("EGL_KHR_wait_sync");
+            appendExt("EGL_KHR_image_base");
+            appendExt("EGL_KHR_gl_texture_2D_image");
+            appendExt("EGL_KHR_gl_texture_cubemap_image");
+            appendExt("EGL_KHR_gl_texture_3D_image");
+            appendExt("EGL_KHR_gl_renderbuffer_image");
             // EGL_EXT_client_extensions is CLIENT-only (queried with
             // EGL_NO_DISPLAY); it must not appear here - the two extension
             // strings are required to be disjoint.

@@ -24,7 +24,11 @@
  * THE SOFTWARE.
  */
 
+// The pre-1.5 KHR entry points (EGL_KHR_fence_sync, EGL_KHR_wait_sync,
+// EGL_KHR_image_base) and their types below.
+#define EGL_EGLEXT_PROTOTYPES
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 //
 // Native external implementations.
@@ -138,9 +142,23 @@ extern EGLBoolean _eglGetSyncAttrib(EGLDisplay dpy, EGLSync sync, EGLint attribu
 
 extern EGLBoolean _eglWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags);
 
+extern EGLSyncKHR _eglCreateSyncKHR(EGLDisplay dpy, EGLenum type, const EGLint* attrib_list);
+
+extern EGLBoolean _eglDestroySyncKHR(EGLDisplay dpy, EGLSyncKHR sync);
+
+extern EGLint _eglClientWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout);
+
+extern EGLBoolean _eglGetSyncAttribKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint attribute, EGLint* value);
+
+extern EGLint _eglWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags);
+
 extern EGLImage _eglCreateImage(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLAttrib* attrib_list);
 
 extern EGLBoolean _eglDestroyImage(EGLDisplay dpy, EGLImage image);
+
+extern EGLImageKHR _eglCreateImageKHR(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLint* attrib_list);
+
+extern EGLBoolean _eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image);
 
 //
 // Wrapper.
@@ -371,6 +389,31 @@ EGLAPI EGLBoolean EGLAPIENTRY eglGetSyncAttrib(EGLDisplay dpy, EGLSync sync, EGL
     return _eglGetSyncAttrib(dpy, sync, attribute, value);
 }
 
+EGLAPI EGLSyncKHR EGLAPIENTRY eglCreateSyncKHR(EGLDisplay dpy, EGLenum type, const EGLint* attrib_list)
+{
+    return _eglCreateSyncKHR(dpy, type, attrib_list);
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglDestroySyncKHR(EGLDisplay dpy, EGLSyncKHR sync)
+{
+    return _eglDestroySyncKHR(dpy, sync);
+}
+
+EGLAPI EGLint EGLAPIENTRY eglClientWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout)
+{
+    return _eglClientWaitSyncKHR(dpy, sync, flags, timeout);
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglGetSyncAttribKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint attribute, EGLint* value)
+{
+    return _eglGetSyncAttribKHR(dpy, sync, attribute, value);
+}
+
+EGLAPI EGLint EGLAPIENTRY eglWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags)
+{
+    return _eglWaitSyncKHR(dpy, sync, flags);
+}
+
 EGLAPI EGLImage EGLAPIENTRY eglCreateImage(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLAttrib* attrib_list)
 {
     return _eglCreateImage(dpy, ctx, target, buffer, attrib_list);
@@ -379,6 +422,16 @@ EGLAPI EGLImage EGLAPIENTRY eglCreateImage(EGLDisplay dpy, EGLContext ctx, EGLen
 EGLAPI EGLBoolean EGLAPIENTRY eglDestroyImage(EGLDisplay dpy, EGLImage image)
 {
     return _eglDestroyImage(dpy, image);
+}
+
+EGLAPI EGLImageKHR EGLAPIENTRY eglCreateImageKHR(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLint* attrib_list)
+{
+    return _eglCreateImageKHR(dpy, ctx, target, buffer, attrib_list);
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image)
+{
+    return _eglDestroyImageKHR(dpy, image);
 }
 
 EGLAPI EGLDisplay EGLAPIENTRY eglGetPlatformDisplay(EGLenum platform, void* native_display, const EGLAttrib* attrib_list)
