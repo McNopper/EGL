@@ -18,7 +18,9 @@ namespace
 // all but its first exit.
 struct AppBuilder
 {
-    EGLApp* app;
+    // In-class initialized: the destructor reads app, and a builder that
+    // fails before ownership is taken must not read indeterminate memory.
+    EGLApp* app = nullptr;
 
     bool keep = false;
 
