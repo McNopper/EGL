@@ -1816,6 +1816,30 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
     return EGL_TRUE;
 }
 
+EGLBoolean __queryBufferAge(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* age)
+{
+    if (!walkerDpy || !walkerSurface || !age)
+        return EGL_FALSE;
+
+#ifdef EGL_LINUX_ENABLE_GLES
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+    {
+        // The delegated stack tracks the back-buffer age itself.
+        return gles_querySurface(walkerSurface->nativeSurfaceContainer.glesSurface, EGL_BUFFER_AGE_EXT, age);
+    }
+#endif
+
+    Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
+    const char* glxExts = s_glXQueryExtensionsString ? s_glXQueryExtensionsString(dpy, DefaultScreen(dpy)) : nullptr;
+    if (!glxExts || !strstr(glxExts, "GLX_EXT_buffer_age"))
+        return EGL_FALSE;
+
+    unsigned int nativeAge = 0;
+    glXQueryDrawable(dpy, walkerSurface->nativeSurfaceContainer.drawable, GLX_BACK_BUFFER_AGE_EXT, &nativeAge);
+    *age = (EGLint)nativeAge;
+    return EGL_TRUE;
+}
+
 EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height)
 {
     if (!walkerDpy || !walkerSurface || !width || !height)

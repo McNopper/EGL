@@ -415,6 +415,49 @@ extern "C"
             return EGL_TRUE;
         }
 
+        // EGL_EXT_buffer_age (also EGL_BUFFER_AGE_KHR, same token): the age
+        // is only defined for the calling thread's current draw surface.
+        if (attribute == EGL_BUFFER_AGE_EXT)
+        {
+            if (g_localStorage.currentDraw != walkerSurface)
+            {
+                g_localStorage.error = EGL_BAD_SURFACE;
+
+                return EGL_FALSE;
+            }
+
+            if (value)
+            {
+                // The extension's age arithmetic: a double-buffered surface
+                // presented by exchange has age 2 once both buffers have
+                // been through a swap; a copy (EGL_BUFFER_PRESERVED) has age
+                // 1 after the first frame; single-buffered surfaces have no
+                // frame boundaries and stay 0. Only the driver knows whether
+                // it exchanges or copies, so a native answer wins; without
+                // one, report 0 for destroyed behavior (contents undefined)
+                // and the copy age for preserved behavior.
+                EGLint age = 0;
+
+                if (!__queryBufferAge(walkerDpy, walkerSurface, &age))
+                {
+                    age = 0;
+                    if (walkerSurface->drawToWindow && walkerSurface->doubleBuffer &&
+                        walkerSurface->swapBehavior == EGL_BUFFER_PRESERVED)
+                    {
+                        age = walkerSurface->bufferAgeSwaps > 0 ? 1 : 0;
+                    }
+                }
+
+                *value = age;
+            }
+
+            // EGL_KHR_partial_update: setting the damage region requires a
+            // buffer-age query since the most recent frame boundary.
+            walkerSurface->ageQueriedThisFrame = EGL_TRUE;
+
+            return EGL_TRUE;
+        }
+
         const SurfaceQueryDesc* desc = nullptr;
 
         for (const SurfaceQueryDesc& d : s_surfaceQueryDescs)

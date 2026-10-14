@@ -393,6 +393,16 @@ typedef struct _EGLSurfaceImpl
     EGLint cta861MaxContentLightLevel;
     EGLint cta861MaxFrameAverageLightLevel;
 
+    // EGL_EXT_buffer_age / EGL_KHR_partial_update: swap-frame accounting.
+    // bufferAgeSwaps counts the frame boundaries passed since creation (or
+    // since the last resize for non-preserved surfaces); the query derives
+    // the age from it. The two flags enforce the partial_update rules that
+    // the age must be queried before setting damage, and that the damage
+    // region may be set only once per frame; both reset at each swap.
+    EGLint     bufferAgeSwaps;
+    EGLBoolean ageQueriedThisFrame;
+    EGLBoolean damageSetThisFrame;
+
     union
     {
         EGLNativeWindowType win;
@@ -636,6 +646,12 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 // that cannot resize window surfaces on demand must detect the change in
 // eglSwapBuffers (EGL 1.5 §3.10.1.1).
 EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height);
+
+// EGL_EXT_buffer_age: ask the native stack for the back-buffer age. Only the
+// driver knows whether it presents by exchange or copy, so a native answer
+// is authoritative; EGL_FALSE means "no native answer" and the core falls
+// back to the conservative model (0 for destroyed behavior, 1 for preserved).
+EGLBoolean __queryBufferAge(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* age);
 
 #ifdef EGL_ENABLE_OPENVG
 // Presents the software OpenVG pixel buffer (surface->vgBuffer) of a window

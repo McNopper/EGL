@@ -1891,6 +1891,16 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
     return res;
 }
 
+EGLBoolean __queryBufferAge(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* age)
+{
+    // No native age query on WGL; the core falls back to the conservative
+    // model (0 for destroyed behavior, 1 for preserved).
+    (void)walkerDpy;
+    (void)walkerSurface;
+    (void)age;
+    return EGL_FALSE;
+}
+
 EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height)
 {
     (void)walkerDpy;

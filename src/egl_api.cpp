@@ -151,7 +151,17 @@ extern "C"
         return EGL_TRUE;
     }
 
-    EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
+    // EGL_EXT_buffer_age / EGL_KHR_partial_update: a completed swap is a
+    // frame boundary - the back-buffer generation advances and the
+    // per-frame damage bookkeeping resets.
+    static void _eglNoteFrameBoundary(EGLSurfaceImpl* surface)
+    {
+        surface->bufferAgeSwaps++;
+        surface->ageQueriedThisFrame = EGL_FALSE;
+        surface->damageSetThisFrame  = EGL_FALSE;
+    }
+
+    static EGLBoolean _eglSwapBuffersImpl(EGLDisplay dpy, EGLSurface surface)
     {
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
         EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
@@ -214,6 +224,15 @@ extern "C"
 
             if (__windowSurfaceSize(walkerDpy, walkerSurface, &width, &height) == EGL_TRUE && width > 0 && height > 0)
             {
+                // EGL_EXT_buffer_age permits resetting the age on resize;
+                // with EGL_BUFFER_PRESERVED the content (and so the age)
+                // survives the resize instead.
+                if ((walkerSurface->width != width || walkerSurface->height != height) &&
+                    walkerSurface->swapBehavior != EGL_BUFFER_PRESERVED)
+                {
+                    walkerSurface->bufferAgeSwaps = 0;
+                }
+
                 walkerSurface->width  = width;
                 walkerSurface->height = height;
             }
@@ -236,6 +255,8 @@ extern "C"
                 return EGL_FALSE;
             }
 
+            _eglNoteFrameBoundary(walkerSurface);
+
             g_localStorage.error = EGL_SUCCESS;
 
             return EGL_TRUE;
@@ -251,6 +272,112 @@ extern "C"
 
             return EGL_FALSE;
         }
+
+        _eglNoteFrameBoundary(walkerSurface);
+
+        g_localStorage.error = EGL_SUCCESS;
+
+        return EGL_TRUE;
+    }
+
+    EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
+    {
+        return _eglSwapBuffersImpl(dpy, surface);
+    }
+
+    // EGL_KHR_swap_buffers_with_damage: the rectangles are a compositor
+    // optimization hint only - the whole back buffer is swapped regardless,
+    // so discarding them and doing a plain swap is explicitly compliant
+    // (extension issue 2).
+    EGLBoolean _eglSwapBuffersWithDamageKHR(EGLDisplay dpy, EGLSurface surface, const EGLint* rects, EGLint n_rects)
+    {
+        if (n_rects < 0 || (n_rects > 0 && !rects))
+        {
+            g_localStorage.error = EGL_BAD_PARAMETER;
+
+            return EGL_FALSE;
+        }
+
+        (void)rects;
+
+        return _eglSwapBuffersImpl(dpy, surface);
+    }
+
+    EGLBoolean _eglSetDamageRegionKHR(EGLDisplay dpy, EGLSurface surface, EGLint* rects, EGLint n_rects)
+    {
+        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+        EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
+
+        if (!walkerDpy)
+        {
+            return EGL_FALSE;
+        }
+
+        guard_t _{walkerDpy->mutex};
+
+        if (!walkerDpy->initialized || walkerDpy->destroy)
+        {
+            g_localStorage.error = EGL_NOT_INITIALIZED;
+
+            return EGL_FALSE;
+        }
+
+        EGLSurfaceImpl* walkerSurface = _eglFindSurface(walkerDpy, surface);
+
+        if (!walkerSurface)
+        {
+            g_localStorage.error = EGL_BAD_SURFACE;
+
+            return EGL_FALSE;
+        }
+
+        if (!walkerSurface->initialized || walkerSurface->destroy)
+        {
+            g_localStorage.error = EGL_BAD_SURFACE;
+
+            return EGL_FALSE;
+        }
+
+        // EGL_KHR_partial_update: the surface must be postable (a window) and
+        // the current draw surface of the calling thread, and its swap
+        // behavior must be EGL_BUFFER_DESTROYED; all three are EGL_BAD_MATCH.
+        if (!walkerSurface->drawToWindow || g_localStorage.currentDraw != walkerSurface)
+        {
+            g_localStorage.error = EGL_BAD_MATCH;
+
+            return EGL_FALSE;
+        }
+
+        if (walkerSurface->swapBehavior != EGL_BUFFER_DESTROYED)
+        {
+            g_localStorage.error = EGL_BAD_MATCH;
+
+            return EGL_FALSE;
+        }
+
+        // One damage region per frame, and only after the buffer age was
+        // queried this frame; both violations are EGL_BAD_ACCESS.
+        if (walkerSurface->damageSetThisFrame)
+        {
+            g_localStorage.error = EGL_BAD_ACCESS;
+
+            return EGL_FALSE;
+        }
+
+        if (!walkerSurface->ageQueriedThisFrame)
+        {
+            g_localStorage.error = EGL_BAD_ACCESS;
+
+            return EGL_FALSE;
+        }
+
+        // The region itself is a rendering-efficiency hint; with full-frame
+        // presents the pixels are correct without tracking it. The swap
+        // behavior and age bookkeeping above are the observable contract.
+        (void)rects;
+        (void)n_rects;
+
+        walkerSurface->damageSetThisFrame = EGL_TRUE;
 
         g_localStorage.error = EGL_SUCCESS;
 
@@ -395,6 +522,11 @@ extern "C"
             // functions, with an EGLint attribute list.
             EGL_PROC(eglCreateImageKHR),
             EGL_PROC(eglDestroyImageKHR),
+            // EGL_KHR_swap_buffers_with_damage / EGL_KHR_partial_update:
+            // damage is a hint; the full-frame present and the per-frame
+            // bookkeeping live in this library.
+            EGL_PROC(eglSwapBuffersWithDamageKHR),
+            EGL_PROC(eglSetDamageRegionKHR),
             // GL_OES_EGL_image consumption: the handles are this library's
             // EGLImages, so the entry points are implemented here (see
             // egl_image.cpp) instead of forwarded to the client loader.

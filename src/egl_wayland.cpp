@@ -1651,6 +1651,23 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
 
 // ── Swap ──────────────────────────────────────────────────────────────────────
 
+EGLBoolean __queryBufferAge(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* age)
+{
+    (void)walkerDpy;
+    if (!walkerSurface || !age)
+        return EGL_FALSE;
+
+#ifdef EGL_WAYLAND_ENABLE_GLES
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+    {
+        // The delegated stack tracks the back-buffer age itself.
+        return gles_querySurface(walkerSurface->nativeSurfaceContainer.glesSurface, EGL_BUFFER_AGE_EXT, age);
+    }
+#endif
+
+    return EGL_FALSE;
+}
+
 EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height)
 {
     (void)walkerDpy;

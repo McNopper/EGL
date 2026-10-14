@@ -80,6 +80,10 @@ extern EGLBoolean _eglQuerySurface(EGLDisplay dpy, EGLSurface surface, EGLint at
 
 extern EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface);
 
+extern EGLBoolean _eglSwapBuffersWithDamageKHR(EGLDisplay dpy, EGLSurface surface, const EGLint* rects, EGLint n_rects);
+
+extern EGLBoolean _eglSetDamageRegionKHR(EGLDisplay dpy, EGLSurface surface, EGLint* rects, EGLint n_rects);
+
 extern EGLBoolean _eglTerminate(EGLDisplay dpy);
 
 extern EGLBoolean _eglWaitNative(EGLint engine);
@@ -271,6 +275,16 @@ EGLAPI EGLBoolean EGLAPIENTRY eglQuerySurface(EGLDisplay dpy, EGLSurface surface
 EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
 {
     return _eglSwapBuffers(dpy, surface);
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffersWithDamageKHR(EGLDisplay dpy, EGLSurface surface, const EGLint* rects, EGLint n_rects)
+{
+    return _eglSwapBuffersWithDamageKHR(dpy, surface, rects, n_rects);
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglSetDamageRegionKHR(EGLDisplay dpy, EGLSurface surface, EGLint* rects, EGLint n_rects)
+{
+    return _eglSetDamageRegionKHR(dpy, surface, rects, n_rects);
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglTerminate(EGLDisplay dpy)

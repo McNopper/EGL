@@ -366,6 +366,11 @@ extern "C"
             appendExt("EGL_KHR_gl_texture_cubemap_image");
             appendExt("EGL_KHR_gl_texture_3D_image");
             appendExt("EGL_KHR_gl_renderbuffer_image");
+            // Damage is a compositor/producer hint on top of the ordinary
+            // present path; the age accounting lives in the core swap path.
+            appendExt("EGL_EXT_buffer_age");
+            appendExt("EGL_KHR_partial_update");
+            appendExt("EGL_KHR_swap_buffers_with_damage");
             // EGL_EXT_client_extensions is CLIENT-only (queried with
             // EGL_NO_DISPLAY); it must not appear here - the two extension
             // strings are required to be disjoint.
