@@ -1279,9 +1279,10 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl*       newSurface,
         newSurface->initialized                        = EGL_TRUE;
         newSurface->destroy                            = EGL_FALSE;
         newSurface->pbuf                               = 0;
-        newSurface->nativeSurfaceContainer.drawable    = 0;
-        newSurface->nativeSurfaceContainer.config      = nullptr;
-        newSurface->nativeSurfaceContainer.hdr         = nullptr;
+        newSurface->nativeSurfaceContainer.glxPbuffer  = 0;
+        newSurface->nativeSurfaceContainer.glxConfig   = nullptr;
+        newSurface->nativeSurfaceContainer.eglWindow   = nullptr;
+        newSurface->nativeSurfaceContainer.vk          = nullptr;
         newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLES;
         newSurface->nativeSurfaceContainer.glesSurface = surf;
         newSurface->nativeSurfaceContainer.glesFormat  = format;
