@@ -50,6 +50,22 @@
 // EGL_EXT_gl_colorspace_display_p3 is reported.
 #define EGL_HDR_CS_DISPLAY_P3_PASSTHROUGH_BIT (1u << 7)
 
+// Surface format request derived from an EGLConfigImpl: the delegated surface
+// must match it, or clearing, quantization and multisampling verify against
+// the wrong buffer layout. EGL requires context and surface from the same
+// config, so both the surface and the context bound to it are created from
+// the system config queried for this format.
+typedef struct GlesSurfaceFormat
+{
+    int32_t red;
+    int32_t green;
+    int32_t blue;
+    int32_t alpha;
+    int32_t depth;
+    int32_t stencil;
+    int32_t samples;
+} GlesSurfaceFormat;
+
 #if defined(_WIN32) || defined(__VC32__) && !defined(__CYGWIN__) && !defined(__SCITECH_SNAP__) /* Win32 and WinCE */
 
 #include <windows.h>
@@ -142,6 +158,7 @@ typedef struct _NativeSurfaceContainer
     NativeShmPresenter*        shmPresent;  // non-NULL when presenting through wl_shm (software path)
     NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
     void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
+    GlesSurfaceFormat          glesFormat;  // the delegated surface's format, from the owning EGLConfig (GLES only)
     int32_t                    glColorspace; // EGL_GL_COLORSPACE_SRGB or LINEAR (EGLint == int32_t); drives GL_FRAMEBUFFER_SRGB at bind
 } NativeSurfaceContainer;
 
@@ -187,6 +204,7 @@ typedef struct _NativeSurfaceContainer
     NativeHDRSurfaceContainer* hdr;         // NULL = SDR (GLX); non-NULL = Vulkan HDR
     NativeBackend              backend;     // 0 = GLX (default), 1 = system GLES
     void*                      glesSurface; // EGLSurface from system libEGL when backend == GLES
+    GlesSurfaceFormat          glesFormat;  // the delegated surface's format, from the owning EGLConfig (GLES only)
     int32_t                    glColorspace; // EGL_GL_COLORSPACE_SRGB or LINEAR (EGLint == int32_t); drives GL_FRAMEBUFFER_SRGB at bind
 } NativeSurfaceContainer;
 
@@ -456,6 +474,10 @@ typedef struct _EGLImageImpl
     // there: that stack's consumption entry points dereference the handle
     // with their own object model. NULL for images of this object model only.
     void* glesImage;
+
+    // Same for the ANGLE stack on Windows; the field is separate because the
+    // two stacks are never active in one build.
+    void* angleImage;
 
     struct _EGLImageImpl* next;
 

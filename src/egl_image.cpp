@@ -1,6 +1,10 @@
 ﻿#include "egl_common.h"
 #if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
 #include "egl_linux_gles.h"
+#define EGL_HAS_GLES_DELEGATION
+#endif
+#ifdef EGL_WIN_ENABLE_ANGLE
+#include "egl_windows_angle.h"
 #endif
 #include <new>
 #include <vector>
@@ -104,32 +108,33 @@ extern "C"
         newImage->target = target;
         newImage->buffer = buffer;
 
-#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
-        // Contexts whose GL runs in the delegated GLES stack create their
-        // images there as well: that stack's image consumption entry points
-        // dereference the handle with their own object model. GLX-backed
-        // contexts - including ES contexts on pbuffer surfaces - keep the
-        // bookkeeping image; their consumption entry points are not handed
-        // out at all (see _eglGetProcAddress).
+#if defined(EGL_HAS_GLES_DELEGATION) || defined(EGL_WIN_ENABLE_ANGLE)
+        // Contexts whose GL runs in a delegated stack (the system GLES stack
+        // on Linux, ANGLE on Windows) create their images there as well: that
+        // stack's image consumption entry points dereference the handle with
+        // their own object model. Contexts of this library's own GL backends
+        // (GLX, WGL) keep the bookkeeping image; their consumption entry
+        // points are not handed out at all (see _eglGetProcAddress).
         EGLContextListImpl* ctxList = _eglFindContextList(walkerCtx, g_localStorage.currentDraw);
 
+        // The image source attributes are small tokens, levels and offsets;
+        // the narrowing to EGLint is lossless for them.
+        std::vector<EGLint> converted;
+
+        if (attrib_list)
+        {
+            for (const EGLAttrib* walker = attrib_list; walker[0] != EGL_NONE; walker += 2)
+            {
+                converted.push_back(static_cast<EGLint>(walker[0]));
+                converted.push_back(static_cast<EGLint>(walker[1]));
+            }
+        }
+
+        converted.push_back(EGL_NONE);
+
+#ifdef EGL_HAS_GLES_DELEGATION
         if (ctxList && ctxList->nativeContextContainer.backend == EGL_BACKEND_GLES)
         {
-            // The image source attributes are small tokens, levels and
-            // offsets; the narrowing to EGLint is lossless for them.
-            std::vector<EGLint> converted;
-
-            if (attrib_list)
-            {
-                for (const EGLAttrib* walker = attrib_list; walker[0] != EGL_NONE; walker += 2)
-                {
-                    converted.push_back(static_cast<EGLint>(walker[0]));
-                    converted.push_back(static_cast<EGLint>(walker[1]));
-                }
-            }
-
-            converted.push_back(EGL_NONE);
-
             EGLint glesError = EGL_SUCCESS;
 
             if (gles_createImageKHR(ctxList->nativeContextContainer.glesCtx, target, buffer, converted.data(), &newImage->glesImage, &glesError) != EGL_TRUE)
@@ -141,6 +146,22 @@ extern "C"
                 return EGL_NO_IMAGE;
             }
         }
+#endif
+#ifdef EGL_WIN_ENABLE_ANGLE
+        if (ctxList && ctxList->nativeContextContainer.backend == EGL_BACKEND_ANGLE)
+        {
+            EGLint angleError = EGL_SUCCESS;
+
+            if (angle_createImageKHR(ctxList->nativeContextContainer.angleCtx, target, buffer, converted.data(), &newImage->angleImage, &angleError) != EGL_TRUE)
+            {
+                delete newImage;
+
+                g_localStorage.error = angleError != EGL_SUCCESS ? angleError : EGL_BAD_ALLOC;
+
+                return EGL_NO_IMAGE;
+            }
+        }
+#endif
 #endif
 
         newImage->next       = walkerDpy->rootImage;
@@ -169,12 +190,20 @@ extern "C"
         {
             if (reinterpret_cast<EGLImage>(walker) == image)
             {
-#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
-                // The delegated image goes away with the stack that created
+#if defined(EGL_HAS_GLES_DELEGATION) || defined(EGL_WIN_ENABLE_ANGLE)
+                // A delegated image goes away with the stack that created
                 // it; this node only tracked it.
+#endif
+#ifdef EGL_HAS_GLES_DELEGATION
                 if (walker->glesImage)
                 {
                     gles_destroyImageKHR(walker->glesImage);
+                }
+#endif
+#ifdef EGL_WIN_ENABLE_ANGLE
+                if (walker->angleImage)
+                {
+                    angle_destroyImageKHR(walker->angleImage);
                 }
 #endif
                 if (prev)
@@ -219,41 +248,67 @@ extern "C"
 
     // GL_OES_EGL_image consumption entry points. They cannot be forwarded to
     // the client loader: that implementation could not interpret this
-    // library's image handles. Consumption runs through the delegated GLES
-    // stack when both the current context and the image live there;
-    // GLX-backed contexts have no EGLImage interop at all (GLX defines
-    // none), and the call is accepted without effect for them - the
-    // operation is not advertised for such contexts.
+    // library's image handles. Consumption runs through the delegated stack
+    // when both the current context and the image live there; contexts of
+    // this library's own GL backends (GLX, WGL) have no EGLImage interop
+    // (neither defines one), and the call is accepted without effect for
+    // them - the operation is not advertised for such contexts.
     void _glEGLImageTargetTexture2DOES(GLenum target, void* image)
     {
-#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
+#if defined(EGL_HAS_GLES_DELEGATION) || defined(EGL_WIN_ENABLE_ANGLE)
         EGLImageImpl* walkerImage = reinterpret_cast<EGLImageImpl*>(image);
 
-        if (walkerImage && walkerImage->glesImage && g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
+        if (walkerImage && g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
         {
             EGLContextListImpl* ctxList = _eglFindContextList(g_localStorage.currentCtx, g_localStorage.currentDraw);
 
-            if (ctxList && ctxList->nativeContextContainer.backend == EGL_BACKEND_GLES)
+            if (!ctxList)
+            {
+                return;
+            }
+
+#ifdef EGL_HAS_GLES_DELEGATION
+            if (ctxList->nativeContextContainer.backend == EGL_BACKEND_GLES && walkerImage->glesImage)
             {
                 gles_imageTargetTexture2D(target, walkerImage->glesImage);
             }
+#endif
+#ifdef EGL_WIN_ENABLE_ANGLE
+            if (ctxList->nativeContextContainer.backend == EGL_BACKEND_ANGLE && walkerImage->angleImage)
+            {
+                angle_imageTargetTexture2D(target, walkerImage->angleImage);
+            }
+#endif
         }
 #endif
     }
 
     void _glEGLImageTargetRenderbufferStorageOES(GLenum target, void* image)
     {
-#if defined(EGL_LINUX_ENABLE_GLES) || defined(EGL_WAYLAND_ENABLE_GLES)
+#if defined(EGL_HAS_GLES_DELEGATION) || defined(EGL_WIN_ENABLE_ANGLE)
         EGLImageImpl* walkerImage = reinterpret_cast<EGLImageImpl*>(image);
 
-        if (walkerImage && walkerImage->glesImage && g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
+        if (walkerImage && g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL)
         {
             EGLContextListImpl* ctxList = _eglFindContextList(g_localStorage.currentCtx, g_localStorage.currentDraw);
 
-            if (ctxList && ctxList->nativeContextContainer.backend == EGL_BACKEND_GLES)
+            if (!ctxList)
+            {
+                return;
+            }
+
+#ifdef EGL_HAS_GLES_DELEGATION
+            if (ctxList->nativeContextContainer.backend == EGL_BACKEND_GLES && walkerImage->glesImage)
             {
                 gles_imageTargetRenderbufferStorage(target, walkerImage->glesImage);
             }
+#endif
+#ifdef EGL_WIN_ENABLE_ANGLE
+            if (ctxList->nativeContextContainer.backend == EGL_BACKEND_ANGLE && walkerImage->angleImage)
+            {
+                angle_imageTargetRenderbufferStorage(target, walkerImage->angleImage);
+            }
+#endif
         }
 #endif
     }

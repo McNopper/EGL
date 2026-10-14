@@ -54,6 +54,10 @@ typedef EGLBoolean(EGLAPIENTRY* PFN_eglSwapBuffers)(void*, void*);
 typedef EGLBoolean(EGLAPIENTRY* PFN_eglSwapInterval)(void*, EGLint);
 typedef EGLBoolean(EGLAPIENTRY* PFN_eglDestroyContext)(void*, void*);
 typedef EGLBoolean(EGLAPIENTRY* PFN_eglDestroySurface)(void*, void*);
+typedef void*(EGLAPIENTRY* PFN_eglCreateImageKHR)(void*, void*, EGLenum, void*, const EGLint*);
+typedef EGLBoolean(EGLAPIENTRY* PFN_eglDestroyImageKHR)(void*, void*);
+typedef void(EGLAPIENTRY* PFN_glEGLImageTargetTexture2DOES)(EGLenum, void*);
+typedef void(EGLAPIENTRY* PFN_glEGLImageTargetRenderbufferStorageOES)(EGLenum, void*);
 typedef EGLint(EGLAPIENTRY* PFN_eglGetError)(void);
 
 namespace
@@ -77,6 +81,10 @@ struct AngleState
     PFN_eglSwapInterval          eglSwapInterval{nullptr};
     PFN_eglDestroyContext        eglDestroyContext{nullptr};
     PFN_eglDestroySurface        eglDestroySurface{nullptr};
+    PFN_eglCreateImageKHR        eglCreateImageKHR{nullptr};
+    PFN_eglDestroyImageKHR       eglDestroyImageKHR{nullptr};
+    PFN_glEGLImageTargetTexture2DOES        glEGLImageTargetTexture2DOES{nullptr};
+    PFN_glEGLImageTargetRenderbufferStorageOES glEGLImageTargetRenderbufferStorageOES{nullptr};
     PFN_eglGetError              eglGetError{nullptr};
 
     void*  display{nullptr};
@@ -224,6 +232,17 @@ extern "C"
         // stripped libEGL missing it is no reason to disable the whole ES path.
         resolve(g.libEGL, g.eglGetError, "eglGetError");
 
+        // Optional: EGLImage delegation. An ANGLE without the KHR image
+        // entry points keeps the ES path; it just cannot create images.
+        resolve(g.libEGL, g.eglCreateImageKHR, "eglCreateImageKHR");
+        resolve(g.libEGL, g.eglDestroyImageKHR, "eglDestroyImageKHR");
+
+        // Optional: image consumption entry points of ANGLE's GLES library
+        // (GL_OES_EGL_image); they operate on the current context, which is
+        // an ANGLE context whenever the delegation is in use.
+        resolve(g.libGLESv2, g.glEGLImageTargetTexture2DOES, "glEGLImageTargetTexture2DOES");
+        resolve(g.libGLESv2, g.glEGLImageTargetRenderbufferStorageOES, "glEGLImageTargetRenderbufferStorageOES");
+
         if (!ok)
         {
             angle_terminate();
@@ -239,13 +258,13 @@ extern "C"
 
         g.display = g.eglGetPlatformDisplayEXT(
             EGL_PLATFORM_ANGLE_ANGLE,
-            reinterpret_cast<void*>(static_cast<intptr_t>(0) /*EGL_DEFAULT_DISPLAY*/),
+            nullptr /*EGL_DEFAULT_DISPLAY*/,
             platformAttribs);
 
         if (!g.display)
         {
             // Fall back to plain eglGetDisplay.
-            g.display = g.eglGetDisplay(reinterpret_cast<void*>(static_cast<intptr_t>(0)));
+            g.display = g.eglGetDisplay(nullptr);
             if (!g.display)
             {
                 angle_terminate();
@@ -374,6 +393,48 @@ extern "C"
         if (!g.ready || !context)
             return EGL_FALSE;
         return g.eglDestroyContext(g.display, context);
+    }
+
+    EGLBoolean angle_createImageKHR(void* context, EGLenum target, EGLClientBuffer buffer, const EGLint* attrib_list, void** out_image, EGLint* out_error)
+    {
+        if (!g.ready || !out_image || !g.eglCreateImageKHR)
+            return EGL_FALSE;
+
+        void* image = g.eglCreateImageKHR(g.display, context, target, buffer, attrib_list);
+
+        if (out_error)
+            *out_error = g.eglGetError ? g.eglGetError() : EGL_SUCCESS;
+
+        if (!image)
+            return EGL_FALSE;
+
+        *out_image = image;
+
+        return EGL_TRUE;
+    }
+
+    EGLBoolean angle_destroyImageKHR(void* image)
+    {
+        if (!g.ready || !image || !g.eglDestroyImageKHR)
+            return EGL_FALSE;
+
+        return g.eglDestroyImageKHR(g.display, image);
+    }
+
+    void angle_imageTargetTexture2D(EGLenum target, void* image)
+    {
+        if (!g.ready || !g.glEGLImageTargetTexture2DOES)
+            return;
+
+        g.glEGLImageTargetTexture2DOES(target, image);
+    }
+
+    void angle_imageTargetRenderbufferStorage(EGLenum target, void* image)
+    {
+        if (!g.ready || !g.glEGLImageTargetRenderbufferStorageOES)
+            return;
+
+        g.glEGLImageTargetRenderbufferStorageOES(target, image);
     }
 
 } // extern "C"

@@ -33,6 +33,8 @@ typedef int (*PFN_eglDestroyImageKHR)(void* dpy, void* image);
 typedef void (*PFN_glEGLImageTargetTexture2DOES)(unsigned int target, void* image);
 typedef void (*PFN_glEGLImageTargetRenderbufferStorageOES)(unsigned int target, void* image);
 typedef void* (*PFN_eglCreateWindowSurface)(void* dpy, void* config, void* win, const int* attrib_list);
+typedef void* (*PFN_eglCreatePbufferSurface)(void* dpy, void* config, const int* attrib_list);
+typedef int (*PFN_eglQuerySurface)(void* dpy, void* surface, int attribute, int* value);
 typedef int (*PFN_eglMakeCurrent)(void* dpy, void* draw, void* read, void* ctx);
 typedef int (*PFN_eglSwapBuffers)(void* dpy, void* surface);
 typedef int (*PFN_eglSwapInterval)(void* dpy, int interval);
@@ -50,6 +52,15 @@ typedef int (*PFN_eglGetError)(void);
 // Attribute tokens
 #define SYSGL_EGL_SURFACE_TYPE 0x3033
 #define SYSGL_EGL_WINDOW_BIT 0x0004
+#define SYSGL_EGL_PBUFFER_BIT 0x0001
+#define SYSGL_EGL_WIDTH 0x3057
+#define SYSGL_EGL_HEIGHT 0x3056
+#define SYSGL_EGL_LARGEST_PBUFFER 0x3058
+#define SYSGL_EGL_GL_COLORSPACE 0x309D
+// Values from EGL 1.5 egl.h - wrong values here pass silently (the surface
+// creates linear) and only show up as wrong framebuffer encodings.
+#define SYSGL_EGL_GL_COLORSPACE_SRGB 0x3089
+#define SYSGL_EGL_GL_COLORSPACE_LINEAR 0x308A
 #define SYSGL_EGL_RENDERABLE_TYPE 0x3040
 #define SYSGL_EGL_RED_SIZE 0x3024
 #define SYSGL_EGL_GREEN_SIZE 0x3023
@@ -75,6 +86,8 @@ struct GlesState
     PFN_eglBindAPI               eglBindAPI{nullptr};
     PFN_eglCreateContext         eglCreateContext{nullptr};
     PFN_eglCreateWindowSurface   eglCreateWindowSurface{nullptr};
+    PFN_eglCreatePbufferSurface  eglCreatePbufferSurface{nullptr};
+    PFN_eglQuerySurface          eglQuerySurface{nullptr};
     PFN_eglMakeCurrent           eglMakeCurrent{nullptr};
     PFN_eglSwapBuffers           eglSwapBuffers{nullptr};
     PFN_eglSwapInterval          eglSwapInterval{nullptr};
@@ -85,9 +98,11 @@ struct GlesState
     PFN_glEGLImageTargetTexture2DOES        glEGLImageTargetTexture2DOES{nullptr};
     PFN_glEGLImageTargetRenderbufferStorageOES glEGLImageTargetRenderbufferStorageOES{nullptr};
     PFN_eglGetError              eglGetError{nullptr};
+    void*                        (*eglGetProcAddress)(const char*){nullptr};
 
     void* display{nullptr};
     void* config{nullptr};
+    void* pbufferConfig{nullptr};
     bool  ready{false};
     int   esMax[2]{0, 0};
 };
@@ -118,11 +133,77 @@ struct GlesSurface
 
 GlesState g;
 
+// Requested-format -> system config cache. The system config query runs once
+// per distinct format; surface creation happens per test case.
+struct ConfigCacheEntry
+{
+    GlesSurfaceFormat format;
+    void*             config;
+};
+static ConfigCacheEntry s_configCache[16];
+static int s_configCacheCount = 0;
+
 template <typename T>
 static bool resolveSym(void* lib, T& out, const char* name)
 {
     out = reinterpret_cast<T>(dlsym(lib, name));
     return out != nullptr;
+}
+
+// A system config matching the caller's EGLConfig, queried with
+// WINDOW|PBUFFER so the same config serves window surfaces, pbuffers and the
+// contexts bound to them - EGL requires context and surface to come from the
+// same config, and for a given requested format both sides resolve to this
+// very entry. Falls back to the delegation's default config when the system
+// stack has no such format.
+static void* systemConfigFor(const GlesSurfaceFormat* format)
+{
+    if (!format)
+        return g.config;
+
+    for (int i = 0; i < s_configCacheCount; i++)
+    {
+        if (s_configCache[i].format.red == format->red &&
+            s_configCache[i].format.green == format->green &&
+            s_configCache[i].format.blue == format->blue &&
+            s_configCache[i].format.alpha == format->alpha &&
+            s_configCache[i].format.depth == format->depth &&
+            s_configCache[i].format.stencil == format->stencil &&
+            s_configCache[i].format.samples == format->samples)
+            return s_configCache[i].config;
+    }
+
+    const EGLint renderable = g.esMax[0] >= 3 ? EGL_OPENGL_ES3_BIT : EGL_OPENGL_ES2_BIT;
+    const EGLint attribs[] = {
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
+        EGL_RENDERABLE_TYPE, renderable,
+        EGL_RED_SIZE, format->red,
+        EGL_GREEN_SIZE, format->green,
+        EGL_BLUE_SIZE, format->blue,
+        EGL_ALPHA_SIZE, format->alpha,
+        EGL_DEPTH_SIZE, format->depth,
+        EGL_STENCIL_SIZE, format->stencil,
+        format->samples > 0 ? EGL_SAMPLE_BUFFERS : EGL_NONE, format->samples > 0 ? 1 : 0,
+        format->samples > 0 ? EGL_SAMPLES : EGL_NONE, format->samples,
+        EGL_NONE};
+
+    void* config = nullptr;
+    EGLint num = 0;
+    if (g.eglChooseConfig(g.display, attribs, &config, 1, &num) && num > 0 && config)
+    {
+        if (s_configCacheCount < (int)(sizeof(s_configCache) / sizeof(s_configCache[0])))
+        {
+            s_configCache[s_configCacheCount].format = *format;
+            s_configCache[s_configCacheCount].config = config;
+            s_configCacheCount++;
+        }
+        return config;
+    }
+
+    // Consume the probe error, like chooseDefaultConfig does.
+    if (g.eglGetError)
+        g.eglGetError();
+    return g.config;
 }
 
 static bool loadWaylandEgl()
@@ -185,6 +266,30 @@ static bool chooseDefaultConfig(int* outVersion)
     return false;
 }
 
+// A config that can also back pbuffers, for the delegated pbuffer surfaces.
+// Optional: without one, window surfaces still delegate; pbuffer surfaces of
+// ES contexts fall back to GLX.
+static void choosePbufferConfig()
+{
+    static const int cfgAttribs[] = {
+        SYSGL_EGL_SURFACE_TYPE, SYSGL_EGL_WINDOW_BIT | SYSGL_EGL_PBUFFER_BIT,
+        SYSGL_EGL_RENDERABLE_TYPE, g.esMax[0] >= 3 ? SYSGL_EGL_OPENGL_ES3_BIT : SYSGL_EGL_OPENGL_ES2_BIT,
+        SYSGL_EGL_RED_SIZE, 8,
+        SYSGL_EGL_GREEN_SIZE, 8,
+        SYSGL_EGL_BLUE_SIZE, 8,
+        SYSGL_EGL_ALPHA_SIZE, 8,
+        SYSGL_EGL_NONE};
+
+    int num = 0;
+    if (g.eglChooseConfig(g.display, cfgAttribs, &g.pbufferConfig, 1, &num) && num > 0)
+        return;
+
+    // Consume the probe error, like chooseDefaultConfig does.
+    if (g.eglGetError)
+        g.eglGetError();
+    g.pbufferConfig = nullptr;
+}
+
 } // anonymous namespace
 
 extern "C"
@@ -223,6 +328,8 @@ extern "C"
             resolveSym(g.libEGL, g.eglBindAPI, "eglBindAPI") &&
             resolveSym(g.libEGL, g.eglCreateContext, "eglCreateContext") &&
             resolveSym(g.libEGL, g.eglCreateWindowSurface, "eglCreateWindowSurface") &&
+            resolveSym(g.libEGL, g.eglCreatePbufferSurface, "eglCreatePbufferSurface") &&
+            resolveSym(g.libEGL, g.eglQuerySurface, "eglQuerySurface") &&
             resolveSym(g.libEGL, g.eglMakeCurrent, "eglMakeCurrent") &&
             resolveSym(g.libEGL, g.eglSwapBuffers, "eglSwapBuffers") &&
             resolveSym(g.libEGL, g.eglSwapInterval, "eglSwapInterval") &&
@@ -250,16 +357,27 @@ extern "C"
         // stripped libEGL missing it is no reason to disable the whole ES path.
         resolveSym(g.libEGL, g.eglGetError, "eglGetError");
 
-        // Optional: EGLImage delegation. A system EGL without the KHR image
-        // entry points keeps the ES path; it just cannot create images.
+        // Optional: EGLImage delegation. GLVND libEGL exports only the core
+        // ABI symbols - extension entry points like eglCreateImageKHR live
+        // behind eglGetProcAddress - so resolve them both ways.
+        resolveSym(g.libEGL, g.eglGetProcAddress, "eglGetProcAddress");
         resolveSym(g.libEGL, g.eglCreateImageKHR, "eglCreateImageKHR");
         resolveSym(g.libEGL, g.eglDestroyImageKHR, "eglDestroyImageKHR");
+        if (!g.eglCreateImageKHR && g.eglGetProcAddress)
+            g.eglCreateImageKHR = reinterpret_cast<PFN_eglCreateImageKHR>(g.eglGetProcAddress("eglCreateImageKHR"));
+        if (!g.eglDestroyImageKHR && g.eglGetProcAddress)
+            g.eglDestroyImageKHR = reinterpret_cast<PFN_eglDestroyImageKHR>(g.eglGetProcAddress("eglDestroyImageKHR"));
 
         // Optional: image consumption entry points of the system GLES
         // library (GL_OES_EGL_image); they operate on the current context,
-        // which is a system context whenever the delegation is in use.
+        // which is a system context whenever the delegation is in use. Same
+        // GLVND rule: extension functions resolve through eglGetProcAddress.
         resolveSym(g.libGLES, g.glEGLImageTargetTexture2DOES, "glEGLImageTargetTexture2DOES");
         resolveSym(g.libGLES, g.glEGLImageTargetRenderbufferStorageOES, "glEGLImageTargetRenderbufferStorageOES");
+        if (!g.glEGLImageTargetTexture2DOES && g.eglGetProcAddress)
+            g.glEGLImageTargetTexture2DOES = reinterpret_cast<PFN_glEGLImageTargetTexture2DOES>(g.eglGetProcAddress("glEGLImageTargetTexture2DOES"));
+        if (!g.glEGLImageTargetRenderbufferStorageOES && g.eglGetProcAddress)
+            g.glEGLImageTargetRenderbufferStorageOES = reinterpret_cast<PFN_glEGLImageTargetRenderbufferStorageOES>(g.eglGetProcAddress("glEGLImageTargetRenderbufferStorageOES"));
 
         resolveSym(g.libEGL, g.eglGetPlatformDisplayEXT, "eglGetPlatformDisplayEXT");
 
@@ -287,6 +405,8 @@ extern "C"
             return EGL_FALSE;
         }
 
+        choosePbufferConfig();
+
         g.ready = true;
         if (es_max_supported)
         {
@@ -308,6 +428,9 @@ extern "C"
 
     void gles_terminate(void)
     {
+        // The system configs belong to the terminated display.
+        s_configCacheCount = 0;
+
         // eglTerminate only MARKS the display's resources for deletion — a context
         // that is still current keeps them, and the driver libraries, alive past the
         // dlclose below. Release it first.
@@ -346,13 +469,24 @@ extern "C"
         return g.ready ? EGL_TRUE : EGL_FALSE;
     }
 
-    EGLBoolean gles_createWindowSurface(void* win, void** out_surface)
+    EGLBoolean gles_createWindowSurface(void* win, const GlesSurfaceFormat* format, EGLint colorspace, void** out_surface)
     {
         if (!g.ready || !out_surface)
             return EGL_FALSE;
 
-        static const int surfaceAttribs[] = {SYSGL_EGL_NONE};
-        void*            eglSurface        = g.eglCreateWindowSurface(g.display, g.config, win, surfaceAttribs);
+        void* config = systemConfigFor(format);
+
+        int attribs[4];
+        int count = 0;
+
+        if (colorspace == SYSGL_EGL_GL_COLORSPACE_SRGB)
+        {
+            attribs[count++] = SYSGL_EGL_GL_COLORSPACE;
+            attribs[count++] = SYSGL_EGL_GL_COLORSPACE_SRGB;
+        }
+        attribs[count++] = SYSGL_EGL_NONE;
+
+        void* eglSurface = g.eglCreateWindowSurface(g.display, config, win, attribs);
         if (!eglSurface)
             return EGL_FALSE;
 
@@ -362,7 +496,52 @@ extern "C"
         return EGL_TRUE;
     }
 
-    EGLBoolean gles_createWindowSurfaceWayland(void* wlSurface, int width, int height, void** out_surface)
+    EGLBoolean gles_createPbufferSurface(const EGLint width, const EGLint height, const EGLBoolean largestPbuffer, const EGLint colorspace, const GlesSurfaceFormat* format, void** out_surface)
+    {
+        if (!g.ready || !out_surface)
+            return EGL_FALSE;
+
+        void* config = systemConfigFor(format);
+        if (!config)
+            return EGL_FALSE;
+
+        int attribs[8];
+        int count = 0;
+
+        attribs[count++] = SYSGL_EGL_WIDTH;
+        attribs[count++] = width;
+        attribs[count++] = SYSGL_EGL_HEIGHT;
+        attribs[count++] = height;
+        attribs[count++] = SYSGL_EGL_LARGEST_PBUFFER;
+        attribs[count++] = largestPbuffer ? 1 : 0;
+        if (colorspace == SYSGL_EGL_GL_COLORSPACE_SRGB)
+        {
+            attribs[count++] = SYSGL_EGL_GL_COLORSPACE;
+            attribs[count++] = SYSGL_EGL_GL_COLORSPACE_SRGB;
+        }
+        attribs[count++] = SYSGL_EGL_NONE;
+
+        void* eglSurface = g.eglCreatePbufferSurface(g.display, config, attribs);
+        if (!eglSurface)
+            return EGL_FALSE;
+
+        auto* s        = new GlesSurface{};
+        s->eglSurface  = eglSurface;
+        *out_surface   = s;
+        return EGL_TRUE;
+    }
+
+    EGLBoolean gles_querySurface(void* surface, const EGLint attribute, EGLint* value)
+    {
+        if (!g.ready || !surface || !value)
+            return EGL_FALSE;
+
+        auto* s = static_cast<GlesSurface*>(surface);
+
+        return g.eglQuerySurface(g.display, s->eglSurface, attribute, value) ? EGL_TRUE : EGL_FALSE;
+    }
+
+    EGLBoolean gles_createWindowSurfaceWayland(void* wlSurface, int width, int height, const GlesSurfaceFormat* format, EGLint colorspace, void** out_surface)
     {
         if (!g.ready || !out_surface || !wlSurface)
             return EGL_FALSE;
@@ -375,8 +554,19 @@ extern "C"
         if (!wlEglWindow)
             return EGL_FALSE;
 
-        static const int surfaceAttribs[] = {SYSGL_EGL_NONE};
-        void*            eglSurface        = g.eglCreateWindowSurface(g.display, g.config, wlEglWindow, surfaceAttribs);
+        void* config = systemConfigFor(format);
+
+        int attribs[4];
+        int count = 0;
+
+        if (colorspace == SYSGL_EGL_GL_COLORSPACE_SRGB)
+        {
+            attribs[count++] = SYSGL_EGL_GL_COLORSPACE;
+            attribs[count++] = SYSGL_EGL_GL_COLORSPACE_SRGB;
+        }
+        attribs[count++] = SYSGL_EGL_NONE;
+
+        void* eglSurface = g.eglCreateWindowSurface(g.display, config, wlEglWindow, attribs);
         if (!eglSurface)
         {
             wlEglWindowDestroy(wlEglWindow);
@@ -408,12 +598,14 @@ extern "C"
         return EGL_TRUE;
     }
 
-    EGLBoolean gles_createContext(EGLint major, EGLint minor, void* share, void** out_context)
+    EGLBoolean gles_createContext(const GlesSurfaceFormat* format, EGLint major, EGLint minor, void* share, void** out_context)
     {
         if (!g.ready || !out_context)
             return EGL_FALSE;
         if (major < 2)
             major = 2;
+
+        void* config = systemConfigFor(format);
 
         g.eglBindAPI(SYSGL_EGL_OPENGL_ES_API);
 
@@ -421,7 +613,7 @@ extern "C"
             SYSGL_EGL_CONTEXT_MAJOR_VERSION, (int)major,
             SYSGL_EGL_CONTEXT_MINOR_VERSION, (int)minor,
             SYSGL_EGL_NONE};
-        *out_context = g.eglCreateContext(g.display, g.config, share, ctxAttribs);
+        *out_context = g.eglCreateContext(g.display, config, share, ctxAttribs);
         return *out_context ? EGL_TRUE : EGL_FALSE;
     }
 

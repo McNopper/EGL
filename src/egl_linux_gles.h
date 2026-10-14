@@ -14,6 +14,7 @@
 #define EGL_LINUX_GLES_H
 
 #include <EGL/egl.h>
+#include "egl_internal.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -42,11 +43,38 @@ extern "C"
     /** Returns EGL_TRUE if gles_init succeeded and the GLES path is usable. */
     EGLBoolean gles_isAvailable(void);
 
+    /** Convenience fill for the seven format fields of an EGLConfig. */
+    static inline GlesSurfaceFormat glesMakeFormat(EGLint red, EGLint green, EGLint blue, EGLint alpha,
+                                                   EGLint depth, EGLint stencil, EGLint samples)
+    {
+        GlesSurfaceFormat format;
+        format.red     = red;
+        format.green   = green;
+        format.blue    = blue;
+        format.alpha   = alpha;
+        format.depth   = depth;
+        format.stencil = stencil;
+        format.samples = samples;
+        return format;
+    }
+
     /**
-     * Create a system EGL window surface for the given native window.
-     * out_surface receives the opaque EGLSurface pointer.
+     * Create a system EGL window surface for the given native window,
+     * format and colorspace. out_surface receives the opaque EGLSurface
+     * pointer.
      */
-    EGLBoolean gles_createWindowSurface(void* win, void** out_surface);
+    EGLBoolean gles_createWindowSurface(void* win, const GlesSurfaceFormat* format, EGLint colorspace, void** out_surface);
+
+    /**
+     * Create a system EGL pbuffer surface of the requested size and format.
+     * largestPbuffer maps to EGL_LARGEST_PBUFFER; a non-default sRGB color
+     * space is passed through. Needs the pbuffer-capable system config -
+     * returns EGL_FALSE before any allocation when the system stack has none.
+     */
+    EGLBoolean gles_createPbufferSurface(EGLint width, EGLint height, EGLBoolean largestPbuffer, EGLint colorspace, const GlesSurfaceFormat* format, void** out_surface);
+
+    /** Query a surface attribute (e.g. EGL_WIDTH) of a delegated surface. */
+    EGLBoolean gles_querySurface(void* surface, EGLint attribute, EGLint* value);
 
     /**
      * Create a system EGL window surface on Wayland for the given wl_surface
@@ -55,7 +83,7 @@ extern "C"
      * wl_egl_window, whose struct layout is private. out_surface receives a
      * handle for gles_makeCurrent / gles_swapBuffers / gles_destroySurface.
      */
-    EGLBoolean gles_createWindowSurfaceWayland(void* wlSurface, int width, int height, void** out_surface);
+    EGLBoolean gles_createWindowSurfaceWayland(void* wlSurface, int width, int height, const GlesSurfaceFormat* format, EGLint colorspace, void** out_surface);
 
     /**
      * Mirror a native-window resize into the libwayland-egl window behind a
@@ -64,10 +92,12 @@ extern "C"
     EGLBoolean gles_resizeWindowWayland(void* surface, int width, int height);
 
     /**
-     * Create a system EGL ES context. major/minor select the requested ES version.
-     * share may be NULL.
+     * Create a system EGL ES context from the system config that matches the
+     * given format. major/minor select the requested ES version. share may be
+     * NULL. Contexts are always created from the same system config as the
+     * surface they will bind, because EGL requires that pairing.
      */
-    EGLBoolean gles_createContext(EGLint major, EGLint minor, void* share, void** out_context);
+    EGLBoolean gles_createContext(const GlesSurfaceFormat* format, EGLint major, EGLint minor, void* share, void** out_context);
 
     EGLBoolean gles_makeCurrent(void* surface, void* context);
     EGLBoolean gles_swapBuffers(void* surface);

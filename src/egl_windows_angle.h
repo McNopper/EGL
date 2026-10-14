@@ -54,6 +54,27 @@ extern "C"
     EGLBoolean angle_destroySurface(void* surface);
     EGLBoolean angle_destroyContext(void* context);
 
+    /**
+     * Create an ANGLE EGLImage in a delegated ES context. ANGLE's image
+     * consumption entry points dereference the handle with its own object
+     * model, so images of such contexts must live there. out_error receives
+     * ANGLE's EGL error code when creation fails.
+     */
+    EGLBoolean angle_createImageKHR(void* context, EGLenum target, EGLClientBuffer buffer, const EGLint* attrib_list, void** out_image, EGLint* out_error);
+
+    /** Destroy an ANGLE EGLImage. */
+    EGLBoolean angle_destroyImageKHR(void* image);
+
+    /**
+     * Consume an ANGLE EGLImage in the current ANGLE context
+     * (GL_OES_EGL_image). No-ops when ANGLE's GLES library does not export
+     * the entry point.
+     */
+    void angle_imageTargetTexture2D(EGLenum target, void* image);
+
+    /** Same as angle_imageTargetTexture2D for renderbuffers. */
+    void angle_imageTargetRenderbufferStorage(EGLenum target, void* image);
+
 #ifdef __cplusplus
 }
 #endif

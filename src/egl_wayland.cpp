@@ -611,7 +611,7 @@ EGLBoolean __createContext(NativeContextContainer*       nativeContextContainer,
         }
 
         void* ctx = nullptr;
-        if (gles_createContext(major, minor, shareCtx, &ctx) != EGL_TRUE)
+        if (gles_createContext(&nativeSurfaceContainer->glesFormat, major, minor, shareCtx, &ctx) != EGL_TRUE)
             return EGL_FALSE;
 
         nativeContextContainer->backend = EGL_BACKEND_GLES;
@@ -1019,8 +1019,12 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
 #ifdef EGL_WAYLAND_ENABLE_GLES
     if (g_localStorage.api == EGL_OPENGL_ES_API && gles_isAvailable())
     {
+        GlesSurfaceFormat format = glesMakeFormat(walkerConfig->redSize, walkerConfig->greenSize,
+                                                  walkerConfig->blueSize, walkerConfig->alphaSize,
+                                                  walkerConfig->depthSize, walkerConfig->stencilSize,
+                                                  walkerConfig->samples);
         void* glesSurf = nullptr;
-        if (gles_createWindowSurfaceWayland(static_cast<void*>(eglWin->surface), (int)w, (int)h, &glesSurf) != EGL_TRUE || !glesSurf)
+        if (gles_createWindowSurfaceWayland(static_cast<void*>(eglWin->surface), (int)w, (int)h, &format, parsedColorspace, &glesSurf) != EGL_TRUE || !glesSurf)
         {
             *error = EGL_BAD_ALLOC;
             return EGL_FALSE;
@@ -1051,6 +1055,8 @@ EGLBoolean __createWindowSurface(EGLSurfaceImpl*       newSurface,
         newSurface->nativeSurfaceContainer.shmPresent  = nullptr;
         newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLES;
         newSurface->nativeSurfaceContainer.glesSurface = glesSurf;
+        newSurface->nativeSurfaceContainer.glesFormat  = format;
+        newSurface->nativeSurfaceContainer.glColorspace = parsedColorspace;
         return EGL_TRUE;
     }
 #endif
@@ -1207,6 +1213,60 @@ EGLBoolean __createPbufferSurface(EGLSurfaceImpl*       newSurface,
             i += 2;
         }
     }
+
+#ifdef EGL_WAYLAND_ENABLE_GLES
+    // ES contexts run in the delegated GLES stack; their pbuffers must live
+    // there as well, or the delegated context cannot bind them. Pbuffers
+    // bound to a texture (EGL_TEXTURE_FORMAT) stay on GLX: bind-to-texture
+    // has no delegated equivalent and keeps working with GLX contexts.
+    if (g_localStorage.api == EGL_OPENGL_ES_API && gles_isAvailable() && texFormat == EGL_NO_TEXTURE)
+    {
+        GlesSurfaceFormat format = glesMakeFormat(walkerConfig->redSize, walkerConfig->greenSize,
+                                                  walkerConfig->blueSize, walkerConfig->alphaSize,
+                                                  walkerConfig->depthSize, walkerConfig->stencilSize,
+                                                  walkerConfig->samples);
+        void* surf = nullptr;
+        if (gles_createPbufferSurface(width, height, largestPbuf, pbufColorspace, &format, &surf) != EGL_TRUE)
+        {
+            *error = EGL_BAD_ALLOC;
+            return EGL_FALSE;
+        }
+
+        // Read back the allocated dimensions like the GLX path does below.
+        EGLint actualW = width;
+        EGLint actualH = height;
+        gles_querySurface(surf, EGL_WIDTH, &actualW);
+        gles_querySurface(surf, EGL_HEIGHT, &actualH);
+
+        newSurface->drawToWindow                       = EGL_FALSE;
+        newSurface->drawToPixmap                       = EGL_FALSE;
+        newSurface->drawToPBuffer                      = EGL_TRUE;
+        newSurface->doubleBuffer                       = walkerConfig->doubleBuffer;
+        newSurface->configId                           = walkerConfig->configId;
+        newSurface->width                              = actualW;
+        newSurface->height                             = actualH;
+        newSurface->swapBehavior                       = EGL_BUFFER_DESTROYED;
+        newSurface->multisampleResolve                 = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
+        newSurface->mipmapLevel                        = 0;
+        newSurface->mipmapTexture                      = EGL_FALSE;
+        newSurface->largestPbuffer                     = largestPbuf;
+        newSurface->textureFormat                      = texFormat;
+        newSurface->textureTarget                      = texTarget;
+        newSurface->glColorspace                       = pbufColorspace;
+        newSurface->initialized                        = EGL_TRUE;
+        newSurface->destroy                            = EGL_FALSE;
+        newSurface->pbuf                               = 0;
+        newSurface->nativeSurfaceContainer.drawable    = 0;
+        newSurface->nativeSurfaceContainer.config      = nullptr;
+        newSurface->nativeSurfaceContainer.hdr         = nullptr;
+        newSurface->nativeSurfaceContainer.backend     = EGL_BACKEND_GLES;
+        newSurface->nativeSurfaceContainer.glesSurface = surf;
+        newSurface->nativeSurfaceContainer.glesFormat  = format;
+        newSurface->nativeSurfaceContainer.glColorspace = pbufColorspace;
+
+        return EGL_TRUE;
+    }
+#endif
 
     const int pbufAttribs[] = {
         GLX_PBUFFER_WIDTH, width,
