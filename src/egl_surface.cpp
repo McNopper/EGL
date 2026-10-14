@@ -53,6 +53,34 @@ extern "C"
             return EGL_NO_SURFACE;
         }
 
+        // EGL 1.5 §3.5.1 pre-validation, uniform across backends: negative
+        // EGL_WIDTH/EGL_HEIGHT is EGL_BAD_PARAMETER, and a mismatched
+        // EGL_TEXTURE_FORMAT/EGL_TEXTURE_TARGET pair (EGL_NO_TEXTURE on
+        // exactly one side) is EGL_BAD_MATCH.
+        {
+            EGLint texFormat = EGL_NO_TEXTURE;
+            EGLint texTarget = EGL_NO_TEXTURE;
+
+            for (EGLint i = 0; attrib_list[i] != EGL_NONE; i += 2)
+            {
+                if ((attrib_list[i] == EGL_WIDTH || attrib_list[i] == EGL_HEIGHT) && attrib_list[i + 1] < 0)
+                {
+                    g_localStorage.error = EGL_BAD_PARAMETER;
+                    return EGL_NO_SURFACE;
+                }
+                if (attrib_list[i] == EGL_TEXTURE_FORMAT)
+                    texFormat = attrib_list[i + 1];
+                else if (attrib_list[i] == EGL_TEXTURE_TARGET)
+                    texTarget = attrib_list[i + 1];
+            }
+
+            if ((texFormat == EGL_NO_TEXTURE) != (texTarget == EGL_NO_TEXTURE))
+            {
+                g_localStorage.error = EGL_BAD_MATCH;
+                return EGL_NO_SURFACE;
+            }
+        }
+
         EGLSurfaceImpl* newSurface = reinterpret_cast<EGLSurfaceImpl*>(malloc(sizeof(EGLSurfaceImpl)));
 
         if (!newSurface)
@@ -405,6 +433,16 @@ extern "C"
             return EGL_FALSE;
         }
 
+        // EGL 1.5 §3.5.6: querying EGL_LARGEST_PBUFFER, EGL_TEXTURE_FORMAT,
+        // EGL_TEXTURE_TARGET, EGL_MIPMAP_TEXTURE or EGL_MIPMAP_LEVEL for a
+        // non-pbuffer surface is not an error, but value is not modified.
+        if (!walkerSurface->drawToPBuffer &&
+            (attribute == EGL_LARGEST_PBUFFER || attribute == EGL_TEXTURE_FORMAT || attribute == EGL_TEXTURE_TARGET ||
+             attribute == EGL_MIPMAP_TEXTURE || attribute == EGL_MIPMAP_LEVEL))
+        {
+            return EGL_TRUE;
+        }
+
         if (value)
         {
             switch (desc->kind)
@@ -488,7 +526,10 @@ extern "C"
         {
         case EGL_MIPMAP_LEVEL:
         {
-            walkerSurface->mipmapLevel = value;
+            // EGL 1.5 §3.5.6: on a non-pbuffer the attribute may be set, but
+            // has no effect - and the query must not observe a change.
+            if (walkerSurface->drawToPBuffer)
+                walkerSurface->mipmapLevel = value;
 
             return EGL_TRUE;
         }

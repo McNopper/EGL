@@ -1721,6 +1721,19 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_MAX_PBUFFER_HEIGHT, &newConfig->maxPBufferHeight);
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_MAX_PBUFFER_PIXELS, &newConfig->maxPBufferPixels);
 
+        // Bind-to-texture: GLX_EXT_texture_from_pixmap carries the per-fbconfig
+        // capability; without the extension a config can never be bound.
+        newConfig->bindToTextureRGB  = EGL_FALSE;
+        newConfig->bindToTextureRGBA = EGL_FALSE;
+        if (s_glXBindTexImageEXT)
+        {
+            int bindRgb = 0, bindRgba = 0;
+            s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_BIND_TO_TEXTURE_RGB_EXT, &bindRgb);
+            s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_BIND_TO_TEXTURE_RGBA_EXT, &bindRgba);
+            newConfig->bindToTextureRGB  = bindRgb ? EGL_TRUE : EGL_FALSE;
+            newConfig->bindToTextureRGBA = bindRgba ? EGL_TRUE : EGL_FALSE;
+        }
+
         // Transparency
         int transType = 0;
         s_glXGetFBConfigAttrib(dpy, fbs[i], GLX_TRANSPARENT_TYPE, &transType);
@@ -1800,6 +1813,30 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
     {
         return EGL_FALSE;
     }
+    return EGL_TRUE;
+}
+
+EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height)
+{
+    if (!walkerDpy || !walkerSurface || !width || !height)
+        return EGL_FALSE;
+
+    Display*     dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
+    Window       root;
+    int          x, y;
+    unsigned int w, h, bw, depth;
+    auto*        handler = XSetErrorHandler(glxErrorHandler);
+    s_glxErrorOccurred = 0;
+    XSync(dpy, False);
+    const Bool ok = XGetGeometry(dpy, (Drawable)walkerSurface->win, &root, &x, &y, &w, &h, &bw, &depth);
+    XSync(dpy, False);
+    const bool geomOk = ok && !s_glxErrorOccurred;
+    XSetErrorHandler(handler);
+    if (!geomOk)
+        return EGL_FALSE;
+
+    *width  = (EGLint)w;
+    *height = (EGLint)h;
     return EGL_TRUE;
 }
 

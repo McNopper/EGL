@@ -631,6 +631,12 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
 
 EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface);
 
+// Current size of a window surface's native window. The core refreshes the
+// surface's width/height from this at swap time, because implementations
+// that cannot resize window surfaces on demand must detect the change in
+// eglSwapBuffers (EGL 1.5 §3.10.1.1).
+EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height);
+
 #ifdef EGL_ENABLE_OPENVG
 // Presents the software OpenVG pixel buffer (surface->vgBuffer) of a window
 // surface. Only called when an OpenVG context is current on the surface.

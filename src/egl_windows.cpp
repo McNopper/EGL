@@ -1891,6 +1891,21 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
     return res;
 }
 
+EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height)
+{
+    (void)walkerDpy;
+    if (!walkerSurface || !width || !height)
+        return EGL_FALSE;
+
+    RECT rc;
+    if (!GetClientRect((HWND)walkerSurface->win, &rc))
+        return EGL_FALSE;
+
+    *width  = (EGLint)(rc.right - rc.left);
+    *height = (EGLint)(rc.bottom - rc.top);
+    return (*width > 0 && *height > 0) ? EGL_TRUE : EGL_FALSE;
+}
+
 EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface)
 {
     if (!walkerDpy || !walkerSurface)

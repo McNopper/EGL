@@ -1597,6 +1597,19 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
         s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_MAX_PBUFFER_HEIGHT, &newConfig->maxPBufferHeight);
         s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_MAX_PBUFFER_PIXELS, &newConfig->maxPBufferPixels);
 
+        // Bind-to-texture: GLX_EXT_texture_from_pixmap carries the per-fbconfig
+        // capability; without the extension a config can never be bound.
+        newConfig->bindToTextureRGB  = EGL_FALSE;
+        newConfig->bindToTextureRGBA = EGL_FALSE;
+        if (s_glXBindTexImageEXT)
+        {
+            int bindRgb = 0, bindRgba = 0;
+            s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_BIND_TO_TEXTURE_RGB_EXT, &bindRgb);
+            s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_BIND_TO_TEXTURE_RGBA_EXT, &bindRgba);
+            newConfig->bindToTextureRGB  = bindRgb ? EGL_TRUE : EGL_FALSE;
+            newConfig->bindToTextureRGBA = bindRgba ? EGL_TRUE : EGL_FALSE;
+        }
+
         int transType = 0;
         s_glXGetFBConfigAttrib(s_x11Display, fbs[i], GLX_TRANSPARENT_TYPE, &transType);
         if (transType == GLX_TRANSPARENT_RGB)
@@ -1637,6 +1650,23 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
 }
 
 // ── Swap ──────────────────────────────────────────────────────────────────────
+
+EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height)
+{
+    (void)walkerDpy;
+    if (!walkerSurface || !width || !height || !walkerSurface->win)
+        return EGL_FALSE;
+
+    // Our wl_egl_window tracks the size the client gave the native window;
+    // the swap paths mirror it into the delegated surface / shm presenter.
+    const auto* eglWin = reinterpret_cast<const struct wl_egl_window*>(walkerSurface->win);
+    if (eglWin->width <= 0 || eglWin->height <= 0)
+        return EGL_FALSE;
+
+    *width  = eglWin->width;
+    *height = eglWin->height;
+    return EGL_TRUE;
+}
 
 EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface)
 {

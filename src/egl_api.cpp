@@ -186,15 +186,37 @@ extern "C"
             return EGL_FALSE;
         }
 
-        // EGL 1.5 §3.10.1: surface must be a window surface bound as
-        // the draw surface of the calling thread's current context.
-        // Without this __swapBuffers would present whatever device
-        // context a pbuffer container happens to carry.
-        if (!walkerSurface->drawToWindow || g_localStorage.currentDraw != walkerSurface)
+        // EGL 1.5 §3.10.3: surface must be bound as the draw surface of the
+        // calling thread's current context. Without this __swapBuffers would
+        // present whatever device context a foreign surface container
+        // happens to carry.
+        if (g_localStorage.currentDraw != walkerSurface)
         {
             g_localStorage.error = EGL_BAD_SURFACE;
 
             return EGL_FALSE;
+        }
+
+        // EGL 1.5 §3.10.1: on a single-buffered window, pixmap, or pbuffer
+        // surface eglSwapBuffers has no effect - but it is not an error.
+        if (!walkerSurface->drawToWindow)
+        {
+            g_localStorage.error = EGL_SUCCESS;
+
+            return EGL_TRUE;
+        }
+
+        // EGL 1.5 §3.10.1.1: the swap detects a native-window resize and the
+        // surface adopts the new size.
+        {
+            EGLint width = 0;
+            EGLint height = 0;
+
+            if (__windowSurfaceSize(walkerDpy, walkerSurface, &width, &height) == EGL_TRUE && width > 0 && height > 0)
+            {
+                walkerSurface->width  = width;
+                walkerSurface->height = height;
+            }
         }
 
 #ifdef EGL_ENABLE_OPENVG
@@ -241,14 +263,6 @@ extern "C"
 
     EGLBoolean _eglSwapInterval(EGLDisplay dpy, EGLint interval)
     {
-        // EGL 1.5 §3.9.3: requires a current context on the calling thread.
-        if (g_localStorage.currentCtx == EGL_NO_CONTEXT_IMPL)
-        {
-            g_localStorage.error = EGL_BAD_CONTEXT;
-
-            return EGL_FALSE;
-        }
-
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
         EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
 
@@ -262,6 +276,16 @@ extern "C"
         if (!walkerDpy->initialized || walkerDpy->destroy)
         {
             g_localStorage.error = EGL_NOT_INITIALIZED;
+
+            return EGL_FALSE;
+        }
+
+        // EGL 1.5 §3.9.3: requires a current context on the calling thread.
+        // The display validation comes first - an invalid display must report
+        // EGL_BAD_DISPLAY even when nothing is current.
+        if (g_localStorage.currentCtx == EGL_NO_CONTEXT_IMPL)
+        {
+            g_localStorage.error = EGL_BAD_CONTEXT;
 
             return EGL_FALSE;
         }
@@ -402,21 +426,42 @@ extern "C"
 
     EGLSurface _eglCreatePbufferFromClientBuffer(EGLDisplay dpy, EGLenum buftype, EGLClientBuffer buffer, EGLConfig config, const EGLint* attrib_list)
     {
-        // Only EGL_OPENVG_IMAGE is a defined buftype, and OpenVG is not supported on desktop.
-        (void)dpy;
-        (void)buffer;
-        (void)config;
         (void)attrib_list;
 
+        auto            _rl       = g_globalStorage.placeRootDpy_readlock();
+        EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
+
+        if (!walkerDpy)
+        {
+            return EGL_NO_SURFACE;
+        }
+
+        guard_t _{walkerDpy->mutex};
+
+        if (!walkerDpy->initialized || walkerDpy->destroy)
+        {
+            g_localStorage.error = EGL_NOT_INITIALIZED;
+            return EGL_NO_SURFACE;
+        }
+
+        // EGL_OPENVG_IMAGE is the only defined buftype.
         if (buftype != EGL_OPENVG_IMAGE)
         {
             g_localStorage.error = EGL_BAD_PARAMETER;
-        }
-        else
-        {
-            g_localStorage.error = EGL_BAD_ACCESS;
+            return EGL_NO_SURFACE;
         }
 
+        if (!_eglFindConfig(walkerDpy, config))
+        {
+            g_localStorage.error = EGL_BAD_CONFIG;
+            return EGL_NO_SURFACE;
+        }
+
+        // This library has no VGImage objects (the OpenVG provider seam
+        // renders to plain pixel buffers), so no client buffer can ever be a
+        // valid OpenVG image here - and an invalid buffer is EGL_BAD_PARAMETER.
+        (void)buffer;
+        g_localStorage.error = EGL_BAD_PARAMETER;
         return EGL_NO_SURFACE;
     }
 

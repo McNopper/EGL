@@ -301,14 +301,12 @@ extern "C"
             return EGL_FALSE;
         }
 
-        // config_size is signed and ends up as a memcpy size; a negative value would
-        // turn into a huge size_t.
+        // EGL 1.5 §3.4.1 defines no error for a negative config_size: it
+        // simply writes nothing. Clamp rather than reject - the value is
+        // signed and ends up as a memcpy size, where a negative would turn
+        // into a huge size_t.
         if (config_size < 0)
-        {
-            g_localStorage.error = EGL_BAD_PARAMETER;
-
-            return EGL_FALSE;
-        }
+            config_size = 0;
 
         auto            _rl       = g_globalStorage.placeRootDpy_readlock();
         EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
@@ -484,13 +482,6 @@ extern "C"
     EGLBoolean _eglGetConfigs(EGLDisplay dpy, EGLConfig* configs, EGLint config_size, EGLint* num_config)
     {
         if (!num_config)
-        {
-            g_localStorage.error = EGL_BAD_PARAMETER;
-
-            return EGL_FALSE;
-        }
-
-        if (config_size < 0)
         {
             g_localStorage.error = EGL_BAD_PARAMETER;
 
