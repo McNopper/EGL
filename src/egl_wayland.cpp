@@ -582,10 +582,11 @@ EGLBoolean __createContext(NativeContextContainer*       nativeContextContainer,
                            const EGLDisplayImpl*         walkerDpy,
                            const NativeSurfaceContainer* nativeSurfaceContainer,
                            const NativeContextContainer* sharedNativeContextContainer,
-                           const EGLint*                 attribList)
+                           const EGLint*                 attribList,
+                           const EGLConfigImpl*          walkerConfig)
 {
     (void)walkerDpy;
-    if (!nativeContextContainer || !nativeSurfaceContainer)
+    if (!nativeContextContainer || !walkerConfig)
         return EGL_FALSE;
 
 #ifdef EGL_WAYLAND_ENABLE_GLES
@@ -610,8 +611,17 @@ EGLBoolean __createContext(NativeContextContainer*       nativeContextContainer,
             shareCtx = sharedNativeContextContainer->glesCtx;
         }
 
+        // Surface-bound nodes take the format from the surface; a surfaceless
+        // node (EGL_KHR_surfaceless_context) has none and uses the context's
+        // own config.
+        GlesSurfaceFormat contextFormat = glesMakeFormat(walkerConfig->redSize, walkerConfig->greenSize,
+                                                         walkerConfig->blueSize, walkerConfig->alphaSize,
+                                                         walkerConfig->depthSize, walkerConfig->stencilSize,
+                                                         walkerConfig->samples);
+
         void* ctx = nullptr;
-        if (gles_createContext(&nativeSurfaceContainer->glesFormat, major, minor, shareCtx, &ctx) != EGL_TRUE)
+        if (gles_createContext(nativeSurfaceContainer ? &nativeSurfaceContainer->glesFormat : &contextFormat,
+                               major, minor, shareCtx, &ctx) != EGL_TRUE)
             return EGL_FALSE;
 
         nativeContextContainer->backend = EGL_BACKEND_GLES;
@@ -630,8 +640,14 @@ EGLBoolean __createContext(NativeContextContainer*       nativeContextContainer,
     s_glxErrorOccurred = 0;
 
     XSync(s_x11Display, False);
+    // Surfaceless binding: the GLX config comes from the context's own EGL
+    // config instead of the (absent) surface container.
+    GLXFBConfig fb = nativeSurfaceContainer ? nativeSurfaceContainer->glxConfig
+                                             : __glxFBConfigById(DefaultScreen(s_x11Display), walkerConfig->configId);
+    if (!fb)
+        return EGL_FALSE;
     nativeContextContainer->ctx = s_glXCreateContextAttribsARB(
-        s_x11Display, nativeSurfaceContainer->glxConfig, share, True, attribList);
+        s_x11Display, fb, share, True, attribList);
     XSync(s_x11Display, False);
 
     XSetErrorHandler(oldHandler);
@@ -662,7 +678,11 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl*         walkerDpy,
 #ifdef EGL_WAYLAND_ENABLE_GLES
     if (nativeContextContainer->backend == EGL_BACKEND_GLES)
     {
-        if (!nativeSurfaceContainer || nativeSurfaceContainer->backend != EGL_BACKEND_GLES)
+        // Surfaceless binding (EGL_KHR_surfaceless_context): no surface
+        // container, so the context goes current without a default framebuffer.
+        if (!nativeSurfaceContainer)
+            return gles_makeCurrent(nullptr, nativeContextContainer->glesCtx);
+        if (nativeSurfaceContainer->backend != EGL_BACKEND_GLES)
             return EGL_FALSE;
         return gles_makeCurrent(nativeSurfaceContainer->glesSurface, nativeContextContainer->glesCtx);
     }
@@ -670,9 +690,12 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl*         walkerDpy,
         return EGL_FALSE;
 #endif
 
-    // Use GLXPbuffer as the read+draw surface for all GL operations
+    // Surfaceless binding: both drawables are None, the context goes current
+    // without a default framebuffer (EGL_KHR_surfaceless_context).
     if (!nativeSurfaceContainer)
-        return EGL_FALSE;
+        return (EGLBoolean)s_glXMakeContextCurrent(s_x11Display, None, None, nativeContextContainer->ctx);
+
+    // Use GLXPbuffer as the read+draw surface for all GL operations
     return (EGLBoolean)s_glXMakeContextCurrent(s_x11Display,
                                                nativeSurfaceContainer->glxPbuffer,
                                                nativeSurfaceContainer->glxPbuffer,

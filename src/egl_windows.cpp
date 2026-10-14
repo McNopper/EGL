@@ -1811,12 +1811,73 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
     return EGL_TRUE;
 }
 
-EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList)
+// Surfaceless binding (EGL_KHR_surfaceless_context): WGL creates and binds
+// contexts against an HDC, and a window's pixel format can only ever be set
+// once - so each pixel format gets one hidden window whose DC backs every
+// surfaceless context of that format. The windows live for the process
+// lifetime: EGL offers no event that retires a still-current surfaceless
+// context's DC.
+struct SurfacelessSlot
 {
-    if (!walkerDpy || !nativeContextContainer || !nativeSurfaceContainer)
+    int  pixelFormat;
+    HWND hwnd;
+    HDC  hdc;
+};
+static SurfacelessSlot s_surfacelessSlots[16];
+static int             s_surfacelessSlotCount = 0;
+
+static HDC __surfacelessHdc(EGLint pixelFormat)
+{
+    for (int i = 0; i < s_surfacelessSlotCount; i++)
+    {
+        if (s_surfacelessSlots[i].pixelFormat == pixelFormat)
+            return s_surfacelessSlots[i].hdc;
+    }
+
+    if (s_surfacelessSlotCount >= (int)(sizeof(s_surfacelessSlots) / sizeof(s_surfacelessSlots[0])))
+        return NULL;
+
+    HWND hwnd = CreateWindowA("STATIC", "egl_surfaceless", WS_POPUP, 0, 0, 1, 1, NULL, NULL,
+                              GetModuleHandleA(NULL), NULL);
+    if (!hwnd)
+        return NULL;
+
+    HDC hdc = GetDC(hwnd);
+    if (!hdc)
+    {
+        DestroyWindow(hwnd);
+        return NULL;
+    }
+
+    // Validate the format index and take its own descriptor, then set it as
+    // this window's (one and only) pixel format.
+    PIXELFORMATDESCRIPTOR pfd = {0};
+    pfd.nSize   = sizeof(pfd);
+    pfd.nVersion = 1;
+    if (!DescribePixelFormat(hdc, pixelFormat, sizeof(pfd), &pfd) || !SetPixelFormat(hdc, pixelFormat, &pfd))
+    {
+        ReleaseDC(hwnd, hdc);
+        DestroyWindow(hwnd);
+        return NULL;
+    }
+
+    SurfacelessSlot& slot = s_surfacelessSlots[s_surfacelessSlotCount++];
+    slot.pixelFormat      = pixelFormat;
+    slot.hwnd             = hwnd;
+    slot.hdc              = hdc;
+    return hdc;
+}
+
+EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList, const EGLConfigImpl* walkerConfig)
+{
+    if (!walkerDpy || !nativeContextContainer || !walkerConfig)
     {
         return EGL_FALSE;
     }
+
+    // Set for every path; ANGLE nodes never need it and WGL surfaceless nodes
+    // take the hidden DC below.
+    nativeContextContainer->surfacelessHdc = NULL;
 
 #ifdef EGL_WIN_ENABLE_ANGLE
     if (g_localStorage.api == EGL_OPENGL_ES_API && angle_isAvailable())
@@ -1859,14 +1920,28 @@ EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const
         return EGL_FALSE;
     }
 
-    nativeContextContainer->ctx = wglCreateContextAttribsARB(nativeSurfaceContainer->hdc, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, attribList);
+    // Surface-bound nodes use the surface's DC (whose pixel format is the
+    // config's); a surfaceless node (EGL_KHR_surfaceless_context) creates the
+    // context against its hidden per-format DC and keeps it for binding.
+    HDC hdc = nativeSurfaceContainer ? nativeSurfaceContainer->hdc : __surfacelessHdc(walkerConfig->configId);
+    if (!hdc)
+    {
+        return EGL_FALSE;
+    }
+
+    nativeContextContainer->ctx = wglCreateContextAttribsARB(hdc, sharedNativeContextContainer ? sharedNativeContextContainer->ctx : 0, attribList);
+
+    if (!nativeSurfaceContainer && nativeContextContainer->ctx)
+        nativeContextContainer->surfacelessHdc = hdc;
 
     return nativeContextContainer->ctx != 0;
 }
 
 EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer)
 {
-    if (!walkerDpy || (nativeContextContainer && !nativeSurfaceContainer))
+    // nativeSurfaceContainer may be NULL: EGL_KHR_surfaceless_context binds a
+    // context without a default framebuffer.
+    if (!walkerDpy)
     {
         return EGL_FALSE;
     }
@@ -1874,9 +1949,10 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
 #ifdef EGL_WIN_ENABLE_ANGLE
     if (nativeContextContainer && nativeContextContainer->backend == EGL_BACKEND_ANGLE)
     {
-        // Backend must match — an ANGLE context cannot be made current on a
-        // WGL surface (and the WGL surface's `angleSurface` would be nullptr).
-        if (!nativeSurfaceContainer || nativeSurfaceContainer->backend != EGL_BACKEND_ANGLE)
+        // Surfaceless: ANGLE's eglMakeCurrent accepts EGL_NO_SURFACE directly.
+        if (!nativeSurfaceContainer)
+            return angle_makeCurrent(nullptr, nativeContextContainer->angleCtx);
+        if (nativeSurfaceContainer->backend != EGL_BACKEND_ANGLE)
             return EGL_FALSE;
         return angle_makeCurrent(nativeSurfaceContainer->angleSurface,
                                  nativeContextContainer->angleCtx);
@@ -1898,8 +1974,14 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceCon
     if (!nativeContextContainer)
         return (EGLBoolean)wglMakeCurrent_PTR(NULL, NULL);
 
-    BOOL res = (EGLBoolean)wglMakeCurrent_PTR(nativeSurfaceContainer->hdc, nativeContextContainer->ctx);
-    if (res && nativeContextContainer->ctx)
+    // Surfaceless binds the context against the hidden DC it was created
+    // with; a normal bind uses the surface's DC (same pixel format rule).
+    HDC hdc = nativeSurfaceContainer ? nativeSurfaceContainer->hdc : nativeContextContainer->surfacelessHdc;
+    if (!hdc)
+        return EGL_FALSE;
+
+    BOOL res = (EGLBoolean)wglMakeCurrent_PTR(hdc, nativeContextContainer->ctx);
+    if (res && nativeContextContainer->ctx && nativeSurfaceContainer)
     {
         // EGL 1.5 core makes the color space a *surface* attribute. WGL
         // delivers sRGB through the pixel format, but the conversion toggle

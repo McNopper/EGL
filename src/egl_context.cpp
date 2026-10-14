@@ -500,6 +500,22 @@ extern "C"
 
     static EGLContextListImpl* _eglGetOrCreateContextList(EGLDisplayImpl* walkerDpy, EGLContextImpl* currentCtx, EGLSurfaceImpl* currentDraw, EGLint* error)
     {
+        // The context's own config: a surface-bound native context takes its
+        // format from the surface container, but a surfaceless binding
+        // (EGL_KHR_surfaceless_context) has no surface - the native context
+        // must then come from the config the context was created with.
+        const EGLConfigImpl* walkerConfig = nullptr;
+
+        for (EGLConfigImpl* configWalker = walkerDpy->rootConfig; configWalker; configWalker = configWalker->next)
+        {
+            if (configWalker->configId == currentCtx->configId)
+            {
+                walkerConfig = configWalker;
+
+                break;
+            }
+        }
+
         EGLContextListImpl* ctxList = currentCtx->rootCtxList;
 
         while (ctxList)
@@ -557,7 +573,7 @@ extern "C"
                             return nullptr;
                         }
 
-                        EGLBoolean result = __createContext(&sharedCtxList->nativeContextContainer, walkerDpy, &currentDraw->nativeSurfaceContainer, 0, beforeSharedWalkerCtx->attribList);
+                        EGLBoolean result = __createContext(&sharedCtxList->nativeContextContainer, walkerDpy, currentDraw ? &currentDraw->nativeSurfaceContainer : nullptr, 0, beforeSharedWalkerCtx->attribList, walkerConfig);
 
                         if (!result)
                         {
@@ -588,7 +604,7 @@ extern "C"
                 sharedCtxList = currentCtx->rootCtxList;
             }
 
-            EGLBoolean result = __createContext(&ctxList->nativeContextContainer, walkerDpy, &currentDraw->nativeSurfaceContainer, sharedCtxList ? &sharedCtxList->nativeContextContainer : 0, currentCtx->attribList);
+            EGLBoolean result = __createContext(&ctxList->nativeContextContainer, walkerDpy, currentDraw ? &currentDraw->nativeSurfaceContainer : nullptr, sharedCtxList ? &sharedCtxList->nativeContextContainer : 0, currentCtx->attribList, walkerConfig);
 
             if (!result)
             {
@@ -625,7 +641,20 @@ extern "C"
             auto            _rl       = g_globalStorage.placeRootDpy_readlock();
             EGLDisplayImpl* walkerDpy = _eglFindDisplay(dpy);
 
-            if ((ctx == EGL_NO_CONTEXT && (draw != EGL_NO_SURFACE || read != EGL_NO_SURFACE)) || (ctx != EGL_NO_CONTEXT && (draw == EGL_NO_SURFACE || read == EGL_NO_SURFACE)))
+            // EGL_KHR_surfaceless_context: with a valid context both draw and
+            // read may be EGL_NO_SURFACE (a context bound without a default
+            // framebuffer). Mixing a surface with EGL_NO_SURFACE - or
+            // unbinding while a surface is passed - is EGL_BAD_MATCH.
+            if (ctx == EGL_NO_CONTEXT)
+            {
+                if (draw != EGL_NO_SURFACE || read != EGL_NO_SURFACE)
+                {
+                    g_localStorage.error = EGL_BAD_MATCH;
+
+                    return EGL_FALSE;
+                }
+            }
+            else if ((draw == EGL_NO_SURFACE) != (read == EGL_NO_SURFACE))
             {
                 g_localStorage.error = EGL_BAD_MATCH;
 

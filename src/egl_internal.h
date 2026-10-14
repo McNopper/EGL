@@ -102,6 +102,10 @@ typedef struct _NativeContextContainer
     HGLRC         ctx;
     NativeBackend backend;  // 0 = WGL (default), 1 = ANGLE
     void*         angleCtx; // EGLContext from ANGLE when backend == ANGLE
+    // Surfaceless binding (EGL_KHR_surfaceless_context): WGL contexts bind
+    // to an HDC, so a context node created without a surface carries a hidden
+    // window DC with the context's own pixel format. NULL otherwise.
+    HDC           surfacelessHdc;
 } NativeContextContainer;
 
 typedef struct _NativeLocalStorageContainer
@@ -635,7 +639,12 @@ __eglMustCastToProperFunctionPointerType __getProcAddress(const char* procname);
 
 EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageContainer* nativeLocalStorageContainer, EGLint* error);
 
-EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList);
+// Creates the native context for a (context, draw surface) node.
+// nativeSurfaceContainer is nullptr for a surfaceless binding
+// (EGL_KHR_surfaceless_context); walkerConfig is the context's own config and
+// supplies the format there - for surface-bound nodes EGL requires the
+// surface's config to be the same one anyway.
+EGLBoolean __createContext(NativeContextContainer* nativeContextContainer, const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* sharedNativeContextContainer, const EGLint* attribList, const EGLConfigImpl* walkerConfig);
 
 EGLBoolean __makeCurrent(const EGLDisplayImpl* walkerDpy, const NativeSurfaceContainer* nativeSurfaceContainer, const NativeContextContainer* nativeContextContainer);
 

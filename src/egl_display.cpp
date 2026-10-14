@@ -371,6 +371,7 @@ extern "C"
             appendExt("EGL_EXT_buffer_age");
             appendExt("EGL_KHR_partial_update");
             appendExt("EGL_KHR_swap_buffers_with_damage");
+            appendExt("EGL_KHR_surfaceless_context");
             // EGL_EXT_client_extensions is CLIENT-only (queried with
             // EGL_NO_DISPLAY); it must not appear here - the two extension
             // strings are required to be disjoint.

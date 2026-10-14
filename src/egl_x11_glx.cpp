@@ -731,15 +731,17 @@ EGLBoolean __createContext(NativeContextContainer*       nativeContextContainer,
                            const EGLDisplayImpl*         walkerDpy,
                            const NativeSurfaceContainer* nativeSurfaceContainer,
                            const NativeContextContainer* sharedNativeContextContainer,
-                           const EGLint*                 attribList)
+                           const EGLint*                 attribList,
+                           const EGLConfigImpl*          walkerConfig)
 {
-    if (!walkerDpy || !nativeContextContainer || !nativeSurfaceContainer)
+    if (!walkerDpy || !nativeContextContainer || !walkerConfig)
         return EGL_FALSE;
 
     if (!s_glXCreateContextAttribsARB)
         return EGL_FALSE;
 
     Display*   dpy   = reinterpret_cast<Display*>(walkerDpy->display_id);
+    int        screen = DefaultScreen(dpy);
     GLXContext share = sharedNativeContextContainer ? sharedNativeContextContainer->ctx : nullptr;
 
 #ifdef EGL_LINUX_ENABLE_GLES
@@ -764,8 +766,17 @@ EGLBoolean __createContext(NativeContextContainer*       nativeContextContainer,
             shareCtx = sharedNativeContextContainer->glesCtx;
         }
 
+        // Surface-bound nodes take the format from the surface (EGL pairs the
+        // two by config anyway); a surfaceless node has no surface and uses
+        // the context's own config.
+        GlesSurfaceFormat contextFormat = glesMakeFormat(walkerConfig->redSize, walkerConfig->greenSize,
+                                                         walkerConfig->blueSize, walkerConfig->alphaSize,
+                                                         walkerConfig->depthSize, walkerConfig->stencilSize,
+                                                         walkerConfig->samples);
+
         void* ctx = nullptr;
-        if (gles_createContext(&nativeSurfaceContainer->glesFormat, major, minor, shareCtx, &ctx) != EGL_TRUE)
+        if (gles_createContext(nativeSurfaceContainer ? &nativeSurfaceContainer->glesFormat : &contextFormat,
+                               major, minor, shareCtx, &ctx) != EGL_TRUE)
             return EGL_FALSE;
 
         nativeContextContainer->backend = EGL_BACKEND_GLES;
@@ -778,12 +789,19 @@ EGLBoolean __createContext(NativeContextContainer*       nativeContextContainer,
     nativeContextContainer->backend = EGL_BACKEND_GLX;
     nativeContextContainer->glesCtx = nullptr;
 
+    // Surfaceless binding: the GLX config comes from the context's own EGL
+    // config instead of the (absent) surface container.
+    GLXFBConfig fb = nativeSurfaceContainer ? nativeSurfaceContainer->config
+                                             : __glxFBConfigById(dpy, screen, walkerConfig->configId);
+    if (!fb)
+        return EGL_FALSE;
+
     auto* oldHandler   = XSetErrorHandler(glxErrorHandler);
     s_glxErrorOccurred = 0;
 
     XSync(dpy, False);
     nativeContextContainer->ctx = s_glXCreateContextAttribsARB(
-        dpy, nativeSurfaceContainer->config, share, True, attribList);
+        dpy, fb, share, True, attribList);
     XSync(dpy, False);
 
     XSetErrorHandler(oldHandler);
@@ -806,7 +824,11 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl*         walkerDpy,
 #ifdef EGL_LINUX_ENABLE_GLES
     if (nativeContextContainer && nativeContextContainer->backend == EGL_BACKEND_GLES)
     {
-        if (!nativeSurfaceContainer || nativeSurfaceContainer->backend != EGL_BACKEND_GLES)
+        // Surfaceless binding (EGL_KHR_surfaceless_context): no surface
+        // container, so the context goes current without a default framebuffer.
+        if (!nativeSurfaceContainer)
+            return gles_makeCurrent(nullptr, nativeContextContainer->glesCtx);
+        if (nativeSurfaceContainer->backend != EGL_BACKEND_GLES)
             return EGL_FALSE;
         return gles_makeCurrent(nativeSurfaceContainer->glesSurface,
                                 nativeContextContainer->glesCtx);
@@ -824,11 +846,15 @@ EGLBoolean __makeCurrent(const EGLDisplayImpl*         walkerDpy,
     if (!nativeContextContainer)
         return (EGLBoolean)s_glXMakeContextCurrent(dpy, None, None, nullptr);
 
+    // Surfaceless binding: both drawables are None, the context goes current
+    // without a default framebuffer (EGL_KHR_surfaceless_context).
+    const GLXDrawable drawable = nativeSurfaceContainer ? nativeSurfaceContainer->drawable : None;
+
     const EGLBoolean result = (EGLBoolean)s_glXMakeContextCurrent(dpy,
-                                                                  nativeSurfaceContainer->drawable,
-                                                                  nativeSurfaceContainer->drawable,
+                                                                  drawable,
+                                                                  drawable,
                                                                   nativeContextContainer->ctx);
-    if (result && nativeContextContainer->ctx)
+    if (result && nativeContextContainer->ctx && nativeSurfaceContainer)
     {
         // EGL 1.5 core makes the color space a *surface* attribute, but GLX
         // has no per-surface colorspace: the encoding follows the bound

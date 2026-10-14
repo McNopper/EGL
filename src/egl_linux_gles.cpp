@@ -636,6 +636,12 @@ extern "C"
             return EGL_FALSE;
         if (!context && !surface)
             return (EGLBoolean)g.eglMakeCurrent(g.display, nullptr, nullptr, nullptr);
+        if (!surface)
+        {
+            // Surfaceless binding (EGL_KHR_surfaceless_context): the context
+            // goes current without a default framebuffer.
+            return (EGLBoolean)g.eglMakeCurrent(g.display, nullptr, nullptr, context);
+        }
         auto* s = static_cast<GlesSurface*>(surface);
         return (EGLBoolean)g.eglMakeCurrent(g.display, s->eglSurface, s->eglSurface, context);
     }
