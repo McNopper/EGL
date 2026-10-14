@@ -361,6 +361,7 @@ extern "C"
             // also reachable through its pre-1.5 KHR entry point.
             appendExt("EGL_KHR_fence_sync");
             appendExt("EGL_KHR_wait_sync");
+            appendExt("EGL_KHR_reusable_sync");
             appendExt("EGL_KHR_image_base");
             appendExt("EGL_KHR_gl_texture_2D_image");
             appendExt("EGL_KHR_gl_texture_cubemap_image");

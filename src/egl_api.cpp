@@ -518,6 +518,8 @@ extern "C"
             EGL_PROC(eglClientWaitSyncKHR),
             EGL_PROC(eglGetSyncAttribKHR),
             EGL_PROC(eglWaitSyncKHR),
+            // EGL_KHR_reusable_sync: signal a reusable sync's status.
+            EGL_PROC(eglSignalSyncKHR),
             // EGL_KHR_image_base: the pre-1.5 name of the core image
             // functions, with an EGLint attribute list.
             EGL_PROC(eglCreateImageKHR),

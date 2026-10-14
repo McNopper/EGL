@@ -35,6 +35,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <mutex>
+#include <memory>
+#include <condition_variable>
 
 // HDR colorspace support bitmask flags (universal — value 0 on non-Windows platforms)
 #define EGL_HDR_CS_SCRGB_LINEAR_BIT (1u << 0)
@@ -497,6 +499,18 @@ typedef struct _EGLImageImpl
 
 } EGLImageImpl;
 
+// EGL_KHR_reusable_sync blocking state. Shared by the sync object and every
+// thread inside eglClientWaitSync: destroying a reusable sync while a wait
+// is blocked must wake the waiter without freeing the mutex it sleeps on, so
+// the waiter's copy keeps the state alive until it wakes.
+struct EGLReusableSyncState
+{
+    std::mutex              mutex;
+    std::condition_variable wake;
+    bool                    signaled  = false;
+    bool                    destroyed = false;
+};
+
 typedef struct _EGLSyncImpl
 {
 
@@ -508,6 +522,9 @@ typedef struct _EGLSyncImpl
     // without a current context (EGL 1.5 section 3.8.1.3); the wait then
     // borrows this binding through the platform hook.
     EGLContextListImpl* ctxList;
+
+    // Non-null only for EGL_SYNC_REUSABLE_KHR (see above).
+    std::shared_ptr<EGLReusableSyncState> reusable;
 
     struct _EGLSyncImpl* next;
 
@@ -583,6 +600,11 @@ extern "C"
     EGLDisplayImpl* _eglFindDisplay(EGLDisplay dpy);
 
     EGLDisplayImpl* _eglFindCurrentDisplay();
+
+    // Core of eglWaitClient; the reusable sync wait uses it to honour
+    // EGL_SYNC_FLUSH_COMMANDS_BIT (a flush-equivalent of the bound API)
+    // before blocking - outside the display mutex it itself takes.
+    EGLBoolean _eglWaitClient(void);
 
     EGLConfigImpl* _eglFindConfig(EGLDisplayImpl* walkerDpy, EGLConfig config);
 

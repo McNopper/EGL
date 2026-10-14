@@ -150,6 +150,8 @@ extern EGLSyncKHR _eglCreateSyncKHR(EGLDisplay dpy, EGLenum type, const EGLint* 
 
 extern EGLBoolean _eglDestroySyncKHR(EGLDisplay dpy, EGLSyncKHR sync);
 
+extern EGLBoolean _eglSignalSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLenum mode);
+
 extern EGLint _eglClientWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout);
 
 extern EGLBoolean _eglGetSyncAttribKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint attribute, EGLint* value);
@@ -411,6 +413,11 @@ EGLAPI EGLSyncKHR EGLAPIENTRY eglCreateSyncKHR(EGLDisplay dpy, EGLenum type, con
 EGLAPI EGLBoolean EGLAPIENTRY eglDestroySyncKHR(EGLDisplay dpy, EGLSyncKHR sync)
 {
     return _eglDestroySyncKHR(dpy, sync);
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglSignalSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLenum mode)
+{
+    return _eglSignalSyncKHR(dpy, sync, mode);
 }
 
 EGLAPI EGLint EGLAPIENTRY eglClientWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout)
