@@ -653,6 +653,13 @@ EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurface
 // back to the conservative model (0 for destroyed behavior, 1 for preserved).
 EGLBoolean __queryBufferAge(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* age);
 
+// Mirror an eglSurfaceAttrib the core has committed into the native surface,
+// for backends whose surfaces live in another stack (system GLES, ANGLE).
+// Backends whose surfaces honor the behavior without native state (copy-back
+// around the swap, or an inherently non-mutating present) return EGL_TRUE
+// without doing anything.
+EGLBoolean __surfaceAttrib(const EGLDisplayImpl* walkerDpy, EGLSurfaceImpl* walkerSurface, EGLint attribute, EGLint value);
+
 #ifdef EGL_ENABLE_OPENVG
 // Presents the software OpenVG pixel buffer (surface->vgBuffer) of a window
 // surface. Only called when an OpenVG context is current on the surface.

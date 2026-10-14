@@ -157,6 +157,7 @@ set(EGL_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_surface.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_sync.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_image.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/egl_gl_preserve.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_api.cpp
     ${EGL_PLATFORM_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/src/egl_internal.h

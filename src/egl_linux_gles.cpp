@@ -35,6 +35,7 @@ typedef void (*PFN_glEGLImageTargetRenderbufferStorageOES)(unsigned int target, 
 typedef void* (*PFN_eglCreateWindowSurface)(void* dpy, void* config, void* win, const int* attrib_list);
 typedef void* (*PFN_eglCreatePbufferSurface)(void* dpy, void* config, const int* attrib_list);
 typedef int (*PFN_eglQuerySurface)(void* dpy, void* surface, int attribute, int* value);
+typedef int (*PFN_eglSurfaceAttrib)(void* dpy, void* surface, int attribute, int value);
 typedef int (*PFN_eglMakeCurrent)(void* dpy, void* draw, void* read, void* ctx);
 typedef int (*PFN_eglSwapBuffers)(void* dpy, void* surface);
 typedef int (*PFN_eglSwapInterval)(void* dpy, int interval);
@@ -88,6 +89,7 @@ struct GlesState
     PFN_eglCreateWindowSurface   eglCreateWindowSurface{nullptr};
     PFN_eglCreatePbufferSurface  eglCreatePbufferSurface{nullptr};
     PFN_eglQuerySurface          eglQuerySurface{nullptr};
+    PFN_eglSurfaceAttrib         eglSurfaceAttrib{nullptr};
     PFN_eglMakeCurrent           eglMakeCurrent{nullptr};
     PFN_eglSwapBuffers           eglSwapBuffers{nullptr};
     PFN_eglSwapInterval          eglSwapInterval{nullptr};
@@ -330,6 +332,7 @@ extern "C"
             resolveSym(g.libEGL, g.eglCreateWindowSurface, "eglCreateWindowSurface") &&
             resolveSym(g.libEGL, g.eglCreatePbufferSurface, "eglCreatePbufferSurface") &&
             resolveSym(g.libEGL, g.eglQuerySurface, "eglQuerySurface") &&
+            resolveSym(g.libEGL, g.eglSurfaceAttrib, "eglSurfaceAttrib") &&
             resolveSym(g.libEGL, g.eglMakeCurrent, "eglMakeCurrent") &&
             resolveSym(g.libEGL, g.eglSwapBuffers, "eglSwapBuffers") &&
             resolveSym(g.libEGL, g.eglSwapInterval, "eglSwapInterval") &&
@@ -539,6 +542,16 @@ extern "C"
         auto* s = static_cast<GlesSurface*>(surface);
 
         return g.eglQuerySurface(g.display, s->eglSurface, attribute, value) ? EGL_TRUE : EGL_FALSE;
+    }
+
+    EGLBoolean gles_surfaceAttrib(void* surface, EGLint attribute, EGLint value)
+    {
+        if (!g.ready || !surface)
+            return EGL_FALSE;
+
+        auto* s = static_cast<GlesSurface*>(surface);
+
+        return g.eglSurfaceAttrib(g.display, s->eglSurface, attribute, value) ? EGL_TRUE : EGL_FALSE;
     }
 
     EGLBoolean gles_createWindowSurfaceWayland(void* wlSurface, int width, int height, const GlesSurfaceFormat* format, EGLint colorspace, void** out_surface)

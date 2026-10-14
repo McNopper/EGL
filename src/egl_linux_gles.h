@@ -77,6 +77,12 @@ extern "C"
     EGLBoolean gles_querySurface(void* surface, EGLint attribute, EGLint* value);
 
     /**
+     * Forward an eglSurfaceAttrib (e.g. EGL_SWAP_BEHAVIOR) to the system
+     * EGL surface behind the delegated surface.
+     */
+    EGLBoolean gles_surfaceAttrib(void* surface, EGLint attribute, EGLint value);
+
+    /**
      * Create a system EGL window surface on Wayland for the given wl_surface
      * and size. The native window is mirrored through libwayland-egl
      * (wl_egl_window_create) - the system EGL expects that library's

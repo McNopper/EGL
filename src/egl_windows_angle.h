@@ -52,6 +52,12 @@ extern "C"
     EGLBoolean angle_swapBuffers(void* surface);
     EGLBoolean angle_swapInterval(EGLint interval);
     EGLBoolean angle_destroySurface(void* surface);
+
+    /**
+     * Forward an eglSurfaceAttrib (e.g. EGL_SWAP_BEHAVIOR) to ANGLE's
+     * surface, which owns the real buffer management.
+     */
+    EGLBoolean angle_surfaceAttrib(void* surface, EGLint attribute, EGLint value);
     EGLBoolean angle_destroyContext(void* context);
 
     /**

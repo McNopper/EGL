@@ -52,6 +52,7 @@ typedef void*(EGLAPIENTRY* PFN_eglCreateWindowSurface)(void*, void*, EGLNativeWi
 typedef EGLBoolean(EGLAPIENTRY* PFN_eglMakeCurrent)(void*, void*, void*, void*);
 typedef EGLBoolean(EGLAPIENTRY* PFN_eglSwapBuffers)(void*, void*);
 typedef EGLBoolean(EGLAPIENTRY* PFN_eglSwapInterval)(void*, EGLint);
+typedef EGLBoolean(EGLAPIENTRY* PFN_eglSurfaceAttrib)(void*, void*, EGLint, EGLint);
 typedef EGLBoolean(EGLAPIENTRY* PFN_eglDestroyContext)(void*, void*);
 typedef EGLBoolean(EGLAPIENTRY* PFN_eglDestroySurface)(void*, void*);
 typedef void*(EGLAPIENTRY* PFN_eglCreateImageKHR)(void*, void*, EGLenum, void*, const EGLint*);
@@ -79,6 +80,7 @@ struct AngleState
     PFN_eglMakeCurrent           eglMakeCurrent{nullptr};
     PFN_eglSwapBuffers           eglSwapBuffers{nullptr};
     PFN_eglSwapInterval          eglSwapInterval{nullptr};
+    PFN_eglSurfaceAttrib         eglSurfaceAttrib{nullptr};
     PFN_eglDestroyContext        eglDestroyContext{nullptr};
     PFN_eglDestroySurface        eglDestroySurface{nullptr};
     PFN_eglCreateImageKHR        eglCreateImageKHR{nullptr};
@@ -225,6 +227,7 @@ extern "C"
             resolve(g.libEGL, g.eglMakeCurrent, "eglMakeCurrent") &&
             resolve(g.libEGL, g.eglSwapBuffers, "eglSwapBuffers") &&
             resolve(g.libEGL, g.eglSwapInterval, "eglSwapInterval") &&
+            resolve(g.libEGL, g.eglSurfaceAttrib, "eglSurfaceAttrib") &&
             resolve(g.libEGL, g.eglDestroyContext, "eglDestroyContext") &&
             resolve(g.libEGL, g.eglDestroySurface, "eglDestroySurface");
 
@@ -386,6 +389,13 @@ extern "C"
         if (!g.ready || !surface)
             return EGL_FALSE;
         return g.eglDestroySurface(g.display, surface);
+    }
+
+    EGLBoolean angle_surfaceAttrib(void* surface, EGLint attribute, EGLint value)
+    {
+        if (!g.ready || !surface)
+            return EGL_FALSE;
+        return g.eglSurfaceAttrib(g.display, surface, attribute, value);
     }
 
     EGLBoolean angle_destroyContext(void* context)

@@ -1564,6 +1564,9 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
             newConfig->surfaceType |= EGL_WINDOW_BIT;
         if (newConfig->drawToPBuffer)
             newConfig->surfaceType |= EGL_PBUFFER_BIT;
+        // See the X11 backend: preserved swap behavior is honored on every
+        // surface type (native forward or inherent), so the bit is real.
+        newConfig->surfaceType |= EGL_SWAP_BEHAVIOR_PRESERVED_BIT;
 
         // The OpenVG provider (see eglvg.h) renders into these configs as well.
 
@@ -1666,6 +1669,20 @@ EGLBoolean __queryBufferAge(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImp
 #endif
 
     return EGL_FALSE;
+}
+
+EGLBoolean __surfaceAttrib(const EGLDisplayImpl* walkerDpy, EGLSurfaceImpl* walkerSurface, EGLint attribute, EGLint value)
+{
+    (void)walkerDpy;
+    (void)attribute;
+    (void)value;
+#ifdef EGL_WAYLAND_ENABLE_GLES
+    // The delegated stack owns its buffer management (EGL_SWAP_BEHAVIOR).
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+        return gles_surfaceAttrib(walkerSurface->nativeSurfaceContainer.glesSurface, attribute, value);
+#endif
+    (void)walkerSurface;
+    return EGL_TRUE;
 }
 
 EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height)

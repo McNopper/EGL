@@ -25,6 +25,7 @@
  */
 
 #include "egl_common.h"
+#include "egl_gl_preserve.h"
 #include <cstdio>
 #include "eglctxinternals.h"
 
@@ -237,6 +238,11 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* c, EGLint* GL_max, EGLint
         return EGL_FALSE;
 
     loadSym(s_glXGetProcAddressARB, "glXGetProcAddressARB");
+
+    // GL symbols for the preserved-behavior copy-back (egl_gl_preserve.h).
+    glPreserveSetResolver([](const char* name) -> void* {
+        return s_glXGetProcAddressARB ? (void*)s_glXGetProcAddressARB((const GLubyte*)name) : nullptr;
+    });
     loadSym(s_glXCreateNewContext, "glXCreateNewContext");
     loadSym(s_glXMakeContextCurrent, "glXMakeContextCurrent");
     loadSym(s_glXDestroyContext, "glXDestroyContext");
@@ -1682,6 +1688,11 @@ EGLBoolean __initialize(EGLDisplayImpl*                    walkerDpy,
             newConfig->surfaceType |= EGL_PIXMAP_BIT;
         if (newConfig->drawToPBuffer)
             newConfig->surfaceType |= EGL_PBUFFER_BIT;
+        // EGL_SWAP_BEHAVIOR_PRESERVED is honored on every surface type here:
+        // a window keeps its contents through the copy-back around the swap
+        // (or the delegated stack's native swap behavior), and a pbuffer or
+        // pixmap is never posted, so its contents never change anyway.
+        newConfig->surfaceType |= EGL_SWAP_BEHAVIOR_PRESERVED_BIT;
 
         // Renderable type
         // The OpenVG provider (see eglvg.h) renders into these configs as well.
@@ -1802,6 +1813,17 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
 #endif
 
     Display* dpy = reinterpret_cast<Display*>(walkerDpy->display_id);
+
+    // EGL 1.5 §3.5.5: with EGL_BUFFER_PRESERVED the back-buffer contents
+    // must survive the post, but glXSwapBuffers presents by exchange. The
+    // contents are captured before the swap and redrawn into the new back
+    // buffer after it. Delegated surfaces forward the behavior to their own
+    // stack instead and never reach this branch; the Vulkan present path
+    // does not touch the GL back buffer at all.
+    void* preserved = nullptr;
+    if (walkerSurface->swapBehavior == EGL_BUFFER_PRESERVED)
+        preserved = glPreserveBegin(walkerSurface->width, walkerSurface->height);
+
     auto* callHandler_swap0 = XSetErrorHandler(glxErrorHandler);
     s_glxErrorOccurred = 0;
     XSync(dpy, False);
@@ -1809,6 +1831,10 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
     XSync(dpy, False);
     const bool callOk_swap0 = !s_glxErrorOccurred;
     XSetErrorHandler(callHandler_swap0);
+
+    // Restores the client's state even when the swap itself failed.
+    glPreserveEnd(walkerSurface->width, walkerSurface->height, preserved);
+
     if (!callOk_swap0)
     {
         return EGL_FALSE;
@@ -1837,6 +1863,20 @@ EGLBoolean __queryBufferAge(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImp
     unsigned int nativeAge = 0;
     glXQueryDrawable(dpy, walkerSurface->nativeSurfaceContainer.drawable, GLX_BACK_BUFFER_AGE_EXT, &nativeAge);
     *age = (EGLint)nativeAge;
+    return EGL_TRUE;
+}
+
+EGLBoolean __surfaceAttrib(const EGLDisplayImpl* walkerDpy, EGLSurfaceImpl* walkerSurface, EGLint attribute, EGLint value)
+{
+    (void)walkerDpy;
+    (void)attribute;
+    (void)value;
+#ifdef EGL_LINUX_ENABLE_GLES
+    // The delegated stack owns its buffer management (EGL_SWAP_BEHAVIOR).
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_GLES)
+        return gles_surfaceAttrib(walkerSurface->nativeSurfaceContainer.glesSurface, attribute, value);
+#endif
+    (void)walkerSurface;
     return EGL_TRUE;
 }
 

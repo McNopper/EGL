@@ -606,6 +606,15 @@ extern "C"
             }
             walkerSurface->swapBehavior = value;
 
+            // A delegated stack owns its buffer management: the system
+            // surface must learn the behavior as well, or its present path
+            // keeps destroying contents this library promised to preserve.
+            if (!__surfaceAttrib(walkerDpy, walkerSurface, attribute, value))
+            {
+                g_localStorage.error = EGL_BAD_MATCH;
+                return EGL_FALSE;
+            }
+
             return EGL_TRUE;
         }
         case EGL_SMPTE2086_DISPLAY_PRIMARY_RX_EXT:

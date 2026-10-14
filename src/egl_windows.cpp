@@ -30,6 +30,7 @@
 #define GL_BGRA 0x80E1u
 #endif
 #include "egl_common.h"
+#include "egl_gl_preserve.h"
 #include "eglctxinternals.h"
 #ifdef EGL_WIN_ENABLE_ANGLE
 #include "egl_windows_angle.h"
@@ -125,6 +126,27 @@ EGLBoolean __internalInit(NativeLocalStorageContainer* nativeLocalStorageContain
 
         return EGL_FALSE;
     }
+
+    // GL symbols for the preserved-behavior copy-back (egl_gl_preserve.h):
+    // GL 1.1 entry points live in opengl32.dll, extensions go through
+    // wglGetProcAddress - whose failure sentinels are 1, 2, 3 and (PROC)-1.
+    glPreserveSetResolver([](const char* name) -> void* {
+        if (opengl32dll)
+        {
+            if (void* p = (void*)GetProcAddress(opengl32dll, name))
+                return p;
+        }
+        if (!wglGetProcAddress_PTR)
+            return nullptr;
+        PROC w = wglGetProcAddress_PTR(name);
+        // wglGetProcAddress reports failure with the sentinel "pointers"
+        // 1, 2, 3 and -1; compare as integers (reinterpret_cast to UINT_PTR,
+        // never an integer-to-pointer cast).
+        const UINT_PTR addr = reinterpret_cast<UINT_PTR>(w);
+        if (!w || addr == 1 || addr == 2 || addr == 3 || addr == (UINT_PTR)-1)
+            return nullptr;
+        return (void*)w;
+    });
 
     //
 
@@ -1603,6 +1625,10 @@ EGLBoolean __initialize(EGLDisplayImpl* walkerDpy, const NativeLocalStorageConta
         {
             newConfig->surfaceType |= EGL_PBUFFER_BIT;
         }
+        // Preserved swap behavior: WGL keeps contents through the copy-back
+        // around the swap, ANGLE forwards it natively, and a pbuffer is never
+        // posted - so the capability is real on every surface type.
+        newConfig->surfaceType |= EGL_SWAP_BEHAVIOR_PRESERVED_BIT;
         newConfig->colorBufferType = EGL_RGB_BUFFER;
         newConfig->configId        = currentPixelFormat;
 
@@ -1901,6 +1927,21 @@ EGLBoolean __queryBufferAge(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImp
     return EGL_FALSE;
 }
 
+EGLBoolean __surfaceAttrib(const EGLDisplayImpl* walkerDpy, EGLSurfaceImpl* walkerSurface, EGLint attribute, EGLint value)
+{
+    (void)walkerDpy;
+    (void)attribute;
+    (void)value;
+#ifdef EGL_WIN_ENABLE_ANGLE
+    // ANGLE owns the buffer management of its surfaces (EGL_SWAP_BEHAVIOR);
+    // WGL surfaces honor the behavior through the copy-back around the swap.
+    if (walkerSurface->nativeSurfaceContainer.backend == EGL_BACKEND_ANGLE)
+        return angle_surfaceAttrib(walkerSurface->nativeSurfaceContainer.angleSurface, attribute, value);
+#endif
+    (void)walkerSurface;
+    return EGL_TRUE;
+}
+
 EGLBoolean __windowSurfaceSize(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* walkerSurface, EGLint* width, EGLint* height)
 {
     (void)walkerDpy;
@@ -1934,7 +1975,20 @@ EGLBoolean __swapBuffers(const EGLDisplayImpl* walkerDpy, const EGLSurfaceImpl* 
         return __vkPresent(walkerSurface->nativeSurfaceContainer.hdr);
     }
 
-    return (EGLBoolean)SwapBuffers(walkerSurface->nativeSurfaceContainer.hdc);
+    // EGL 1.5 §3.5.5: with EGL_BUFFER_PRESERVED the back-buffer contents must
+    // survive the post, but SwapBuffers presents by exchange (or destruction).
+    // The contents are captured before the swap and redrawn into the new back
+    // buffer after it - the Windows twin of the GLX copy-back.
+    void* preserved = nullptr;
+    if (walkerSurface->swapBehavior == EGL_BUFFER_PRESERVED)
+        preserved = glPreserveBegin(walkerSurface->width, walkerSurface->height);
+
+    const BOOL swapped = SwapBuffers(walkerSurface->nativeSurfaceContainer.hdc);
+
+    // Restores the client's state even when the swap itself failed.
+    glPreserveEnd(walkerSurface->width, walkerSurface->height, preserved);
+
+    return (EGLBoolean)swapped;
 }
 
 #ifdef EGL_ENABLE_OPENVG
