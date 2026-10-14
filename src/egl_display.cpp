@@ -373,6 +373,11 @@ extern "C"
             appendExt("EGL_KHR_partial_update");
             appendExt("EGL_KHR_swap_buffers_with_damage");
             appendExt("EGL_KHR_surfaceless_context");
+            // Surface HDR metadata: the SMPTE 2086 / CTA 861.3 fields are set
+            // through eglSurfaceAttrib and queried through eglQuerySurface in
+            // the core surface code, on every backend.
+            appendExt("EGL_EXT_surface_SMPTE2086_metadata");
+            appendExt("EGL_EXT_surface_CTA861_3_metadata");
             // EGL_EXT_client_extensions is CLIENT-only (queried with
             // EGL_NO_DISPLAY); it must not appear here - the two extension
             // strings are required to be disjoint.
