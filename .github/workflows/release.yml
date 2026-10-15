@@ -39,10 +39,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, platform: windows-x64 }
-          - { os: ubuntu-latest, platform: linux-x11-x64 }
-          - { os: ubuntu-latest, platform: linux-x11-vk-x64, cmake_flags: -DLINUX_VK=ON }
-          - { os: ubuntu-latest, platform: linux-wayland-x64, cmake_flags: -DWL_EGL_PLATFORM=ON }
+          - {os: windows-latest, platform: windows-x64}
+          - {os: ubuntu-latest, platform: linux-x11-x64}
+          - {os: ubuntu-latest, platform: linux-x11-vk-x64, cmake_flags: -DLINUX_VK=ON}
+          - {os: ubuntu-latest, platform: linux-wayland-x64, cmake_flags: -DWL_EGL_PLATFORM=ON}
 
     steps:
       - uses: actions/checkout@v4

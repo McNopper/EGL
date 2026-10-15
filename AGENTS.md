@@ -6,7 +6,7 @@ forwarding to `_egl*` entry points, with the real implementation in
 deferred destruction and reference counting, over four native backends:
 
 | Backend | Where | Notes |
-|---|---|---|
+| --- | --- | --- |
 | Windows WGL + Vulkan HDR | `src/egl_windows.cpp`, `src/egl_windows_vk.cpp` | fully implemented |
 | Windows ANGLE | `src/egl_windows_angle.cpp` | OpenGL ES delegated to ANGLE's libEGL |
 | X11 / GLX + optional Vulkan HDR | `src/egl_x11_glx.cpp`, `src/egl_linux_vk.cpp` | `LINUX_VK` option |
@@ -20,9 +20,10 @@ for other EGL implementations, so conformance is the contract.
   Khronos-generated/owned headers (`EGL/egl.h`, `EGL/eglext.h`,
   `EGL/eglplatform.h`, `KHR/khrplatform.h`) and `src/wglext.h` is likewise
   upstream-generated. If one needs a change, that is a discussion, not an edit.
-- Every first-party header lives in `src/`. This includes `src/eglctxinternals.h`;
-  keeping first-party headers out of `include/` is deliberate so the public
-  include directory reads as exactly the standard EGL API surface.
+- Every first-party header lives in `src/`. This includes
+  `src/eglctxinternals.h`; keeping first-party headers out of `include/` is
+  deliberate so the public include directory reads as exactly the standard EGL
+  API surface.
 - Match the EGL 1.5 error contract: the documented `EGL_BAD_*` code must be set
   on **every** failure path. Returning `EGL_FALSE` / `EGL_NO_*` without setting
   an error leaves `eglGetError()` reporting `EGL_SUCCESS` and is a defect.
@@ -35,7 +36,7 @@ for other EGL implementations, so conformance is the contract.
 
 ## Build (standalone)
 
-```
+```sh
 cmake -S . -B build/ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/ninja
 ```
@@ -54,7 +55,7 @@ All tooling is optional at build time - a clean checkout with none of it
 installed builds exactly as before.
 
 | Layer | Command | Gate |
-|---|---|---|
+| --- | --- | --- |
 | Compiler warnings | part of every build | `ENABLE_WERROR=ON` makes them fatal |
 | cppcheck | `cmake --build build/ninja --target cppcheck` | exits non-zero on findings |
 | cppcheck (exhaustive) | `... --target cppcheck-strict` | opt-in |
@@ -81,7 +82,7 @@ Never suppress to make a gate go green.
 ## Layout
 
 | Path | Contents |
-|---|---|
+| --- | --- |
 | `src/egl.c` | the public `egl*` C entry points, forwarding to `_egl*` |
 | `src/egl_api.cpp`, `egl_globals.cpp`, `egl_display.cpp`, `egl_config.cpp`, `egl_context.cpp`, `egl_surface.cpp`, `egl_sync.cpp`, `egl_image.cpp` | the portable object model |
 | `src/egl_internal.h`, `egl_common.h` | internal contracts shared by core and backends |
@@ -109,16 +110,16 @@ Never suppress to make a gate go green.
   mutex is a data race.
 - **Off-by-one on attribute-list caps.** A bound check placed *after* processing
   a pair rejects the last legal pair. The attribute templates are written by
-  fixed slot, so the check is an input cap, not an overflow guard - it must
-  fire after the final pair, not at it.
+  fixed slot, so the check is an input cap, not an overflow guard - it must fire
+  after the final pair, not at it.
 - **Native handle lifetime.** GDI object selection before `DeleteDC`, X11
   resources on error paths, `XFree` of a non-NULL zero-length array, and
   `XGetGeometry` return values (unchecked, they leave `width`/`height`
   uninitialized and a bad drawable kills the process under Xlib's default
   handler).
 - **Extension-string accuracy.** Advertised extension names must be the
-  registered ones, and an advertised capability must actually be implemented -
-  a capability bit never set is a feature that can never be reached.
+  registered ones, and an advertised capability must actually be implemented - a
+  capability bit never set is a feature that can never be reached.
 - **Sentinel return values from platform APIs.** `wglGetProcAddress` reports
   failure with `1`/`2`/`3`/`(PROC)-1`, not `NULL`. Every such wrapper needs the
   full check.
@@ -126,8 +127,8 @@ Never suppress to make a gate go green.
 ## Conventions
 
 - **Production code discipline**: clean code and clean architecture, **no
-  hacks**. No content sniffing, magic numbers, hidden special cases,
-  duplicated blocks, or indirections that silently die.
+  hacks**. No content sniffing, magic numbers, hidden special cases, duplicated
+  blocks, or indirections that silently die.
 - **Work priority is a strict cycle**: **bugs first**, then refactoring or new
   features. When anything broken is found at any point, drop back to bugs
   immediately.
