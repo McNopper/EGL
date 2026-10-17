@@ -36,6 +36,7 @@ jobs:
       - name: Configure + cppcheck + clang-tidy (Wayland)
         run: |
           cmake -S . -B build-wayland -G Ninja -DCMAKE_BUILD_TYPE=Release -DWL_EGL_PLATFORM=ON
+          cmake --build build-wayland --target xdg_shell_protocol
           cmake --build build-wayland --target cppcheck
           python3 tools/check_tidy.py --build-dir build-wayland
 
