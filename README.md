@@ -475,6 +475,20 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
+17.10.2026 - The analysis lanes moved into CI and the first Linux
+static-analyzer pass over the full source set paid for itself immediately.
+EGLApp, the shared example application struct, now initializes every member
+in-class: its values are the EGL sentinels no matter how the struct is
+allocated, which is what the cleanup ladder on the partial-failure teardown
+paths always assumed. The chooseConfig stack storage is zero-filled for the
+same reason. The static archive lands in lib/<build-tree-name> instead of a
+shared lib/libEGL - the sibling build trees carry different feature sets
+(WGL+VK, ANGLE, sanitizer, wayland) and the ninja up-to-date check linked
+examples against a foreign tree's archive. The clang-tidy runner gained
+--exclude-dir for vendored scopes that carry their own disabling
+.clang-tidy, and the CI analysis job now runs cppcheck and clang-tidy over
+both Linux lanes plus the lint matrix on every push. v1.0.19.
+
 15.10.2026 - Quality tooling brought to the lint-matrix baseline: yamllint
 compacted the release matrix entries and pinned workflow files to LF through a
 .gitattributes rule, Ruff cleaned the clang-tidy runner (unused import,
