@@ -481,7 +481,7 @@ EGLApp, the shared example application struct, now initializes every member
 in-class: its values are the EGL sentinels no matter how the struct is
 allocated, which is what the cleanup ladder on the partial-failure teardown
 paths always assumed. The chooseConfig stack storage is zero-filled for the
-same reason. The static archive lands in lib/<build-tree-name> instead of a
+same reason. The static archive lands per build tree under lib/ instead of a
 shared lib/libEGL - the sibling build trees carry different feature sets
 (WGL+VK, ANGLE, sanitizer, wayland) and the ninja up-to-date check linked
 examples against a foreign tree's archive. The clang-tidy runner gained
