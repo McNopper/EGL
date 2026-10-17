@@ -16,11 +16,14 @@
 
 struct EGLApp
 {
-    EGLNativeDisplayType native_dpy;
-    EGLDisplay           dpy;
-    EGLSurface           surf;
-    EGLContext           ctx;
-    __NativeWindow*      win;
+    // In-class initialized: the shared helpers' cleanup ladder reads these on
+    // partial-failure teardown, so every instance starts at the EGL sentinels
+    // no matter how it was allocated.
+    EGLNativeDisplayType native_dpy = EGL_DEFAULT_DISPLAY;
+    EGLDisplay           dpy        = EGL_NO_DISPLAY;
+    EGLSurface           surf       = EGL_NO_SURFACE;
+    EGLContext           ctx        = EGL_NO_CONTEXT;
+    __NativeWindow*      win        = nullptr;
 };
 
 /**

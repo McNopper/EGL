@@ -384,8 +384,10 @@ extern "C"
         EGLConfigImpl* walkerConfig = walkerDpy->rootConfig;
 
         // Properly typed storage: a char array reinterpret_cast to EGLConfig*
-        // carries no alignment guarantee.
-        EGLConfig    configsOnStack[CONFIGS_ON_STACK_MAX];
+        // carries no alignment guarantee. Zero-filled: the static analyzer
+        // cannot track the partial-fill invariant through std::sort's
+        // inlined internals and reports unbound slots on explored paths.
+        EGLConfig    configsOnStack[CONFIGS_ON_STACK_MAX] = {};
         const EGLint max_configs = static_cast<EGLint>(sizeof(configsOnStack) / sizeof(configsOnStack[0]));
 
         EGLint configIndex = 0;
