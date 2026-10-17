@@ -5,6 +5,16 @@ project(EGL VERSION 1.0.18 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Archive layout: lib/<build-tree-name>. The sibling build trees carry
+# different feature sets (WGL+VK, ANGLE, sanitizer, wayland), and a shared
+# lib/libEGL lets the ninja up-to-date check treat a foreign tree's archive
+# as current - linking examples against the wrong variant. Found three times
+# during the conformance wave. Vendored builds (add_subdirectory /
+# FetchContent) resolve the same directory inside their fetched EGL source
+# copy; release packaging locates the archive recursively.
+get_filename_component(_egl_tree_name "${CMAKE_BINARY_DIR}" NAME)
+set(EGL_ARCHIVE_DIR "${CMAKE_CURRENT_LIST_DIR}/lib/${_egl_tree_name}")
+
 # Build policy + static analysis. Registered ONLY when EGL is the top-level
 # project: the example projects vendor EGL through add_subdirectory() and
 # FetchContent, and a second `cppcheck` custom target would make CMake fail
@@ -14,6 +24,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
     include(cppcheck)
     include(warnings)
+
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${EGL_ARCHIVE_DIR}")
 endif()
 
 if(WIN32)
@@ -192,9 +204,9 @@ if(COMMAND project_enable_warnings)
 endif()
 
 set_target_properties(EGL PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY         ${CMAKE_SOURCE_DIR}/lib
-    ARCHIVE_OUTPUT_DIRECTORY_DEBUG   ${CMAKE_SOURCE_DIR}/lib
-    ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib
+    ARCHIVE_OUTPUT_DIRECTORY         ${EGL_ARCHIVE_DIR}
+    ARCHIVE_OUTPUT_DIRECTORY_DEBUG   ${EGL_ARCHIVE_DIR}
+    ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${EGL_ARCHIVE_DIR}
     PREFIX                           "lib")
 
 if(WIN32)
