@@ -475,6 +475,16 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
+15.10.2026 - Quality tooling brought to the lint-matrix baseline: yamllint
+compacted the release matrix entries and pinned workflow files to LF through a
+.gitattributes rule, Ruff cleaned the clang-tidy runner (unused import,
+explicit subprocess check, f-strings) which also gained --allow-no-checks so a
+vendored subtree can carry a documented opt-out .clang-tidy, markdown received
+fence languages, atx title styles and an 80-column prose wrap across all
+documentation, and the sanitizer lane (ASan/UBSan build plus instrumented
+example runs) came back clean. All local analysis gates run at zero findings
+and the dEQP results are unchanged. v1.0.18.
+
 14.10.2026 - Completed the OpenGL ES delegation and took dEQP-EGL conformance
 from 28 failures to the two documented driver limits. ES contexts previously ran
 in the delegated system stack but their pbuffer surfaces stayed on GLX, so a
