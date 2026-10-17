@@ -1,0 +1,59 @@
+name: Analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            cppcheck \
+            clang-tidy \
+            libx11-dev \
+            libgl1-mesa-dev \
+            libglx-dev \
+            libopengl-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libvulkan-dev \
+            pkg-config
+
+      - name: Configure + cppcheck + clang-tidy (X11/GLX)
+        run: |
+          cmake -S . -B build-x11 -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-x11 --target cppcheck
+          python3 tools/check_tidy.py --build-dir build-x11
+
+      - name: Configure + cppcheck + clang-tidy (Wayland)
+        run: |
+          cmake -S . -B build-wayland -G Ninja -DCMAKE_BUILD_TYPE=Release -DWL_EGL_PLATFORM=ON
+          cmake --build build-wayland --target cppcheck
+          python3 tools/check_tidy.py --build-dir build-wayland
+
+      - name: yamllint (workflows)
+        run: |
+          pipx install yamllint
+          yamllint .github/workflows/
+
+      - name: actionlint
+        run: |
+          bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint
+
+      - name: markdownlint
+        run: npx -y markdownlint-cli2 --config .markdownlint.yaml "**/*.md"
+
+      - name: gitleaks (git history)
+        run: |
+          curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o gitleaks.tgz
+          tar xzf gitleaks.tgz gitleaks
+          ./gitleaks git --redact --no-banner .
