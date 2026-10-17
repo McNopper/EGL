@@ -1370,10 +1370,13 @@ EGLBoolean __destroySurface(EGLNativeDisplayType dpyType, const EGLSurfaceImpl* 
 
     __shmPresenterDestroy(surface->nativeSurfaceContainer.shmPresent);
 
-    if (surface->drawToPBuffer && s_glXDestroyPbuffer)
+    // Window and pbuffer flavors alike render GL into exactly one GLXPbuffer,
+    // so both own that resource and it is destroyed the same way.
+    if (s_glXDestroyPbuffer
+        && (surface->drawToPBuffer || (!surface->drawToPixmap && surface->drawToWindow)))
+    {
         s_glXDestroyPbuffer(s_x11Display, surface->nativeSurfaceContainer.glxPbuffer);
-    else if (!surface->drawToPixmap && surface->drawToWindow && s_glXDestroyPbuffer)
-        s_glXDestroyPbuffer(s_x11Display, surface->nativeSurfaceContainer.glxPbuffer);
+    }
 
     return EGL_TRUE;
 }
