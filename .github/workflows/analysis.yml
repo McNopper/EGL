@@ -50,7 +50,7 @@ jobs:
           ./actionlint
 
       - name: markdownlint
-        run: npx -y markdownlint-cli2 --config .markdownlint.yaml "**/*.md"
+        run: npx -y markdownlint-cli2 --config .markdownlint.yaml "**/*.md" "!build/**"
 
       - name: gitleaks (git history)
         run: |
