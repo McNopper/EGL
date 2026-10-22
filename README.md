@@ -475,7 +475,7 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
-17.10.2026 - The analysis lanes moved into CI and the first Linux
+The analysis lanes moved into CI and the first Linux
 static-analyzer pass over the full source set paid for itself immediately.
 EGLApp, the shared example application struct, now initializes every member
 in-class: its values are the EGL sentinels no matter how the struct is
@@ -489,17 +489,16 @@ examples against a foreign tree's archive. The clang-tidy runner gained
 .clang-tidy, and the CI analysis job now runs cppcheck and clang-tidy over
 both Linux lanes plus the lint matrix on every push. v1.0.19.
 
-15.10.2026 - Quality tooling brought to the lint-matrix baseline: yamllint
+Tooling and documentation hygiene: yamllint
 compacted the release matrix entries and pinned workflow files to LF through a
 .gitattributes rule, Ruff cleaned the clang-tidy runner (unused import,
-explicit subprocess check, f-strings) which also gained --allow-no-checks so a
-vendored subtree can carry a documented opt-out .clang-tidy, markdown received
+explicit subprocess check, f-strings), markdown received
 fence languages, atx title styles and an 80-column prose wrap across all
 documentation, and the sanitizer lane (ASan/UBSan build plus instrumented
 example runs) came back clean. All local analysis gates run at zero findings
 and the dEQP results are unchanged. v1.0.18.
 
-14.10.2026 - Completed the OpenGL ES delegation and took dEQP-EGL conformance
+Completed the OpenGL ES delegation and took dEQP-EGL conformance
 from 28 failures to the two documented driver limits. ES contexts previously ran
 in the delegated system stack but their pbuffer surfaces stayed on GLX, so a
 delegated context could not bind them; window and pbuffer surfaces of ES
@@ -578,7 +577,7 @@ clang-tidy 0/0 across 28 translation units, cppcheck clean on both lanes, 7/7
 Windows examples and both X11 examples (GLX and delegated ES) render green.
 v1.0.17.
 
-13.10.2026 - Fixed the EGL entry point contract for images and syncs.
+Fixed the EGL entry point contract for images and syncs.
 eglGetProcAddress deferred unsupported `egl*` names to the client loader, which
 returned another EGL implementation's function pointer - or NULL before any
 display exists, exactly when clients resolve their entry points - so dEQP-EGL
@@ -614,7 +613,7 @@ skipped as unsupported on the current display). The 62 remaining image failures
 render through the image on pbuffer contexts and need ES pbuffer contexts
 delegated - recorded as follow-up. v1.0.16.
 
-11.10.2026 - Wayland backend brought up to the X11 one: window surfaces render
+Wayland backend brought up to the X11 one: window surfaces render
 and present, and OpenVG and OpenGL ES work. Presentation still goes through the
 Vulkan swapchain when the driver provides GL/Vulkan interop; linear, sRGB and
 OpenVG surfaces additionally present through a software `wl_shm` path
@@ -640,7 +639,7 @@ skipped as unsupported on the current display); cppcheck clean on both
 platforms, clang-tidy 0 errors; the swap-related dEQP-EGL groups match the
 v1.0.14 results exactly. v1.0.15.
 
-11.10.2026 - Fixed the v1.0.13 window-surface regression: default window
+Fixed the v1.0.13 window-surface regression: default window
 surfaces are back-buffered again on every backend. v1.0.13 let the WGL window
 template take `WGL_DOUBLE_BUFFER_ARB` from the spec-sorted first config, which
 is single-buffered, so `eglSwapBuffers` had nothing to present - on Windows the
@@ -674,7 +673,7 @@ recorded as follow-up work. The Wayland backend is build-verified only in this
 release; its pure-Wayland runtime path is known broken and is separate follow-up
 work. v1.0.14.
 
-11.10.2026 - dEQP-EGL conformance program: drove the full VK-GL-CTS
+dEQP-EGL conformance program: drove the full VK-GL-CTS
 `dEQP-EGL.functional` suite against this library (X11/GLX, Mesa llvmpipe) and
 fixed every failure - **221 pass / 0 fail / 974 not-supported** (from 5 pass /
 61 fail at the first run). Fixes, all verified against the EGL 1.5 specification
@@ -697,18 +696,18 @@ surface); GL 3.1 context requests sent as 3.2 core per the section 3.7.1.1
 version rules. Also added `EGL_BUILD_SHARED`, and the version string tracks
 releases again (it had been stuck at 1.0.8). v1.0.13.
 
-11.10.2026 - OpenVG client API seam behind `EGL_ENABLE_OPENVG` (opt-in, default
+OpenVG client API seam behind `EGL_ENABLE_OPENVG` (opt-in, default
 OFF), letting an OpenVG library provide the VG client API without affecting
 OpenGL builds. v1.0.12.
 
-10.10.2026 - Bug fixes and refactoring, no public API changes. v1.0.11.
+Bug fixes and refactoring, no public API changes. v1.0.11.
 
-07.10.2026 - Added CI build workflows covering Windows (WGL + Vulkan HDR) and
+Added CI build workflows covering Windows (WGL + Vulkan HDR) and
 Linux (X11/GLX, X11 + Vulkan HDR, Wayland); every push and pull request is
 build-verified, and tagged releases attach the prebuilt static library with
 headers to the GitHub release. No library changes. v1.0.10.
 
-24.09.2026 - Correctness and packaging pass. Moved the first-party
+Correctness and packaging pass. Moved the first-party
 `eglctxinternals.h` out of the public `include/` tree into `src/`, so `include/`
 now holds only the Khronos API headers. Replaced a `memcmp` over the padded
 `VkHdrMetadataEXT` with a field-wise comparison (C does not require struct
@@ -721,7 +720,7 @@ building the examples. Documented the correct
 project version, and added the `cppcheck` and `clang-tidy` analysis lanes and
 `AGENTS.md`. v1.0.9.
 
-01.08.2026 - Comprehensive correctness, memory-safety and thread-safety pass.
+Comprehensive correctness, memory-safety and thread-safety pass.
 Fixed eglQueryContext out-of-bounds read; eglChooseConfig num_config reporting;
 per-thread current-binding tracking with reference counting; eglTerminate
 resource cleanup; cleanup loop skipping list-head nodes; eglGetDisplay
@@ -732,40 +731,40 @@ attribute green/blue swap; X11 teardown ordering; Wayland private event queue;
 and numerous spec-conformance error-code fixes. Verified on Windows (MSVC) and
 Linux (GCC, X11 + Wayland). v1.0.8.
 
-02.06.2026 - Correctness pass, including fixes and documentation alignment.
+Correctness pass, including fixes and documentation alignment.
 v1.0.7.
 
-27.05.2026 - Fixed ReleaseDC resource leak on Windows. Fixed memory leak and
+Fixed ReleaseDC resource leak on Windows. Fixed memory leak and
 uninitialized fence handles on Vulkan swapchain resize. Fixed eglWaitGL binding
 wrong API. Fixed duplicate CMake option blocks. v1.0.6.
 
-14.05.2026 - Almost full EGL implementation for Linux and Windows. v1.0.5.
+Almost full EGL implementation for Linux and Windows. v1.0.5.
 
-03.05.2026 - Fixed OpenGL and Vulkan coordinate. v1.0.4.
+Fixed OpenGL and Vulkan coordinate. v1.0.4.
 
-03.05.2026 - Added OpenGL ES support via ANGLE on Windows. Documentation fixes.
+Added OpenGL ES support via ANGLE on Windows. Documentation fixes.
 v1.0.3.
 
-03.05.2026 - Added Linux Wayland + Vulkan HDR backend. v1.0.2.
+Added Linux Wayland + Vulkan HDR backend. v1.0.2.
 
-19.04.2026 - Added Linux X11/GLX backend. v1.0.1.
+Added Linux X11/GLX backend. v1.0.1.
 
-19.04.2026 - Major refactoring using AI v1.0.0.
+Major refactoring. v1.0.0.
 
-29.01.2015 - Updated to GLEW 1.12.0. v0.3.3.
+Updated to GLEW 1.12.0. v0.3.3.
 
-25.01.2015 - Fixed initialization bug on Windows. v0.3.3.
+Fixed initialization bug on Windows. v0.3.3.
 
-20.01.2015 - Added GLX version check. Fixed window creation bug on X11. v0.3.2.
+Added GLX version check. Fixed window creation bug on X11. v0.3.2.
 
-05.12.2014 - Removed duplicate code. v0.3.1.
+Removed duplicate code. v0.3.1.
 
-04.12.2014 - Working X11 version. v0.3.0.
+Working X11 version. v0.3.0.
 
-28.11.2014 - Continued X11 implementation. v0.2.3.
+Continued X11 implementation. v0.2.3.
 
-22.11.2014 - X11 compiling but not complete. v0.2.2.
+X11 compiling but not complete. v0.2.2.
 
-18.11.2014 - Added X11 build configuration. v0.2.1.
+Added X11 build configuration. v0.2.1.
 
-17.11.2014 - First public release. v0.2.
+First public release. v0.2.

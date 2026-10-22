@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # different feature sets (WGL+VK, ANGLE, sanitizer, wayland), and a shared
 # lib/libEGL lets the ninja up-to-date check treat a foreign tree's archive
 # as current - linking examples against the wrong variant. Found three times
-# during the conformance wave. Vendored builds (add_subdirectory /
+# during conformance testing. Vendored builds (add_subdirectory /
 # FetchContent) resolve the same directory inside their fetched EGL source
 # copy; release packaging locates the archive recursively.
 get_filename_component(_egl_tree_name "${CMAKE_BINARY_DIR}" NAME)
