@@ -2,7 +2,7 @@
   "name": "egl",
   "version-string": "1.0.8",
   "description": "Portable EGL 1.5 implementation with HDR support",
-  "builtin-baseline": "e5a1490e1409d175932ef6014519e9ae149ddb7c",
+  "builtin-baseline": "b85445dced129c00362b5e64f49f29e1b922cbb9",
   "dependencies": [
     {
       "name": "angle",
