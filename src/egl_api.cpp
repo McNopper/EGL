@@ -218,17 +218,19 @@ extern "C"
 
         // EGL 1.5 §3.10.1.1: the swap detects a native-window resize and the
         // surface adopts the new size.
+        EGLBoolean resized = EGL_FALSE;
         {
             EGLint width = 0;
             EGLint height = 0;
 
             if (__windowSurfaceSize(walkerDpy, walkerSurface, &width, &height) == EGL_TRUE && width > 0 && height > 0)
             {
+                resized = (walkerSurface->width != width || walkerSurface->height != height) ? EGL_TRUE : EGL_FALSE;
+
                 // EGL_EXT_buffer_age permits resetting the age on resize;
                 // with EGL_BUFFER_PRESERVED the content (and so the age)
                 // survives the resize instead.
-                if ((walkerSurface->width != width || walkerSurface->height != height) &&
-                    walkerSurface->swapBehavior != EGL_BUFFER_PRESERVED)
+                if (resized && walkerSurface->swapBehavior != EGL_BUFFER_PRESERVED)
                 {
                     walkerSurface->bufferAgeSwaps = 0;
                 }
@@ -243,6 +245,21 @@ extern "C"
         // native GL swapchain (see eglvg.h).
         if (g_localStorage.currentCtx != EGL_NO_CONTEXT_IMPL && g_localStorage.currentCtx->clientAPI == EGL_OPENVG_API)
         {
+            if (resized && walkerSurface->vgBuffer)
+            {
+                // The presentation buffer is sized from the native window, so
+                // adopting new dimensions without reallocating it would make
+                // the next present read past the old allocation. Rebind the
+                // provider at the same time; it owns the matching drawable.
+                _eglVGFreeSurfaceBuffer(walkerSurface);
+                if (!_eglVGMakeCurrent(g_localStorage.currentCtx, walkerSurface))
+                {
+                    g_localStorage.error = EGL_BAD_ALLOC;
+
+                    return EGL_FALSE;
+                }
+            }
+
             _eglVGNotifySwap(g_localStorage.currentCtx);
 
             if (!__presentVGBuffer(walkerDpy, walkerSurface))

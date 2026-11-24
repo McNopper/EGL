@@ -152,12 +152,13 @@ static bool resolveSym(void* lib, T& out, const char* name)
     return out != nullptr;
 }
 
-// A system config matching the caller's EGLConfig, queried with
+// A system config exactly matching the caller's EGLConfig, queried with
 // WINDOW|PBUFFER so the same config serves window surfaces, pbuffers and the
 // contexts bound to them - EGL requires context and surface to come from the
 // same config, and for a given requested format both sides resolve to this
-// very entry. Falls back to the delegation's default config when the system
-// stack has no such format.
+// very entry. Returns null when the system stack has no exact match; the
+// caller must then keep the surface and its context on GLX instead of
+// delegating a different format than the one advertised by our EGLConfig.
 static void* systemConfigFor(const GlesSurfaceFormat* format)
 {
     if (!format)
@@ -202,10 +203,12 @@ static void* systemConfigFor(const GlesSurfaceFormat* format)
         return config;
     }
 
-    // Consume the probe error, like chooseDefaultConfig does.
+    // Consume the probe error, like chooseDefaultConfig does. The caller's
+    // GLX fallback needs the native format requested by our EGLConfig, not the
+    // delegation's unrelated default config.
     if (g.eglGetError)
         g.eglGetError();
-    return g.config;
+    return nullptr;
 }
 
 static bool loadWaylandEgl()

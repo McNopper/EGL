@@ -475,6 +475,19 @@ egl.c                     Public C API (thin shims, no logic)
 
 ## Changelog
 
+Corrected the two RGB10A2 dEQP failures previously recorded as Mesa limits:
+they were caused by substituting the delegation's default RGBA8 config when
+the system GLES stack had no exact match. Surfaces and their contexts now stay
+together on GLX for those formats on both X11 and Wayland, including shared
+and surfaceless contexts, instead of advertising one format while rendering
+into another. Wayland also finds non-visual pbuffer/pixmap configs through the
+full GLX config list, matching X11. The RGB10A2 sRGB case is an honest
+NotSupported because the native stack has no such config. Windowed OpenVG
+resizes now reallocate and rebind the pixel buffer, and provider teardown
+releases the context's default drawable instead of deleting a referenced
+object. The full WSL dEQP-EGL.functional run is now 2308 Pass / 0 Fail with
+no crashes; the ASan/UBSan probes are clean on both backends. Unreleased.
+
 The analysis lanes moved into CI and the first Linux
 static-analyzer pass over the full source set paid for itself immediately.
 EGLApp, the shared example application struct, now initializes every member
